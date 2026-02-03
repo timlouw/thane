@@ -1,0 +1,35 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Package tarballs
+*.tgz
+
+# Debug files
+debug-*.js
+debug-output/
+
+# npm config (may contain tokens)
+.npmrc
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo
+
+# Test coverage
+coverage/
+
+# Lock files (optional - uncomment if you don't want to track)
+# package-lock.json
+# bun.lockb

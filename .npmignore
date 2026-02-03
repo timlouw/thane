@@ -1,0 +1,29 @@
+# Source files (we ship only dist)
+src/
+
+# Test files
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
+
+# Debug output
+debug-output/
+debug-*.js
+
+# Development files
+.gitignore
+.prettierrc
+.eslintrc*
+.editorconfig
+tsconfig.json
+bun.lockb
+
+# IDE
+.vscode/
+.idea/
+
+# Misc
+*.tgz
+.DS_Store
+Thumbs.db
