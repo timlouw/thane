@@ -73,7 +73,7 @@ The Thane framework has these distinguishing features that inform the acronym ch
 
 ### **H** - High-performance / HTML / Hoisting
 - **High-performance**: Template cloning, tree-shaking, minification
-- **HTML**: Tagged template literals (`html\`...\``, `css\`...\``)
+- **HTML**: Tagged template literals (html`` and css``)
 - **Hoisting**: Compile-time template hoisting and precompilation
 
 ### **A** - Ahead-of-time / Automated / Abstraction
