@@ -1,6 +1,7 @@
 import fs from 'fs';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
+import vm from 'vm';
 import type { SignalExpression, ImportInfo, TemplateInfo } from '../../types.js';
 import {
   findComponentClass,
@@ -33,6 +34,59 @@ import {
 // NOTE: Additional html-parser utilities available for future use:
 
 const NAME = PLUGIN_NAME.REACTIVE;
+
+// ============================================================================
+// Safe Expression Evaluator (replaces eval())
+// ============================================================================
+
+/**
+ * Constrained sandbox context for evaluating conditional expressions at compile time.
+ * Uses ts.transpile() to handle TypeScript expressions, then vm.runInContext()
+ * in a locked-down sandbox. This supports the full range of JS operators and
+ * expressions without exposing eval() or the Node.js runtime.
+ */
+const _evalSandbox = vm.createContext(Object.freeze({
+  // Only expose safe, side-effect-free globals
+  Boolean, Number, String, Array, Object,
+  Math, JSON, parseInt, parseFloat, isNaN, isFinite,
+  undefined, NaN, Infinity,
+  true: true, false: false, null: null,
+}));
+
+/**
+ * Safely evaluate a conditional expression at compile time.
+ * 
+ * Replaces all `this._signalName()` references with their initial values,
+ * transpiles the expression from TypeScript to JavaScript, then evaluates
+ * it in a constrained VM sandbox with no access to Node.js APIs.
+ *
+ * @param jsExpression - The raw JS expression, e.g. "!this._loading()" or "this._a() && this._b()"
+ * @param signalNames - All signal names referenced in the expression
+ * @param signalInitializers - Map of signal name → initial value
+ * @returns The boolean result, defaulting to false on any failure
+ */
+const safeEvaluateCondition = (
+  jsExpression: string,
+  signalNames: string[],
+  signalInitializers: Map<string, string | number | boolean>,
+): boolean => {
+  let evalExpr = jsExpression;
+  for (const sigName of signalNames) {
+    const initialVal = signalInitializers.get(sigName);
+    evalExpr = evalExpr.replaceAll(`this.${sigName}()`, JSON.stringify(initialVal ?? false));
+  }
+
+  try {
+    // Transpile to plain JS in case the expression uses TS-specific syntax
+    const transpiled = ts.transpile(`(${evalExpr})`, {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+    });
+    return Boolean(vm.runInContext(transpiled, _evalSandbox, { timeout: 50 }));
+  } catch {
+    return false;
+  }
+};
 
 interface ConditionalBlock {
   id: string;
@@ -231,6 +285,12 @@ const processHtmlTemplateWithConditionals = (
 } => {
   const parsed = parseHtmlTemplate(templateContent);
 
+  // Surface any parse diagnostics to the developer
+  for (const diag of parsed.diagnostics) {
+    const logFn = diag.severity === 'error' ? logger.warn : logger.info;
+    logFn(NAME, `Template parse ${diag.severity}: ${diag.message} (at position ${diag.position})`);
+  }
+
   const bindings: BindingInfo[] = [];
   const conditionals: ConditionalBlock[] = [];
   const whenElseBlocks: WhenElseBlock[] = [];
@@ -269,17 +329,7 @@ const processHtmlTemplateWithConditionals = (
 
     const conditionalId = `b${idCounter++}`;
     elementIdMap.set(condEl, conditionalId);
-    let evalExpr = jsExpression;
-    for (const sigName of signalNames) {
-      const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
-      evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
-    }
-    let initialValue = false;
-    try {
-      initialValue = Boolean(eval(evalExpr));
-    } catch (e) {
-    }
+    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
     const condBindings = getBindingsForElement(condEl, parsed.bindings);
     const nestedBindings: BindingInfo[] = [];
 
@@ -316,16 +366,7 @@ const processHtmlTemplateWithConditionals = (
       const nestedJsExpression = nestedWhenBinding.jsExpression;
       const nestedCondId = `b${idCounter++}`;
       elementIdMap.set(nestedCondEl, nestedCondId);
-      let nestedEvalExpr = nestedJsExpression;
-      for (const sigName of nestedSignalNames) {
-        const initialVal = signalInitializers.get(sigName);
-        const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
-        nestedEvalExpr = nestedEvalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
-      }
-      let nestedInitialValue = false;
-      try {
-        nestedInitialValue = Boolean(eval(nestedEvalExpr));
-      } catch (e) {}
+      const nestedInitialValue = safeEvaluateCondition(nestedJsExpression, nestedSignalNames, signalInitializers);
       const nestedCondBindings = getBindingsForElement(nestedCondEl, parsed.bindings);
       const nestedNestedBindings: BindingInfo[] = [];
 
@@ -401,17 +442,7 @@ const processHtmlTemplateWithConditionals = (
     const jsExpression = binding.jsExpression;
     const thenId = `b${idCounter++}`;
     const elseId = `b${idCounter++}`;
-    let evalExpr = jsExpression;
-    for (const sigName of signalNames) {
-      const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
-      evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
-    }
-    let initialValue = false;
-    try {
-      initialValue = Boolean(eval(evalExpr));
-    } catch (e) {
-    }
+    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
     const thenProcessed = processSubTemplateWithNesting(binding.thenTemplate, signalInitializers, idCounter, thenId);
     idCounter = thenProcessed.nextId;
     const elseProcessed = processSubTemplateWithNesting(binding.elseTemplate, signalInitializers, idCounter, elseId);
@@ -1003,17 +1034,7 @@ const processItemTemplateRecursively = (
 
     const conditionalId = `b${idCounter++}`;
     elementIdMap.set(condEl, conditionalId);
-    let evalExpr = jsExpression;
-    for (const sigName of signalNames) {
-      const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
-      evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
-    }
-    let initialValue = false;
-    try {
-      initialValue = Boolean(eval(evalExpr));
-    } catch (e) {
-    }
+    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
     const condBindings = getBindingsForElement(condEl, parsed.bindings);
     const nestedBindings: BindingInfo[] = [];
 
@@ -1090,17 +1111,7 @@ const processItemTemplateRecursively = (
 
     const thenId = `b${idCounter++}`;
     const elseId = `b${idCounter++}`;
-    let evalExpr = jsExpression;
-    for (const sigName of signalNames) {
-      const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
-      evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
-    }
-    let initialValue = false;
-    try {
-      initialValue = Boolean(eval(evalExpr));
-    } catch (e) {
-    }
+    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
     const thenProcessed = processSubTemplateWithNesting(binding.thenTemplate, signalInitializers, idCounter, thenId);
     idCounter = thenProcessed.nextId;
     const elseProcessed = processSubTemplateWithNesting(binding.elseTemplate, signalInitializers, idCounter, elseId);
@@ -1537,17 +1548,7 @@ const processSubTemplateWithNesting = (
 
     const conditionalId = `b${idCounter++}`;
     elementIdMap.set(condEl, conditionalId);
-    let evalExpr = jsExpression;
-    for (const sigName of signalNames) {
-      const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
-      evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
-    }
-    let initialValue = false;
-    try {
-      initialValue = Boolean(eval(evalExpr));
-    } catch (e) {
-    }
+    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
     const condBindings = getBindingsForElement(condEl, parsed.bindings);
     const nestedBindings: BindingInfo[] = [];
 
@@ -1603,17 +1604,7 @@ const processSubTemplateWithNesting = (
 
     const thenId = `b${idCounter++}`;
     const elseId = `b${idCounter++}`;
-    let evalExpr = jsExpression;
-    for (const sigName of signalNames) {
-      const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
-      evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
-    }
-    let initialValue = false;
-    try {
-      initialValue = Boolean(eval(evalExpr));
-    } catch (e) {
-    }
+    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
     const thenProcessed = processSubTemplateWithNesting(binding.thenTemplate, signalInitializers, idCounter, thenId);
     idCounter = thenProcessed.nextId;
     const elseProcessed = processSubTemplateWithNesting(binding.elseTemplate, signalInitializers, idCounter, elseId);

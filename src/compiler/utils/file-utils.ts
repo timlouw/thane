@@ -39,8 +39,6 @@ export const directoryExists = (dir: string): boolean => {
   }
 };
 
-export const toCamelCase = (str: string): string => str.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-
 export const getContentType = (url: string): string => {
   const ext = url.substring(url.lastIndexOf('.'));
   switch (ext) {

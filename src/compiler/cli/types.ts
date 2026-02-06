@@ -21,8 +21,6 @@ export interface CLIOptions {
   htmlTemplate?: string;
   /** Start dev server after build */
   serve: boolean;
-  /** Write intermediate files for debugging */
-  debugTap: boolean;
 }
 
 export interface BuildConfig {
@@ -44,8 +42,4 @@ export interface BuildConfig {
   serve: boolean;
   /** Whether to use gzip/brotli compression */
   useGzip: boolean;
-  /** Whether to write debug tap files */
-  debugTap: boolean;
-  /** Debug tap output directory */
-  debugTapDir: string;
 }

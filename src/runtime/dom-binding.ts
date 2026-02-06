@@ -384,7 +384,7 @@ export const __bindRepeat = <T>(
 
   const container = anchor.parentNode as ParentNode & Element;
   if (!container) return () => {};
-  
+
   // Save parent info for detach optimization
   const containerParent = container.parentNode;
   const containerNextSibling = container.nextSibling;
@@ -1217,6 +1217,7 @@ export const __bindNestedRepeat = <P, T>(
   templateFn: (itemSignal: Signal<T>, index: number) => string,
   initItemBindings: (elements: Element[], itemSignal: Signal<T>, index: number) => (() => void)[],
   emptyTemplate?: string,
+  keyFn?: KeyFn<T>,
 ): (() => void) => {
   const anchor = __findEl(elements, anchorId);
   if (!anchor) return () => {};

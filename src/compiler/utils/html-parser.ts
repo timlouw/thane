@@ -67,17 +67,33 @@ export interface BindingInfo {
   handlerExpression?: string;
 }
 
+export interface ParseDiagnostic {
+  message: string;
+  position: number;
+  severity: 'error' | 'warning';
+}
+
 export interface ParsedTemplate {
   roots: HtmlElement[];
   bindings: BindingInfo[];
   html: string;
+  diagnostics: ParseDiagnostic[];
 }
 
 const VOID_ELEMENTS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 
+// Pre-compiled regexes for binding detection (reset lastIndex before each use)
+const WHEN_ELSE_REGEX = /\$\{whenElse\(/g;
+const REPEAT_REGEX = /\$\{repeat\(/g;
+const SIGNAL_EXPR_REGEX = /\$\{this\.(\w+)\(\)\}/g;
+const SIGNAL_CALL_REGEX = /this\.(\w+)\(\)/g;
+const STYLE_EXPR_REGEX = /([\w-]+)\s*:\s*(\$\{this\.(\w+)\(\)\})/g;
+const ATTR_EXPR_REGEX = /\$\{this\.(\w+)\(\)\}/g;
+
 export function parseHtmlTemplate(html: string): ParsedTemplate {
   const roots: HtmlElement[] = [];
   const bindings: BindingInfo[] = [];
+  const diagnostics: ParseDiagnostic[] = [];
 
   let state: ParserState = 'TEXT';
   let pos = 0;
@@ -150,12 +166,29 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
     for (let i = elementStack.length - 1; i >= 0; i--) {
       const stackElement = elementStack[i];
       if (stackElement && stackElement.tagName.toLowerCase() === closingTagName.toLowerCase()) {
+        // Report any implicitly closed (skipped) elements between the match and the stack top
+        for (let j = elementStack.length - 1; j > i; j--) {
+          const skipped = elementStack[j];
+          if (skipped) {
+            diagnostics.push({
+              message: `Unclosed tag <${skipped.tagName}> (implicitly closed by </${closingTagName}>)`,
+              position: skipped.tagStart,
+              severity: 'warning',
+            });
+          }
+        }
         stackElement.closeTagStart = closeStart;
         stackElement.closeTagEnd = closeEnd;
         elementStack.length = i;
         return;
       }
     }
+    // No matching open tag found
+    diagnostics.push({
+      message: `Orphaned closing tag </${closingTagName}> with no matching open tag`,
+      position: closeStart,
+      severity: 'error',
+    });
   };
 
   while (pos < html.length) {
@@ -523,7 +556,19 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
 
   flushText();
 
-  return { roots, bindings, html };
+  // Report any tags still open at end of input
+  for (let i = elementStack.length - 1; i >= 0; i--) {
+    const unclosed = elementStack[i];
+    if (unclosed) {
+      diagnostics.push({
+        message: `Unclosed tag <${unclosed.tagName}> (reached end of template)`,
+        position: unclosed.tagStart,
+        severity: 'error',
+      });
+    }
+  }
+
+  return { roots, bindings, html, diagnostics };
 }
 
 function createEmptyElement(tagName: string, tagStart: number, tagNameEnd: number): HtmlElement {
@@ -551,10 +596,10 @@ function findBindingsInText(text: string, textStart: number, parent: HtmlElement
 
   const complexExprPositions: Array<{ start: number; end: number }> = [];
 
-  const whenElseRegex = /\$\{whenElse\(/g;
+  WHEN_ELSE_REGEX.lastIndex = 0;
   let whenElseMatch: RegExpExecArray | null;
 
-  while ((whenElseMatch = whenElseRegex.exec(text)) !== null) {
+  while ((whenElseMatch = WHEN_ELSE_REGEX.exec(text)) !== null) {
     const startPos = whenElseMatch.index;
     const parsed = parseWhenElseExpression(text, startPos);
     if (parsed) {
@@ -575,10 +620,10 @@ function findBindingsInText(text: string, textStart: number, parent: HtmlElement
     }
   }
 
-  const repeatRegex = /\$\{repeat\(/g;
+  REPEAT_REGEX.lastIndex = 0;
   let repeatMatch: RegExpExecArray | null;
 
-  while ((repeatMatch = repeatRegex.exec(text)) !== null) {
+  while ((repeatMatch = REPEAT_REGEX.exec(text)) !== null) {
     const startPos = repeatMatch.index;
     const parsed = parseRepeatExpression(text, startPos);
     if (parsed) {
@@ -602,10 +647,10 @@ function findBindingsInText(text: string, textStart: number, parent: HtmlElement
     }
   }
 
-  const exprRegex = /\$\{this\.(\w+)\(\)\}/g;
+  SIGNAL_EXPR_REGEX.lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = exprRegex.exec(text)) !== null) {
+  while ((match = SIGNAL_EXPR_REGEX.exec(text)) !== null) {
     const pos = match.index;
     const insideComplex = complexExprPositions.some((cp) => pos >= cp.start && pos < cp.end);
     if (insideComplex) continue;
@@ -716,10 +761,10 @@ function parseWhenElseExpression(
   const thenTemplate = extractHtmlTemplateContent(arg1);
   const elseTemplate = extractHtmlTemplateContent(arg2);
 
-  const signalRegex = /this\.(\w+)\(\)/g;
+  SIGNAL_CALL_REGEX.lastIndex = 0;
   const signals: string[] = [];
   let signalMatch: RegExpExecArray | null;
-  while ((signalMatch = signalRegex.exec(condition)) !== null) {
+  while ((signalMatch = SIGNAL_CALL_REGEX.exec(condition)) !== null) {
     const signalName = signalMatch[1];
     if (signalName && !signals.includes(signalName)) {
       signals.push(signalName);
@@ -866,10 +911,10 @@ function parseRepeatExpression(
     trackByFn = trimmed;
   }
 
-  const signalRegex = /this\.(\w+)\(\)/g;
+  SIGNAL_CALL_REGEX.lastIndex = 0;
   const signals: string[] = [];
   let signalMatch: RegExpExecArray | null;
-  while ((signalMatch = signalRegex.exec(itemsExpression)) !== null) {
+  while ((signalMatch = SIGNAL_CALL_REGEX.exec(itemsExpression)) !== null) {
     const signalName = signalMatch[1];
     if (signalName && !signals.includes(signalName)) {
       signals.push(signalName);
@@ -908,10 +953,10 @@ function findBindingsInAttributes(element: HtmlElement, bindings: BindingInfo[])
     if (whenMatch) {
       const innerExpr = whenMatch[1];
       if (!innerExpr) return;
-      const signalRegex = /this\.(\w+)\(\)/g;
+      SIGNAL_CALL_REGEX.lastIndex = 0;
       const signals: string[] = [];
       let signalMatch: RegExpExecArray | null;
-      while ((signalMatch = signalRegex.exec(innerExpr)) !== null) {
+      while ((signalMatch = SIGNAL_CALL_REGEX.exec(innerExpr)) !== null) {
         const signalName = signalMatch[1];
         if (signalName && !signals.includes(signalName)) {
           signals.push(signalName);
@@ -959,10 +1004,10 @@ function findBindingsInAttributes(element: HtmlElement, bindings: BindingInfo[])
     }
 
     if (name === 'style') {
-      const styleExprRegex = /([\w-]+)\s*:\s*(\$\{this\.(\w+)\(\)\})/g;
+      STYLE_EXPR_REGEX.lastIndex = 0;
       let styleMatch: RegExpExecArray | null;
 
-      while ((styleMatch = styleExprRegex.exec(attr.value)) !== null) {
+      while ((styleMatch = STYLE_EXPR_REGEX.exec(attr.value)) !== null) {
         const fullExpr = styleMatch[2];
         const signalName = styleMatch[3];
         const propertyName = styleMatch[1];
@@ -982,10 +1027,10 @@ function findBindingsInAttributes(element: HtmlElement, bindings: BindingInfo[])
       continue;
     }
 
-    const attrExprRegex = /\$\{this\.(\w+)\(\)\}/g;
+    ATTR_EXPR_REGEX.lastIndex = 0;
     let attrMatch: RegExpExecArray | null;
 
-    while ((attrMatch = attrExprRegex.exec(attr.value)) !== null) {
+    while ((attrMatch = ATTR_EXPR_REGEX.exec(attr.value)) !== null) {
       const signalName = attrMatch[1];
       if (!signalName) continue;
       bindings.push({
@@ -1125,10 +1170,10 @@ export function createSignalReplacementEdits(
   excludeRanges: Array<{ start: number; end: number }> = [],
 ): HtmlEdit[] {
   const edits: HtmlEdit[] = [];
-  const exprRegex = /\$\{this\.(\w+)\(\)\}/g;
+  SIGNAL_EXPR_REGEX.lastIndex = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = exprRegex.exec(html)) !== null) {
+  while ((match = SIGNAL_EXPR_REGEX.exec(html)) !== null) {
     const exprStart = match.index;
     const exprEnd = exprStart + match[0].length;
 

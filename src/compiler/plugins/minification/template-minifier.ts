@@ -11,7 +11,7 @@ export const minifyHTML = (html: string): string => {
       .replace(/ (<\/(?:div|p|section|article|header|footer|main|nav|aside|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|form|fieldset|h[1-6])>)/gi, '$1')
       .replace(/^\s+</g, '<')
       .replace(/>\s+$/g, '>')
-      .replace(/<!--(?!\[)[\s\S]*?-->/g, '')
+      .replace(/<!--(?!b\d)(?!\[)[\s\S]*?-->/g, '')
       .replace(/\s{2,}/g, ' ')
       .trim()
   );

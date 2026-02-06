@@ -67,7 +67,7 @@ export abstract class NativeComponent {
     // Add getElementById method to element for binding lookups
     el.getElementById = (id: string): HTMLElement | null => {
       if (el.id === id) return el;
-      return el.querySelector(`#${id}`);
+      return el.querySelector(`#${CSS.escape(id)}`);
     };
     this.root = el;
   }
@@ -91,6 +91,9 @@ const registeredStyles = new Set<string>();
 // Global style element reference
 let globalStyleEl: HTMLStyleElement | null = null;
 
+// Pending style registrations for batching
+let pendingStyles: string[] | null = null;
+
 /**
  * Ensure global style element exists in document head
  */
@@ -104,16 +107,37 @@ const ensureGlobalStyleElement = (): HTMLStyleElement => {
 };
 
 /**
+ * Flush pending styles into the DOM in a single write
+ */
+const flushPendingStyles = (): void => {
+  if (pendingStyles && pendingStyles.length > 0) {
+    const styleEl = ensureGlobalStyleElement();
+    styleEl.textContent += pendingStyles.join('\n') + '\n';
+    pendingStyles = null;
+  }
+};
+
+/**
+ * Queue a CSS string for batched insertion
+ */
+const queueStyle = (css: string): void => {
+  if (!pendingStyles) {
+    pendingStyles = [];
+    queueMicrotask(flushPendingStyles);
+  }
+  pendingStyles.push(css);
+};
+
+/**
  * Register global styles to be added to the document
  * 
  * @param styles - CSS strings to register
  */
 export function registerGlobalStyles(...styles: string[]): void {
-  const styleEl = ensureGlobalStyleElement();
   for (const css of styles) {
     if (!registeredStyles.has(css)) {
       registeredStyles.add(css);
-      styleEl.textContent += css + '\n';
+      queueStyle(css);
     }
   }
 }
@@ -157,12 +181,11 @@ export function registerComponent<T extends ComponentProps>(
   // Register component styles if not already registered
   if (component.styles && !registeredStyles.has(selector)) {
     registeredStyles.add(selector);
-    const styleEl = ensureGlobalStyleElement();
     // Scope :host selectors to component class
     const scopedStyles = component.styles
       .replace(/:host\b/g, `.${selector}`)
       .replace(/:host\(/g, `.${selector}(`);
-    styleEl.textContent += `/* ${selector} */\n${scopedStyles}\n`;
+    queueStyle(`/* ${selector} */\n${scopedStyles}`);
   }
   
   // Create factory function for component instantiation
@@ -194,16 +217,8 @@ export function registerComponent<T extends ComponentProps>(
   if (config.type === 'page') {
     return `<${selector}></${selector}>` as PageHTMLSelector;
   } else {
-    // Return a function that generates component HTML with props
-    return (props: T) => {
-      const propsString = Object.entries(props)
-        .map(([key, value]) => {
-          const val = typeof value === 'string' ? value : JSON.stringify(value) || '';
-          return `${key}="${val.replace(/"/g, '&quot;')}"`;
-        })
-        .join(' ');
-      return `<div data-thane-component="${selector}" ${propsString}></div>`;
-    };
+    // Reuse the shared HTML selector builder
+    return createComponentHTMLSelector<T>(selector);
   }
 }
 
@@ -262,11 +277,5 @@ export function generateComponentHTML(
   selector: ValidComponentSelector,
   props: ComponentProps = {}
 ): string {
-  const propsString = Object.entries(props)
-    .map(([key, value]) => {
-      const val = typeof value === 'string' ? value : JSON.stringify(value) || '';
-      return `${key}="${val.replace(/"/g, '&quot;')}"`;
-    })
-    .join(' ');
-  return `<${selector} ${propsString}></${selector}>`;
+  return createComponentHTMLSelector<ComponentProps>(selector)(props);
 }

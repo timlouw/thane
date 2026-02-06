@@ -1,6 +1,7 @@
 import fs from 'fs';
 import type { Plugin } from 'esbuild';
 import { PLUGIN_NAME } from '../../utils/index.js';
+import { minifyCSS } from '../minification/template-minifier.js';
 
 const NAME = PLUGIN_NAME.GLOBAL_CSS_BUNDLER;
 
@@ -34,14 +35,3 @@ export const GlobalCSSBundlerPlugin = (options: GlobalCSSBundlerOptions = {}): P
     });
   },
 });
-
-function minifyCSS(css: string): string {
-  return (
-    css
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\s+/g, ' ')
-      .replace(/\s*([{}:;,>+~])\s*/g, '$1')
-      .replace(/;}/g, '}')
-      .trim()
-  );
-}

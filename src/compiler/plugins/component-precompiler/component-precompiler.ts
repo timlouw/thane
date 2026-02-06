@@ -19,6 +19,13 @@ import {
 } from '../../utils/index.js';
 import { transformComponentSource } from '../reactive-binding-compiler/reactive-binding-compiler.js';
 
+/**
+ * Sentinel value distinguishing "evaluation failed" from "evaluated to undefined".
+ * Using a unique symbol prevents any ambiguity.
+ */
+const EVAL_FAILED = Symbol('EVAL_FAILED');
+type EvalResult<T = any> = T | typeof EVAL_FAILED;
+
 interface ComponentImportInfo {
   importPath: string;
   componentNames: Set<string>;
@@ -128,7 +135,7 @@ const createCTFEContext = (classProperties: Map<string, any>) => {
   return vm.createContext(sandbox);
 };
 
-const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classProperties: Map<string, any>): any => {
+const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classProperties: Map<string, any>): EvalResult => {
   if (ts.isStringLiteral(node)) return node.text;
   if (ts.isNumericLiteral(node)) return Number(node.text);
   if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
@@ -141,7 +148,7 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
     if (classProperties.has(propName)) {
       return classProperties.get(propName);
     }
-    return undefined;
+    return EVAL_FAILED;
   }
 
   if (ts.isObjectLiteralExpression(node)) {
@@ -159,8 +166,8 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
           continue;
         }
         const value = evaluateExpressionCTFE(prop.initializer, sourceFile, classProperties);
-        if (value === undefined && prop.initializer.kind !== ts.SyntaxKind.UndefinedKeyword) {
-          return undefined;
+        if (value === EVAL_FAILED) {
+          return EVAL_FAILED;
         }
         obj[key] = value;
       } else if (ts.isShorthandPropertyAssignment(prop)) {
@@ -168,7 +175,7 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
         if (classProperties.has(key)) {
           obj[key] = classProperties.get(key);
         } else {
-          return undefined;
+          return EVAL_FAILED;
         }
       }
     }
@@ -179,11 +186,11 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
     const arr = [];
     for (const el of node.elements) {
       if (ts.isSpreadElement(el)) {
-        return undefined;
+        return EVAL_FAILED;
       }
       const value = evaluateExpressionCTFE(el, sourceFile, classProperties);
-      if (value === undefined && el.kind !== ts.SyntaxKind.UndefinedKeyword) {
-        return undefined;
+      if (value === EVAL_FAILED) {
+        return EVAL_FAILED;
       }
       arr.push(value);
     }
@@ -196,11 +203,11 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
     code = code.replace(/this\./g, '');
 
     const result = vm.runInContext(`(${code})`, context, {
-      timeout: 1000,
+      timeout: 50,
     });
     return result;
   } catch {
-    return undefined;
+    return EVAL_FAILED;
   }
 };
 
@@ -229,7 +236,7 @@ const extractClassPropertiesCTFE = (classNode: ts.ClassExpression | ts.ClassDecl
 
     for (const [propName, initializer] of unresolvedProperties) {
       const value = evaluateExpressionCTFE(initializer, sourceFile, resolvedProperties);
-      if (value !== undefined) {
+      if (value !== EVAL_FAILED) {
         resolvedProperties.set(propName, value);
         unresolvedProperties.delete(propName);
         resolved = true;
@@ -280,27 +287,39 @@ const findComponentCallsCTFE = (
 
                 const props = evaluateExpressionCTFE(propsArg, sourceFile, classProperties);
 
-                if (props !== undefined && typeof props === 'object' && props !== null) {
+                if (props !== EVAL_FAILED && typeof props === 'object' && props !== null) {
+                  // Use the AST span positions directly — the span covers
+                  // from the head's end (after `${`) to the literal text start (before `}`)
+                  const spanStart = span.getStart(sourceFile);
+                  const spanEnd = span.getEnd();
+
+                  // Walk back from span start to find the opening `${`
+                  const exprFullStart = spanStart - 2 >= 0 ? spanStart - 2 : spanStart;
+                  // The span end already includes the closing `}` in the template literal
+                  // Use the expression's own positions which are more reliable
                   const exprStart = expr.getStart(sourceFile);
                   const exprEnd = expr.getEnd();
 
-                  let searchStart = exprStart - 1;
-                  while (searchStart >= 0 && source.substring(searchStart, searchStart + 2) !== '${') {
-                    searchStart--;
+                  // Find the enclosing ${...} by searching from expression position
+                  let dollarBraceStart = exprStart - 1;
+                  while (dollarBraceStart >= 0 && source.substring(dollarBraceStart, dollarBraceStart + 2) !== '${') {
+                    dollarBraceStart--;
                   }
 
-                  let searchEnd = exprEnd;
-                  while (searchEnd < source.length && source[searchEnd] !== '}') {
-                    searchEnd++;
+                  // The closing brace position is at the span's literal text start - 1
+                  // but we can just find the first } after expression end
+                  let closingBrace = exprEnd;
+                  while (closingBrace < source.length && source[closingBrace] !== '}') {
+                    closingBrace++;
                   }
-                  searchEnd++;
+                  closingBrace++;
 
-                  if (searchStart >= 0 && searchEnd <= source.length) {
+                  if (dollarBraceStart >= 0 && closingBrace <= source.length) {
                     calls.push({
                       componentName,
                       props,
-                      startIndex: searchStart,
-                      endIndex: searchEnd,
+                      startIndex: dollarBraceStart,
+                      endIndex: closingBrace,
                     });
                   }
                 }

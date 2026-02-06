@@ -60,9 +60,16 @@ export const applySelectorsToSource = (source: string, selectorMap: SelectorMap)
 
   for (const [original, minified] of selectorMap.entries()) {
     const escaped = original.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    // HTML open tags: <selector ...> or <selector/> or <selector>
     result = result.replace(new RegExp(`<${escaped}(\\s|>|/)`, 'g'), `<${minified}$1`);
+    // HTML close tags: </selector>
     result = result.replace(new RegExp(`</${escaped}>`, 'g'), `</${minified}>`);
+    // Quoted string values (e.g. selector: 'my-comp', data-thane="my-comp")
     result = result.replace(new RegExp(`(['"])${escaped}\\1`, 'g'), `$1${minified}$1`);
+    // CSS class selectors: .selector { or .selector( or .selector, etc
+    result = result.replace(new RegExp(`\\.${escaped}(?=[\\s{(,:>+~[\\]])`, 'g'), `.${minified}`);
+    // data-thane attribute: data-thane="selector" (inside attribute values with surrounding text)
+    result = result.replace(new RegExp(`(data-thane(?:-component)?=["'])${escaped}(["'])`, 'g'), `$1${minified}$2`);
   }
 
   return result;

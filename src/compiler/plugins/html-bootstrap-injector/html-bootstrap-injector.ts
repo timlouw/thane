@@ -289,7 +289,3 @@ export const HTMLBootstrapInjectorPlugin = (options: HTMLBootstrapInjectorOption
     });
   },
 });
-
-export const injectBootstrapHTML = (htmlContent: string): string => {
-  return htmlContent;
-};

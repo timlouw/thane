@@ -17,7 +17,6 @@ function parseArgs(args: string[]): CLIOptions {
     gzip: false,
     app: 'client',
     serve: false,
-    debugTap: false,
   };
 
   const commandArg = args.find((arg) => !arg.startsWith('-'));
@@ -50,9 +49,6 @@ function parseArgs(args: string[]): CLIOptions {
         break;
       case '--html':
         options.htmlTemplate = args[++i];
-        break;
-      case '--debug-tap':
-        options.debugTap = true;
         break;
       case '--help':
       case '-h':
@@ -97,7 +93,6 @@ Options:
   --out <dir>         Output directory (default: ./dist)
   --assets <dir>      Assets directory (default: ./src/assets)
   --html <path>       HTML template file (default: ./index.html)
-  --debug-tap         Write intermediate files after each plugin step
   --help, -h          Show this help message
   --version, -v       Show version number
 
@@ -139,8 +134,6 @@ function createBuildConfig(options: CLIOptions): BuildConfig {
     isProd: options.prod,
     serve: options.serve,
     useGzip: options.gzip,
-    debugTap: options.debugTap,
-    debugTapDir: './debug-output',
   };
 }
 

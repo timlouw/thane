@@ -46,58 +46,6 @@ export interface Diagnostic {
 }
 
 /**
- * Result of a compilation step
- */
-export interface CompilationResult {
-  success: boolean;
-  diagnostics: Diagnostic[];
-  code?: string;
-  sourceMap?: string;
-}
-
-/**
- * Pipeline configuration
- */
-export interface PipelineConfig {
-  entry: string;
-  outDir: string;
-  environment: Environment;
-  minify: boolean;
-  sourceMap: boolean;
-  gzip: boolean;
-  verbose: boolean;
-  silent: boolean;
-  assetsDir?: string;
-  htmlTemplate?: string;
-}
-
-/**
- * Plugin interface
- */
-export interface Plugin {
-  name: string;
-  enabled?: boolean;
-  transform: (code: string, filePath: string, config: PipelineConfig) => CompilationResult;
-}
-
-/**
- * Plugin result
- */
-export interface PluginResult {
-  code: string;
-  diagnostics: Diagnostic[];
-}
-
-/**
- * File transformation context
- */
-export interface TransformContext {
-  filePath: string;
-  code: string;
-  config: PipelineConfig;
-}
-
-/**
  * Component definition
  */
 export interface ComponentDefinition {
