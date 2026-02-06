@@ -176,7 +176,7 @@ export function registerComponent<T extends ComponentProps>(
     registeredStyles.add(selector);
     // Scope :host selectors to component class (single pass for both :host( and :host)
     const scopedStyles = component.styles
-      .replace(/:host\b(\(?)/g, (_, paren) => `.${selector}${paren}`);
+      .replace(/:host(\()?/g, (_, paren) => `.${selector}${paren || ''}`);
     // Use batched style insertion
     if (!pendingStyles) pendingStyles = [];
     pendingStyles.push(`/* ${selector} */\n${scopedStyles}`);

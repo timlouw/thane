@@ -236,8 +236,9 @@ const bindConditional = (
   }
 
   let currentlyShowing = initiallyShowing;
-  // Pre-create and reuse the placeholder element to avoid repeated allocations
-  let placeholder: HTMLTemplateElement | null = initiallyShowing ? null : initialElement as unknown as HTMLTemplateElement;
+  // When not initially showing, initialElement is a <template> placeholder
+  // (verified above via tagName check). Cache it to avoid getElementById on toggle.
+  let placeholder: HTMLTemplateElement | null = initiallyShowing ? null : initialElement as HTMLTemplateElement;
 
   // Initialize bindings if already showing
   if (initiallyShowing) {
