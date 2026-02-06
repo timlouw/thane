@@ -126,6 +126,31 @@ interface BindingInfo {
   conditionalId?: string; // Which conditional block this is inside
 }
 
+// Cache for frequently-created regex patterns to avoid re-allocating
+// identical RegExp objects inside hot loops.
+const signalRegexCache = new Map<string, RegExp>();
+const getSignalRegex = (name: string): RegExp => {
+  let re = signalRegexCache.get(name);
+  if (!re) {
+    re = new RegExp(`this\\.${name}\\(\\)`, 'g');
+    signalRegexCache.set(name, re);
+  }
+  re.lastIndex = 0;
+  return re;
+};
+
+const wordBoundaryRegexCache = new Map<string, RegExp>();
+const getWordBoundaryRegex = (word: string, flags: string = 'g'): RegExp => {
+  const key = word + '|' + flags;
+  let re = wordBoundaryRegexCache.get(key);
+  if (!re) {
+    re = new RegExp(`\\b${word}\\b`, flags);
+    wordBoundaryRegexCache.set(key, re);
+  }
+  re.lastIndex = 0;
+  return re;
+};
+
 const isThaneRuntimeImport = (specifier: string): boolean => {
   return (
     specifier.includes('shadow-dom') ||
@@ -272,7 +297,7 @@ const processHtmlTemplateWithConditionals = (
     let evalExpr = jsExpression;
     for (const sigName of signalNames) {
       const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
+      const sigRegex = getSignalRegex(sigName);
       evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
     }
     let initialValue = false;
@@ -319,7 +344,7 @@ const processHtmlTemplateWithConditionals = (
       let nestedEvalExpr = nestedJsExpression;
       for (const sigName of nestedSignalNames) {
         const initialVal = signalInitializers.get(sigName);
-        const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
+        const sigRegex = getSignalRegex(sigName);
         nestedEvalExpr = nestedEvalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
       }
       let nestedInitialValue = false;
@@ -404,7 +429,7 @@ const processHtmlTemplateWithConditionals = (
     let evalExpr = jsExpression;
     for (const sigName of signalNames) {
       const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
+      const sigRegex = getSignalRegex(sigName);
       evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
     }
     let initialValue = false;
@@ -1006,7 +1031,7 @@ const processItemTemplateRecursively = (
     let evalExpr = jsExpression;
     for (const sigName of signalNames) {
       const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
+      const sigRegex = getSignalRegex(sigName);
       evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
     }
     let initialValue = false;
@@ -1093,7 +1118,7 @@ const processItemTemplateRecursively = (
     let evalExpr = jsExpression;
     for (const sigName of signalNames) {
       const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
+      const sigRegex = getSignalRegex(sigName);
       evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
     }
     let initialValue = false;
@@ -1169,7 +1194,7 @@ const processItemTemplateRecursively = (
     const insideRange = allRanges.some((r) => binding.expressionStart >= r.start && binding.expressionStart < r.end);
     if (insideRange) continue;
     if (binding.type === 'event' && binding.eventName && binding.handlerExpression) {
-      const refsItem = new RegExp(`\\b${itemVar}\\b`).test(binding.handlerExpression);
+      const refsItem = getWordBoundaryRegex(itemVar, '').test(binding.handlerExpression);
       const refsIndex = indexVar ? new RegExp(`\\b${indexVar}\\b`).test(binding.handlerExpression) : false;
 
       if (refsItem || refsIndex) {
@@ -1326,7 +1351,7 @@ const processItemTemplateRecursively = (
   
   for (const textMatch of itemTextMatches) {
     const { start, end, expr, id, isSoleContent, parentTagStart, parentTagNameEnd } = textMatch;
-    const transformedExpr = expr.replace(new RegExp(`\\b${itemVar}\\b`, 'g'), `${itemVar}$()`);
+    const transformedExpr = expr.replace(getWordBoundaryRegex(itemVar), `${itemVar}$()`);
     
     if (isSoleContent && parentTagStart >= 0) {
       // For sole content: just output the expression (no wrapper)
@@ -1399,9 +1424,9 @@ const processItemTemplateRecursively = (
       tagStart--;
     }
     const elementId = elementIdByTagStart.get(tagStart) || id;
-    let transformedExpr = expr.replace(new RegExp(`\\b${itemVar}\\b`, 'g'), `${itemVar}$()`);
+    let transformedExpr = expr.replace(getWordBoundaryRegex(itemVar), `${itemVar}$()`);
     if (indexVar) {
-      transformedExpr = transformedExpr.replace(new RegExp(`\\b${indexVar}\\b`, 'g'), indexVar);
+      transformedExpr = transformedExpr.replace(getWordBoundaryRegex(indexVar), indexVar);
     }
     const needsDataBindId = !injectedElementIds.has(tagStart);
     if (needsDataBindId) {
@@ -1540,7 +1565,7 @@ const processSubTemplateWithNesting = (
     let evalExpr = jsExpression;
     for (const sigName of signalNames) {
       const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
+      const sigRegex = getSignalRegex(sigName);
       evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
     }
     let initialValue = false;
@@ -1606,7 +1631,7 @@ const processSubTemplateWithNesting = (
     let evalExpr = jsExpression;
     for (const sigName of signalNames) {
       const initialVal = signalInitializers.get(sigName);
-      const sigRegex = new RegExp(`this\\.${sigName}\\(\\)`, 'g');
+      const sigRegex = getSignalRegex(sigName);
       evalExpr = evalExpr.replace(sigRegex, JSON.stringify(initialVal ?? false));
     }
     let initialValue = false;
@@ -2120,7 +2145,7 @@ const generateInitBindingsFunction = (
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
           for (const binding of eb.bindings) {
-            const expr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), 'item');
+            const expr = binding.expression.replace(getWordBoundaryRegex(rep.itemVar), 'item');
             if (binding.type === 'text') {
               fillStatements.push(`els[${i}].textContent = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
@@ -2135,7 +2160,7 @@ const generateInitBindingsFunction = (
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
           for (const binding of eb.bindings) {
-            const expr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), 'v');
+            const expr = binding.expression.replace(getWordBoundaryRegex(rep.itemVar), 'v');
             if (binding.type === 'text') {
               updateStatements.push(`els[${i}].textContent = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
@@ -2246,7 +2271,7 @@ const generateInitBindingsFunction = (
             }
             
             for (const binding of bindings) {
-              const signalExpr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `v`);
+              const signalExpr = binding.expression.replace(getWordBoundaryRegex(rep.itemVar), `v`);
               if (binding.type === 'text') {
                 // For commentMarker mode, we have a text node, so use textContent or nodeValue
                 // For textContent mode, we have the parent element, so use textContent
@@ -2265,7 +2290,7 @@ const generateInitBindingsFunction = (
           }
         }
         for (const { binding, componentSignals } of mixedBindings) {
-          const signalExpr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `${itemSignalVar}()`);
+          const signalExpr = binding.expression.replace(getWordBoundaryRegex(rep.itemVar), `${itemSignalVar}()`);
           let updateStmt: string;
           if (binding.type === 'text') {
             if (binding.textBindingMode === 'commentMarker') {
@@ -2344,7 +2369,7 @@ const generateInitBindingsFunction = (
               if (pureNestedBindings.length > 0) {
                 const updateStatements: string[] = [];
                 for (const binding of pureNestedBindings) {
-                  const signalExpr = binding.expression.replace(new RegExp(`\\b${nestedRep.itemVar}\\b`, 'g'), `v`);
+                  const signalExpr = binding.expression.replace(getWordBoundaryRegex(nestedRep.itemVar), `v`);
                   if (binding.type === 'text') {
                     updateStatements.push(`e = $n('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`);
                   } else if (binding.type === 'attr' && binding.property) {
@@ -2356,7 +2381,7 @@ const generateInitBindingsFunction = (
                 }
               }
               for (const { binding, componentSignals } of mixedNestedBindings) {
-                const signalExpr = binding.expression.replace(new RegExp(`\\b${nestedRep.itemVar}\\b`, 'g'), `${nestedItemSignalVar}()`);
+                const signalExpr = binding.expression.replace(getWordBoundaryRegex(nestedRep.itemVar), `${nestedItemSignalVar}()`);
                 let updateStmt: string;
                 if (binding.type === 'text') {
                   updateStmt = `e = $n('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`;
@@ -2394,7 +2419,7 @@ const generateInitBindingsFunction = (
                 }
               }
               for (const binding of nestedCond.nestedItemBindings) {
-                const signalExpr = binding.expression.replace(new RegExp(`\\b${nestedRep.itemVar}\\b`, 'g'), `${nestedItemSignalVar}()`);
+                const signalExpr = binding.expression.replace(getWordBoundaryRegex(nestedRep.itemVar), `${nestedItemSignalVar}()`);
 
                 if (binding.type === 'text') {
                   condBindingUpdates.push(`${nestedItemSignalVar}.subscribe(() => { const el = $n('${binding.elementId}'); if (el) el.textContent = ${signalExpr}; }, true)`);
@@ -2425,10 +2450,10 @@ const generateInitBindingsFunction = (
             nestedInitBindingsFn = `(nel, ${nestedItemSignalVar}, ${nestedIndexVar}) => []`;
           }
           let nestedArrayExpr: string;
-          const refsParentItem = new RegExp(`\\b${rep.itemVar}\\b`).test(nestedRep.itemsExpression);
+          const refsParentItem = getWordBoundaryRegex(rep.itemVar, '').test(nestedRep.itemsExpression);
 
           if (refsParentItem) {
-            nestedArrayExpr = nestedRep.itemsExpression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `${itemSignalVar}()`);
+            nestedArrayExpr = nestedRep.itemsExpression.replace(getWordBoundaryRegex(rep.itemVar), `${itemSignalVar}()`);
           } else {
             nestedArrayExpr = nestedRep.itemsExpression;
           }
@@ -2495,9 +2520,9 @@ const generateInitBindingsFunction = (
       for (const [eventType, handlers] of eventsByType) {
         const handlerLines = handlers.map((h) => {
           let handlerExpr = h.handlerExpression;
-          handlerExpr = handlerExpr.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `${itemSignalVar}()`);
+          handlerExpr = handlerExpr.replace(getWordBoundaryRegex(rep.itemVar), `${itemSignalVar}()`);
           if (rep.indexVar) {
-            handlerExpr = handlerExpr.replace(new RegExp(`\\b${rep.indexVar}\\b`, 'g'), indexVar);
+            handlerExpr = handlerExpr.replace(getWordBoundaryRegex(rep.indexVar!), indexVar);
           }
           const arrowMatch = handlerExpr.match(/^\s*\(?([^)]*)\)?\s*=>\s*(.+)$/);
           if (arrowMatch && arrowMatch[2]) {

@@ -236,6 +236,8 @@ const bindConditional = (
   }
 
   let currentlyShowing = initiallyShowing;
+  // Pre-create and reuse the placeholder element to avoid repeated allocations
+  let placeholder: HTMLTemplateElement | null = initiallyShowing ? null : initialElement as unknown as HTMLTemplateElement;
 
   // Initialize bindings if already showing
   if (initiallyShowing) {
@@ -246,9 +248,9 @@ const bindConditional = (
   const show = () => {
     if (currentlyShowing) return;
     currentlyShowing = true;
-    const current = root.getElementById(id);
-    if (current && contentEl) {
-      current.replaceWith(contentEl);
+    // Use cached placeholder reference — avoids getElementById call
+    if (placeholder && contentEl) {
+      placeholder.replaceWith(contentEl);
       // Lazy initialize bindings on first show
       if (!bindingsInitialized) {
         bindingsInitialized = true;
@@ -260,13 +262,11 @@ const bindConditional = (
   const hide = () => {
     if (!currentlyShowing) return;
     currentlyShowing = false;
-    const current = root.getElementById(id);
-    if (current) {
-      // Replace with empty template placeholder
-      const p = document.createElement('template');
-      p.id = id;
-      current.replaceWith(p);
+    if (!placeholder) {
+      placeholder = document.createElement('template');
+      placeholder.id = id;
     }
+    contentEl.replaceWith(placeholder);
   };
 
   const update = () => {
@@ -516,18 +516,19 @@ export const __bindRepeat = <T>(
 
   /**
    * Bulk create items (with detach optimization)
+   * Accepts source array and range to avoid creating intermediate slice copies.
    */
-  const bulkCreate = (items: T[], startIndex: number = 0) => {
-    const count = items.length;
-    if (count === 0) return;
+  const bulkCreate = (items: T[], startIndex: number = 0, endIndex?: number) => {
+    const end = endIndex ?? items.length;
+    if (end <= startIndex) return;
     
     // Always detach container for bulk insertions - prevents reflow per item
     if (containerParent) {
       container.remove();
     }
     
-    for (let i = 0; i < count; i++) {
-      const managed = createItem(items[i]!, startIndex + i, anchor);
+    for (let i = startIndex; i < end; i++) {
+      const managed = createItem(items[i]!, i, anchor);
       managedItems.push(managed);
     }
     
@@ -786,8 +787,7 @@ export const __bindRepeat = <T>(
 
     // Add new items
     if (newLength > oldLength) {
-      const itemsToAdd = newItems.slice(oldLength);
-      bulkCreate(itemsToAdd, oldLength);
+      bulkCreate(newItems, oldLength, newLength);
     }
   };
 
@@ -968,14 +968,14 @@ export const __bindRepeatTpl = <T>(
     if (keyMap) keyMap.clear();
   };
 
-  const bulkCreate = (items: T[], startIndex: number = 0) => {
-    const count = items.length;
-    if (count === 0) return;
+  const bulkCreate = (items: T[], startIndex: number = 0, endIndex?: number) => {
+    const end = endIndex ?? items.length;
+    if (end <= startIndex) return;
     
     if (containerParent) container.remove();
     
-    for (let i = 0; i < count; i++) {
-      const managed = createItem(items[i]!, startIndex + i, anchor);
+    for (let i = startIndex; i < end; i++) {
+      const managed = createItem(items[i]!, i, anchor);
       managedItems.push(managed);
     }
     
@@ -1186,8 +1186,7 @@ export const __bindRepeatTpl = <T>(
     }
 
     if (newLength > oldLength) {
-      const itemsToAdd = newItems.slice(oldLength);
-      bulkCreate(itemsToAdd, oldLength);
+      bulkCreate(newItems, oldLength, newLength);
     }
   };
 

@@ -17,15 +17,18 @@ export const signal = <T>(initialValue: T): Signal<T> => {
   let value = initialValue;
   let subscribers: ((val: T) => void)[] | null = null;
 
-  function reactiveFunction(newValue?: T): T {
+  // Use rest parameter to detect "no argument" calls. V8 optimizes rest
+  // parameters well (unlike the `arguments` object which deoptimizes).
+  const sig = (...args: [] | [T]): T => {
     // Get value when called with no arguments
-    if (arguments.length === 0) {
+    if (args.length === 0) {
       return value;
     }
     
+    const newValue = args[0] as T;
     // Set value and notify subscribers when value changes
     if (value !== newValue) {
-      value = newValue!;
+      value = newValue;
       if (subscribers) {
         const subs = subscribers;
         for (let i = 0, len = subs.length; i < len; i++) {
@@ -34,7 +37,7 @@ export const signal = <T>(initialValue: T): Signal<T> => {
       }
     }
     return value;
-  }
+  };
 
   /**
    * Subscribe to value changes
@@ -43,7 +46,7 @@ export const signal = <T>(initialValue: T): Signal<T> => {
    * @param skipInitial - If true, don't call callback with current value immediately
    * @returns Unsubscribe function
    */
-  (reactiveFunction as Signal<T>).subscribe = (
+  (sig as Signal<T>).subscribe = (
     callback: (val: T) => void, 
     skipInitial?: boolean
   ): (() => void) => {
@@ -55,14 +58,19 @@ export const signal = <T>(initialValue: T): Signal<T> => {
       callback(value);
     }
     
-    // Return unsubscribe function
+    // Return unsubscribe function — uses O(1) swap-and-pop instead of
+    // O(n) splice, since subscriber notification order is not guaranteed.
     return () => {
       if (subscribers) {
         const idx = subscribers.indexOf(callback);
-        if (idx !== -1) subscribers.splice(idx, 1);
+        if (idx !== -1) {
+          const last = subscribers.length - 1;
+          if (idx !== last) subscribers[idx] = subscribers[last]!;
+          subscribers.length = last;
+        }
       }
     };
   };
 
-  return reactiveFunction as Signal<T>;
+  return sig as Signal<T>;
 };

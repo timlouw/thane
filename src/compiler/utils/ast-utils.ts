@@ -401,15 +401,27 @@ export const extractPageSelector = (sourceFile: ts.SourceFile): string | null =>
 /**
  * Convert kebab-case to camelCase
  */
+const camelCaseCache = new Map<string, string>();
 export const toCamelCase = (str: string): string => {
-  return str.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+  let result = camelCaseCache.get(str);
+  if (result === undefined) {
+    result = str.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    camelCaseCache.set(str, result);
+  }
+  return result;
 };
 
 /**
  * Convert camelCase to kebab-case
  */
+const kebabCaseCache = new Map<string, string>();
 export const toKebabCase = (str: string): string => {
-  return str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+  let result = kebabCaseCache.get(str);
+  if (result === undefined) {
+    result = str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+    kebabCaseCache.set(str, result);
+  }
+  return result;
 };
 
 // ============================================================================

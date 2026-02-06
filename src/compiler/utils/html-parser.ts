@@ -1,15 +1,18 @@
-type ParserState =
-  | 'TEXT'
-  | 'TAG_OPEN'
-  | 'TAG_NAME'
-  | 'TAG_SPACE'
-  | 'ATTR_NAME'
-  | 'ATTR_EQ'
-  | 'ATTR_VALUE_Q'
-  | 'ATTR_VALUE_UQ'
-  | 'TAG_CLOSE'
-  | 'SELF_CLOSE'
-  | 'COMMENT';
+// Numeric constants for parser state — integer comparison is faster than
+// string comparison in the parser's tight loop (O(n) over every character).
+const S_TEXT = 0;
+const S_TAG_OPEN = 1;
+const S_TAG_NAME = 2;
+const S_TAG_SPACE = 3;
+const S_ATTR_NAME = 4;
+const S_ATTR_EQ = 5;
+const S_ATTR_VALUE_Q = 6;
+const S_ATTR_VALUE_UQ = 7;
+const S_TAG_CLOSE = 8;
+const S_SELF_CLOSE = 9;
+const S_COMMENT = 10;
+
+type ParserState = number;
 
 export interface AttributeInfo {
   name: string;
@@ -79,7 +82,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
   const roots: HtmlElement[] = [];
   const bindings: BindingInfo[] = [];
 
-  let state: ParserState = 'TEXT';
+  let state: ParserState = S_TEXT;
   let pos = 0;
 
   let currentElement: HtmlElement | null = null;
@@ -163,7 +166,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
     const nextChar = html[pos + 1];
 
     switch (state) {
-      case 'TEXT':
+      case S_TEXT:
         if (char === '$' && nextChar === '{' && !inTemplateBacktick) {
           if (textContent === '') {
             textStart = pos;
@@ -233,14 +236,14 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           flushText();
           if (nextChar === '!') {
             if (html.substring(pos, pos + 4) === '<!--') {
-              state = 'COMMENT';
+              state = S_COMMENT;
               commentBuffer = '';
               pos += 4;
               continue;
             }
           }
           tagStart = pos;
-          state = 'TAG_OPEN';
+          state = S_TAG_OPEN;
         } else {
           if (textContent === '') {
             textStart = pos;
@@ -249,24 +252,24 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
         }
         break;
 
-      case 'TAG_OPEN':
+      case S_TAG_OPEN:
         if (char === '/') {
-          state = 'TAG_CLOSE';
+          state = S_TAG_CLOSE;
           tagName = '';
         } else if (/[a-zA-Z]/.test(char)) {
-          state = 'TAG_NAME';
+          state = S_TAG_NAME;
           tagName = char;
         } else {
-          state = 'TEXT';
+          state = S_TEXT;
           textContent += '<' + char;
         }
         break;
 
-      case 'TAG_NAME':
+      case S_TAG_NAME:
         if (/[\w\-:]/.test(char)) {
           tagName += char;
         } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
-          state = 'TAG_SPACE';
+          state = S_TAG_SPACE;
           currentElement = createEmptyElement(tagName, tagStart, pos);
         } else if (char === '>') {
           currentElement = createEmptyElement(tagName, tagStart, pos);
@@ -278,7 +281,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           pushElement(currentElement);
           findBindingsInAttributes(currentElement, bindings);
           currentElement = null;
-          state = 'TEXT';
+          state = S_TEXT;
           textContent = '';
           textStart = pos + 1;
         } else if (char === '/' && nextChar === '>') {
@@ -290,14 +293,14 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           pushElement(currentElement);
           findBindingsInAttributes(currentElement, bindings);
           currentElement = null;
-          state = 'TEXT';
+          state = S_TEXT;
           pos++;
           textContent = '';
           textStart = pos + 1;
         }
         break;
 
-      case 'TAG_SPACE':
+      case S_TAG_SPACE:
         if (char === '>') {
           currentElement!.openTagEnd = pos + 1;
           if (currentElement!.isVoid) {
@@ -307,7 +310,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           pushElement(currentElement!);
           findBindingsInAttributes(currentElement!, bindings);
           currentElement = null;
-          state = 'TEXT';
+          state = S_TEXT;
           textContent = '';
           textStart = pos + 1;
         } else if (char === '/' && nextChar === '>') {
@@ -318,7 +321,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           pushElement(currentElement!);
           findBindingsInAttributes(currentElement!, bindings);
           currentElement = null;
-          state = 'TEXT';
+          state = S_TEXT;
           pos++;
           textContent = '';
           textStart = pos + 1;
@@ -344,19 +347,19 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
             else if (html[i] === ')') parenDepth--;
             i++;
           }
-          state = 'TAG_SPACE';
+          state = S_TAG_SPACE;
         } else if (/[a-zA-Z_:@]/.test(char)) {
-          state = 'ATTR_NAME';
+          state = S_ATTR_NAME;
           attrName = char;
           attrStart = pos;
         }
         break;
 
-      case 'ATTR_NAME':
+      case S_ATTR_NAME:
         if (/[\w\-:@.]/.test(char)) {
           attrName += char;
         } else if (char === '=') {
-          state = 'ATTR_EQ';
+          state = S_ATTR_EQ;
         } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
           let lookAhead = pos + 1;
           while (lookAhead < html.length && /\s/.test(html[lookAhead]!)) {
@@ -364,7 +367,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           }
           if (lookAhead < html.length && html[lookAhead] === '=') {
             pos = lookAhead - 1;
-            state = 'ATTR_NAME';
+            state = S_ATTR_NAME;
           } else {
             currentElement!.attributes.set(attrName, {
               name: attrName,
@@ -374,7 +377,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
               valueStart: pos,
               valueEnd: pos,
             });
-            state = 'TAG_SPACE';
+            state = S_TAG_SPACE;
           }
         } else if (char === '>') {
           currentElement!.attributes.set(attrName, {
@@ -393,18 +396,18 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           pushElement(currentElement!);
           findBindingsInAttributes(currentElement!, bindings);
           currentElement = null;
-          state = 'TEXT';
+          state = S_TEXT;
           textContent = '';
           textStart = pos + 1;
         }
         break;
 
-      case 'ATTR_EQ':
+      case S_ATTR_EQ:
         if (char === '"' || char === "'") {
           quoteChar = char;
           attrValue = '';
           attrValueStart = pos + 1;
-          state = 'ATTR_VALUE_Q';
+          state = S_ATTR_VALUE_Q;
         } else if (char === '$' && nextChar === '{') {
           attrValueStart = pos;
           let braceDepth = 0;
@@ -430,7 +433,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
                   valueEnd: i + 1,
                 });
                 pos = i;
-                state = 'TAG_SPACE';
+                state = S_TAG_SPACE;
                 break;
               }
             }
@@ -439,11 +442,11 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
         } else if (char !== ' ' && char !== '\t' && char !== '\n' && char !== '\r') {
           attrValue = char;
           attrValueStart = pos;
-          state = 'ATTR_VALUE_UQ';
+          state = S_ATTR_VALUE_UQ;
         }
         break;
 
-      case 'ATTR_VALUE_Q':
+      case S_ATTR_VALUE_Q:
         if (char === quoteChar) {
           currentElement!.attributes.set(attrName, {
             name: attrName,
@@ -453,13 +456,13 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
             valueStart: attrValueStart,
             valueEnd: pos,
           });
-          state = 'TAG_SPACE';
+          state = S_TAG_SPACE;
         } else {
           attrValue += char;
         }
         break;
 
-      case 'ATTR_VALUE_UQ':
+      case S_ATTR_VALUE_UQ:
         if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
           currentElement!.attributes.set(attrName, {
             name: attrName,
@@ -469,7 +472,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
             valueStart: attrValueStart,
             valueEnd: pos,
           });
-          state = 'TAG_SPACE';
+          state = S_TAG_SPACE;
         } else if (char === '>') {
           currentElement!.attributes.set(attrName, {
             name: attrName,
@@ -487,7 +490,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           pushElement(currentElement!);
           findBindingsInAttributes(currentElement!, bindings);
           currentElement = null;
-          state = 'TEXT';
+          state = S_TEXT;
           textContent = '';
           textStart = pos + 1;
         } else {
@@ -495,23 +498,23 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
         }
         break;
 
-      case 'TAG_CLOSE':
+      case S_TAG_CLOSE:
         if (/[\w-]/.test(char)) {
           tagName += char;
         } else if (char === '>') {
           flushText();
           closeElement(tagName, tagStart, pos + 1);
-          state = 'TEXT';
+          state = S_TEXT;
           textContent = '';
           textStart = pos + 1;
         } else if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
         }
         break;
 
-      case 'COMMENT':
+      case S_COMMENT:
         commentBuffer += char;
         if (commentBuffer.endsWith('-->')) {
-          state = 'TEXT';
+          state = S_TEXT;
           textContent = '';
           textStart = pos + 1;
         }

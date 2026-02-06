@@ -103,18 +103,35 @@ const ensureGlobalStyleElement = (): HTMLStyleElement => {
   return globalStyleEl;
 };
 
+// Pending styles buffer and microtask flag for batched style registration.
+// Batching avoids re-parsing the entire CSSOM on every `textContent +=`.
+let pendingStyles: string[] | null = null;
+let styleFlushScheduled = false;
+
+const flushStyles = (): void => {
+  styleFlushScheduled = false;
+  if (!pendingStyles || pendingStyles.length === 0) return;
+  const styleEl = ensureGlobalStyleElement();
+  styleEl.textContent += pendingStyles.join('\n') + '\n';
+  pendingStyles = null;
+};
+
 /**
  * Register global styles to be added to the document
  * 
  * @param styles - CSS strings to register
  */
 export function registerGlobalStyles(...styles: string[]): void {
-  const styleEl = ensureGlobalStyleElement();
   for (const css of styles) {
     if (!registeredStyles.has(css)) {
       registeredStyles.add(css);
-      styleEl.textContent += css + '\n';
+      if (!pendingStyles) pendingStyles = [];
+      pendingStyles.push(css);
     }
+  }
+  if (pendingStyles && !styleFlushScheduled) {
+    styleFlushScheduled = true;
+    queueMicrotask(flushStyles);
   }
 }
 
@@ -157,12 +174,16 @@ export function registerComponent<T extends ComponentProps>(
   // Register component styles if not already registered
   if (component.styles && !registeredStyles.has(selector)) {
     registeredStyles.add(selector);
-    const styleEl = ensureGlobalStyleElement();
-    // Scope :host selectors to component class
+    // Scope :host selectors to component class (single pass for both :host( and :host)
     const scopedStyles = component.styles
-      .replace(/:host\b/g, `.${selector}`)
-      .replace(/:host\(/g, `.${selector}(`);
-    styleEl.textContent += `/* ${selector} */\n${scopedStyles}\n`;
+      .replace(/:host\b(\(?)/g, (_, paren) => `.${selector}${paren}`);
+    // Use batched style insertion
+    if (!pendingStyles) pendingStyles = [];
+    pendingStyles.push(`/* ${selector} */\n${scopedStyles}`);
+    if (!styleFlushScheduled) {
+      styleFlushScheduled = true;
+      queueMicrotask(flushStyles);
+    }
   }
   
   // Create factory function for component instantiation
