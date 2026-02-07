@@ -6,13 +6,17 @@ import { minifyTemplatesInSource } from './template-minifier.js';
 import { logger } from '../../utils/index.js';
 
 const NAME = 'minification';
-const selectorMap = new SelectorMap();
+
+// Instance-scoped SelectorMap — avoids module-level mutable state for concurrent builds.
+let activeSelectorMap = new SelectorMap();
 
 export const MinificationPlugin: Plugin = {
   name: NAME,
   setup(build) {
+    const selectorMap = new SelectorMap();
     build.onStart(() => {
       selectorMap.clear();
+      activeSelectorMap = selectorMap;
     });
     build.onEnd(async (result) => {
       if (!result.outputFiles || result.outputFiles.length === 0) {
@@ -86,9 +90,9 @@ export const MinificationPlugin: Plugin = {
   },
 };
 
-export const getSelectorMap = (): SelectorMap => selectorMap;
+export const getSelectorMap = (): SelectorMap => activeSelectorMap;
 
 export const minifySelectorsInHTML = (html: string): string => {
-  if (selectorMap.size === 0) return html;
-  return applySelectorsToSource(html, selectorMap);
+  if (activeSelectorMap.size === 0) return html;
+  return applySelectorsToSource(html, activeSelectorMap);
 };

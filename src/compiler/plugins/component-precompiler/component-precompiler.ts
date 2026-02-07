@@ -136,6 +136,40 @@ const createCTFEContext = (classProperties: Map<string, any>) => {
   return vm.createContext(sandbox);
 };
 
+/**
+ * Remove `this.` property accesses from an expression string using AST-aware rewriting.
+ * Only replaces `this.` in actual property accesses, not inside string literals.
+ */
+const stripThisAccessAST = (code: string): string => {
+  try {
+    const tempSource = ts.createSourceFile('__ctfe_temp.ts', code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS);
+    const edits: { start: number; end: number }[] = [];
+
+    const visit = (node: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(node) && node.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        // Record the `this.` portion for removal (from `this` start to dot end)
+        edits.push({
+          start: node.expression.getStart(tempSource),
+          end: node.expression.getEnd() + 1, // +1 for the dot
+        });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(tempSource);
+
+    // Apply edits in reverse order to preserve positions
+    let result = code;
+    for (let i = edits.length - 1; i >= 0; i--) {
+      const edit = edits[i]!;
+      result = result.substring(0, edit.start) + result.substring(edit.end);
+    }
+    return result;
+  } catch {
+    // Fallback: if AST parsing fails, return original
+    return code;
+  }
+};
+
 const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classProperties: Map<string, any>): EvalResult => {
   if (ts.isStringLiteral(node)) return node.text;
   if (ts.isNumericLiteral(node)) return Number(node.text);
@@ -201,7 +235,7 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
   try {
     const context = createCTFEContext(classProperties);
     let code = node.getText(sourceFile);
-    code = code.replace(/this\./g, '');
+    code = stripThisAccessAST(code);
 
     const result = vm.runInContext(`(${code})`, context, {
       timeout: 50,
@@ -289,31 +323,28 @@ const findComponentCallsCTFE = (
                 const props = evaluateExpressionCTFE(propsArg, sourceFile, classProperties);
 
                 if (props !== EVAL_FAILED && typeof props === 'object' && props !== null) {
-                  // Use the AST span positions directly — the span covers
-                  // from the head's end (after `${`) to the literal text start (before `}`)
-                  const spanStart = span.getStart(sourceFile);
-                  const spanEnd = span.getEnd();
-
-                  // Walk back from span start to find the opening `${`
-                  const exprFullStart = spanStart - 2 >= 0 ? spanStart - 2 : spanStart;
-                  // The span end already includes the closing `}` in the template literal
-                  // Use the expression's own positions which are more reliable
-                  const exprStart = expr.getStart(sourceFile);
-                  const exprEnd = expr.getEnd();
-
-                  // Find the enclosing ${...} by searching from expression position
-                  let dollarBraceStart = exprStart - 1;
-                  while (dollarBraceStart >= 0 && source.substring(dollarBraceStart, dollarBraceStart + 2) !== '${') {
-                    dollarBraceStart--;
+                  // Use the template span's position info directly.
+                  // The template head/previous span literal ends right before `${`,
+                  // and the span's literal text starts right after `}`.
+                  // We need the enclosing `${...}` which is:
+                  //   - Start: the head/prev literal's end position - that's where `${` begins
+                  //   - End: the span literal's start position + 1 (after `}`)
+                  
+                  // Get the span index to find the preceding literal end
+                  const spanIndex = template.templateSpans.indexOf(span);
+                  let dollarBraceStart: number;
+                  
+                  if (spanIndex === 0) {
+                    // First span: `${` comes right after the template head
+                    dollarBraceStart = template.head.getEnd() - 2; // head ends with `${`, subtract 2 to get `$` pos
+                  } else {
+                    // Subsequent span: `${` comes at end of previous span's literal
+                    const prevSpan = template.templateSpans[spanIndex - 1]!;
+                    dollarBraceStart = prevSpan.literal.getEnd() - 2;
                   }
-
-                  // The closing brace position is at the span's literal text start - 1
-                  // but we can just find the first } after expression end
-                  let closingBrace = exprEnd;
-                  while (closingBrace < source.length && source[closingBrace] !== '}') {
-                    closingBrace++;
-                  }
-                  closingBrace++;
+                  
+                  // The closing `}` is at the start of this span's literal text
+                  const closingBrace = span.literal.getStart(sourceFile);
 
                   if (dollarBraceStart >= 0 && closingBrace <= source.length) {
                     calls.push({

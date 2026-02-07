@@ -1,14 +1,17 @@
+/** Block-level elements for whitespace removal between adjacent block tags */
+const BLOCK_ELEMENTS = 'div|p|section|article|header|footer|main|nav|aside|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|form|fieldset|h[1-6]';
+
 export const minifyHTML = (html: string): string => {
   return (
     html
       .replace(/\s+/g, ' ')
       .replace(/>\s+</g, '> <')
       .replace(
-        /(<\/(?:div|p|section|article|header|footer|main|nav|aside|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|form|fieldset|h[1-6]|template)>) (<(?:div|p|section|article|header|footer|main|nav|aside|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|form|fieldset|h[1-6]|template|!))/gi,
+        new RegExp(`(<\\/(?:${BLOCK_ELEMENTS})>) (<(?:${BLOCK_ELEMENTS}|template|!))`, 'gi'),
         '$1$2',
       )
-      .replace(/(<(?:div|p|section|article|header|footer|main|nav|aside|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|form|fieldset|h[1-6])[^>]*>) /gi, '$1')
-      .replace(/ (<\/(?:div|p|section|article|header|footer|main|nav|aside|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|form|fieldset|h[1-6])>)/gi, '$1')
+      .replace(new RegExp(`(<(?:${BLOCK_ELEMENTS})[^>]*>) `, 'gi'), '$1')
+      .replace(new RegExp(` (<\\/(?:${BLOCK_ELEMENTS})>)`, 'gi'), '$1')
       .replace(/^\s+</g, '<')
       .replace(/>\s+$/g, '>')
       .replace(/<!--(?!b\d)(?!\[)[\s\S]*?-->/g, '')

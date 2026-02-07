@@ -71,7 +71,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     logLevel: 'error',
     splitting: true,
     format: 'esm',
-    sourcemap: false,
+    sourcemap: config.isProd ? false : true,
     metafile: true,
     entryNames: '[name]-[hash]',
     chunkNames: '[name]-[hash]',
@@ -108,7 +108,6 @@ export async function runBuild(config: BuildConfig): Promise<void> {
       console.info(consoleColors.blue, 'Watching for changes...');
     }
   } catch (err) {
-    console.error('Build failed:', err);
-    process.exit(1);
+    throw new Error(`Build failed: ${err instanceof Error ? err.message : err}`);
   }
 }

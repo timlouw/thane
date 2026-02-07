@@ -17,6 +17,12 @@ export function parseArgs(args: string[]): CLIOptions {
     serve: false,
   };
 
+  const knownFlags = new Set([
+    '--prod', '-p', '--gzip', '--app', '--entry', '--out',
+    '--assets', '--html', '--help', '-h', '--version', '-v',
+  ]);
+  const flagsWithValue = new Set(['--app', '--entry', '--out', '--assets', '--html']);
+
   const commandArg = args.find((arg) => !arg.startsWith('-'));
   if (commandArg && ['build', 'dev', 'serve'].includes(commandArg)) {
     options.command = commandArg as 'build' | 'dev' | 'serve';
@@ -56,6 +62,16 @@ export function parseArgs(args: string[]): CLIOptions {
       case '-v':
         printVersion();
         process.exit(0);
+      default:
+        if (arg && (arg.startsWith('--') || (arg.startsWith('-') && arg.length === 2))) {
+          // Skip values consumed by flags with arguments
+          const prevArg = args[i - 1];
+          if (prevArg && flagsWithValue.has(prevArg)) break;
+          if (!knownFlags.has(arg)) {
+            console.warn(`Warning: Unknown flag '${arg}'. Run 'thane --help' to see available options.`);
+          }
+        }
+        break;
     }
   }
 

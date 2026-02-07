@@ -8,7 +8,7 @@ const NAME = PLUGIN_NAME.TYPE_CHECK;
 
 export const TypeCheckPlugin = (options?: { strict?: boolean }): Plugin => {
   let isRunning = false;
-  const strict = options?.strict ?? false;
+  const strict = options?.strict ?? true;
 
   const runTypeCheck = (): void => {
     if (isRunning) return;

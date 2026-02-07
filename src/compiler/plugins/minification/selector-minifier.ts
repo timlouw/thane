@@ -56,34 +56,79 @@ export class SelectorMap {
 }
 
 export const applySelectorsToSource = (source: string, selectorMap: SelectorMap): string => {
-  let result = source;
+  if (selectorMap.size === 0) return source;
 
+  // Build a single combined regex that matches any selector in all contexts.
+  // This gives O(n) scanning instead of O(n * selectors * 5).
+  const escapedEntries: Array<{ escaped: string; original: string; minified: string }> = [];
   for (const [original, minified] of selectorMap.entries()) {
     const escaped = original.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-    // HTML open tags: <selector ...> or <selector/> or <selector>
-    result = result.replace(new RegExp(`<${escaped}(\\s|>|/)`, 'g'), `<${minified}$1`);
-    // HTML close tags: </selector>
-    result = result.replace(new RegExp(`</${escaped}>`, 'g'), `</${minified}>`);
-    // Quoted string values (e.g. selector: 'my-comp', data-thane="my-comp")
-    result = result.replace(new RegExp(`(['"])${escaped}\\1`, 'g'), `$1${minified}$1`);
-    // CSS class selectors: .selector { or .selector( or .selector, etc
-    result = result.replace(new RegExp(`\\.${escaped}(?=[\\s{(,:>+~[\\]])`, 'g'), `.${minified}`);
-    // data-thane attribute: data-thane="selector" (inside attribute values with surrounding text)
-    result = result.replace(new RegExp(`(data-thane(?:-component)?=["'])${escaped}(["'])`, 'g'), `$1${minified}$2`);
+    escapedEntries.push({ escaped, original, minified });
   }
 
-  return result;
+  // Sort by length descending so longer selectors match before shorter prefixes
+  escapedEntries.sort((a, b) => b.original.length - a.original.length);
+
+  const alternatives = escapedEntries.map(e => e.escaped).join('|');
+  const lookup = new Map(escapedEntries.map(e => [e.original, e.minified]));
+
+  // Combined pattern covers all five replacement contexts in one pass:
+  //   1. <selector(\s|>|/)   — HTML open tags
+  //   2. </selector>          — HTML close tags
+  //   3. (['"])selector\1     — quoted strings
+  //   4. .selector(?=[\s{(,:>+~[\]])  — CSS class selectors
+  //   5. (data-thane(?:-component)?=["'])selector(["'])  — data-thane attrs
+  const combined = new RegExp(
+    `<(${alternatives})([\\s>/])|</(${alternatives})>|(['"])(${alternatives})\\4|\\.(${alternatives})(?=[\\s{(,:>+~\\[\\]])|` +
+    `(data-thane(?:-component)?=["'])(${alternatives})(["'])`,
+    'g',
+  );
+
+  return source.replace(combined, (...args: any[]) => {
+    // Group 1,2: HTML open tag  <selector(\s|>|/)
+    if (args[1]) return `<${lookup.get(args[1]) || args[1]}${args[2]}`;
+    // Group 3: HTML close tag </selector>
+    if (args[3]) return `</${lookup.get(args[3]) || args[3]}>`;
+    // Group 4,5: Quoted string 'selector' or "selector"
+    if (args[5]) return `${args[4]}${lookup.get(args[5]) || args[5]}${args[4]}`;
+    // Group 6: CSS class .selector
+    if (args[6]) return `.${lookup.get(args[6]) || args[6]}`;
+    // Group 7,8,9: data-thane attr
+    if (args[8]) return `${args[7]}${lookup.get(args[8]) || args[8]}${args[9]}`;
+    return args[0];
+  });
 };
 
 export const extractSelectorsFromSource = (source: string): string[] => {
   const selectors: string[] = [];
-  const selectorRegex = /selector:\s*(['"])([a-z][a-z0-9]*-[a-z0-9-]+)\1/gi;
+  const seen = new Set<string>();
 
+  const addSelector = (sel: string) => {
+    if (sel && !seen.has(sel)) {
+      seen.add(sel);
+      selectors.push(sel);
+    }
+  };
+
+  // Pattern 1: selector: 'xxx' or selector: "xxx"
+  const selectorRegex = /selector:\s*(['"])([a-z][a-z0-9]*-[a-z0-9-]+)\1/gi;
   let match;
   while ((match = selectorRegex.exec(source)) !== null) {
-    const selector = match[2];
-    if (selector && !selectors.includes(selector)) {
-      selectors.push(selector);
+    addSelector(match[2]!);
+  }
+
+  // Pattern 2: data-thane="xxx" or data-thane-component="xxx"
+  const dataThaneRegex = /data-thane(?:-component)?=["']([a-z][a-z0-9]*-[a-z0-9-]+)["']/gi;
+  while ((match = dataThaneRegex.exec(source)) !== null) {
+    addSelector(match[1]!);
+  }
+
+  // Pattern 3: CSS class selectors .xxx-yyy where xxx-yyy looks like a component selector
+  const cssClassRegex = /\.([a-z][a-z0-9]*-[a-z0-9-]+)(?=[\s{(,:>+~[\]])/gi;
+  while ((match = cssClassRegex.exec(source)) !== null) {
+    // Only add if it was already seen as a selector (avoids false positives from arbitrary CSS classes)
+    if (seen.has(match[1]!)) {
+      addSelector(match[1]!);
     }
   }
 
