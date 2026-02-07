@@ -122,3 +122,17 @@ export interface ImportInfo {
   end: number;
   quoteChar: string;
 }
+
+/**
+ * Shared build context passed across plugins to avoid duplicate work.
+ * The filesystem scan results are populated once during onStart and
+ * shared by ComponentPrecompiler and HTMLBootstrapInjector.
+ */
+export interface BuildContext {
+  /** All .ts files discovered by the shared scan */
+  tsFiles: string[];
+  /** Component definitions found during the scan, keyed by component name */
+  componentsByName: Map<string, ComponentDefinition>;
+  /** Component definitions found during the scan, keyed by selector */
+  componentsBySelector: Map<string, ComponentDefinition>;
+}

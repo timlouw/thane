@@ -20,6 +20,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "sourceMap": true,
+    "types": ["bun"],
 
     /* AND if you're building for a library: */
     "declaration": true,

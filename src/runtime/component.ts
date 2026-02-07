@@ -67,7 +67,7 @@ export abstract class NativeComponent {
     // Add getElementById method to element for binding lookups
     el.getElementById = (id: string): HTMLElement | null => {
       if (el.id === id) return el;
-      return el.querySelector(`#${CSS.escape(id)}`);
+      return el.querySelector(`#${id}`);
     };
     this.root = el;
   }
@@ -91,9 +91,6 @@ const registeredStyles = new Set<string>();
 // Global style element reference
 let globalStyleEl: HTMLStyleElement | null = null;
 
-// Pending style registrations for batching
-let pendingStyles: string[] | null = null;
-
 /**
  * Ensure global style element exists in document head
  */
@@ -107,25 +104,11 @@ const ensureGlobalStyleElement = (): HTMLStyleElement => {
 };
 
 /**
- * Flush pending styles into the DOM in a single write
+ * Append a CSS string directly to the global style element
  */
-const flushPendingStyles = (): void => {
-  if (pendingStyles && pendingStyles.length > 0) {
-    const styleEl = ensureGlobalStyleElement();
-    styleEl.textContent += pendingStyles.join('\n') + '\n';
-    pendingStyles = null;
-  }
-};
-
-/**
- * Queue a CSS string for batched insertion
- */
-const queueStyle = (css: string): void => {
-  if (!pendingStyles) {
-    pendingStyles = [];
-    queueMicrotask(flushPendingStyles);
-  }
-  pendingStyles.push(css);
+const appendStyle = (css: string): void => {
+  const styleEl = ensureGlobalStyleElement();
+  styleEl.textContent += css + '\n';
 };
 
 /**
@@ -137,7 +120,7 @@ export function registerGlobalStyles(...styles: string[]): void {
   for (const css of styles) {
     if (!registeredStyles.has(css)) {
       registeredStyles.add(css);
-      queueStyle(css);
+      appendStyle(css);
     }
   }
 }
@@ -185,7 +168,7 @@ export function registerComponent<T extends ComponentProps>(
     const scopedStyles = component.styles
       .replace(/:host\b/g, `.${selector}`)
       .replace(/:host\(/g, `.${selector}(`);
-    queueStyle(`/* ${selector} */\n${scopedStyles}`);
+    appendStyle(`/* ${selector} */\n${scopedStyles}`);
   }
   
   // Create factory function for component instantiation

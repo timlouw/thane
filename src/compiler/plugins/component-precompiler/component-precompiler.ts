@@ -3,7 +3,7 @@ import path from 'path';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
 import vm from 'vm';
-import type { ComponentDefinition } from '../../types.js';
+import type { ComponentDefinition, BuildContext } from '../../types.js';
 import {
   extractComponentDefinitions,
   findEnclosingClass,
@@ -17,7 +17,8 @@ import {
   extendsComponentQuick,
   generateComponentHTML,
 } from '../../utils/index.js';
-import { transformComponentSource } from '../reactive-binding-compiler/reactive-binding-compiler.js';
+import { transformComponentSource } from '../reactive-binding-compiler/index.js';
+import { ErrorCode, createError } from '../../errors.js';
 
 /**
  * Sentinel value distinguishing "evaluation failed" from "evaluated to undefined".
@@ -337,7 +338,7 @@ const findComponentCallsCTFE = (
   return calls;
 };
 
-export const ComponentPrecompilerPlugin: Plugin = {
+export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
   name: NAME,
   setup(build) {
     const componentDefinitions = new Map<string, ComponentDefinition>();
@@ -346,22 +347,31 @@ export const ComponentPrecompilerPlugin: Plugin = {
 
     build.onStart(async () => {
       componentDefinitions.clear();
-      sourceCache.clear();
 
-      const workspaceRoot = process.cwd();
-      const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
+      if (ctx) {
+        // Use shared context from BuildContext
+        for (const [name, def] of ctx.componentsByName) {
+          componentDefinitions.set(name, def);
+        }
+      } else {
+        // Fallback: do our own scan
+        sourceCache.clear();
 
-      const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
+        const workspaceRoot = process.cwd();
+        const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
 
-      for (const dir of searchDirs) {
-        const files = await collectFilesRecursively(dir, tsFilter);
+        const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
 
-        for (const filePath of files) {
-          const cached = await sourceCache.get(filePath);
-          if (cached) {
-            const definitions = extractComponentDefinitions(cached.sourceFile, filePath);
-            for (const def of definitions) {
-              componentDefinitions.set(def.name, def);
+        for (const dir of searchDirs) {
+          const files = await collectFilesRecursively(dir, tsFilter);
+
+          for (const filePath of files) {
+            const cached = await sourceCache.get(filePath);
+            if (cached) {
+              const definitions = extractComponentDefinitions(cached.sourceFile, filePath);
+              for (const def of definitions) {
+                componentDefinitions.set(def.name, def);
+              }
             }
           }
         }
@@ -460,9 +470,14 @@ export const ComponentPrecompilerPlugin: Plugin = {
 
         return createLoaderResult(modifiedSource);
       } catch (error) {
-        logger.error(NAME, `Error processing ${args.path}`, error);
+        const diagnostic = createError(
+          `Error processing ${args.path}: ${error instanceof Error ? error.message : error}`,
+          { file: args.path, line: 0, column: 0 },
+          ErrorCode.PLUGIN_ERROR,
+        );
+        logger.diagnostic(diagnostic);
         return undefined;
       }
     });
   },
-};
+});

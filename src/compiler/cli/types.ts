@@ -42,4 +42,6 @@ export interface BuildConfig {
   serve: boolean;
   /** Whether to use gzip/brotli compression */
   useGzip: boolean;
+  /** Whether to fail the build on type errors (default: false = warn only) */
+  strictTypeCheck?: boolean;
 }

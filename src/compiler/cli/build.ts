@@ -4,13 +4,13 @@
 
 import { build, context, type BuildOptions } from 'esbuild';
 import type { BuildConfig } from './types.js';
-import { consoleColors } from '../utils/index.js';
+import { consoleColors, createBuildContext } from '../utils/index.js';
 
 // Import plugins
 import { TypeCheckPlugin } from '../plugins/tsc-type-checker/tsc-type-checker.js';
 import { RoutesPrecompilerPlugin } from '../plugins/routes-precompiler/routes-precompiler.js';
 import { ComponentPrecompilerPlugin } from '../plugins/component-precompiler/component-precompiler.js';
-import { ReactiveBindingPlugin } from '../plugins/reactive-binding-compiler/reactive-binding-compiler.js';
+import { ReactiveBindingPlugin } from '../plugins/reactive-binding-compiler/index.js';
 import { RegisterComponentStripperPlugin } from '../plugins/register-component-stripper/register-component-stripper.js';
 import { GlobalCSSBundlerPlugin } from '../plugins/global-css-bundler/global-css-bundler.js';
 import { HTMLBootstrapInjectorPlugin } from '../plugins/html-bootstrap-injector/html-bootstrap-injector.js';
@@ -24,15 +24,18 @@ export async function runBuild(config: BuildConfig): Promise<void> {
   
   console.info(consoleColors.blue, `Running ${environment} build...`);
   
+  // Create shared build context (single filesystem scan)
+  const buildContext = await createBuildContext();
+  
   // Create plugins with config
   const basePlugins = [
-    TypeCheckPlugin,
+    TypeCheckPlugin({ strict: config.strictTypeCheck }),
     RoutesPrecompilerPlugin,
-    ComponentPrecompilerPlugin,
+    ComponentPrecompilerPlugin(buildContext),
     ReactiveBindingPlugin,
     RegisterComponentStripperPlugin,
     GlobalCSSBundlerPlugin({ minify: config.isProd }),
-    HTMLBootstrapInjectorPlugin({ entryPoints: config.entryPoints }),
+    HTMLBootstrapInjectorPlugin({ entryPoints: config.entryPoints, buildContext }),
   ];
   
   const postBuildOptions = {

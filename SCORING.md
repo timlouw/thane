@@ -1,316 +1,219 @@
-# Thane Framework — Comprehensive Code Scoring
+# Thane Framework — Codebase Scoring (v0.0.4)
 
-> Reviewed: February 2026  
-> Reviewer: Expert-level analysis of compiler and runtime  
-> Scale: 1–10 (10 = production-grade, battle-tested)
-
----
-
-## Executive Summary
-
-| Area | Score | Notes |
-|------|-------|-------|
-| **Overall Architecture** | 8/10 | Clean plugin-based esbuild pipeline; good separation of concerns |
-| **Runtime** | 7/10 | Solid signal primitive and DOM binding; some robustness gaps |
-| **Compiler — Reactive Binding** | 5/10 | Most complex file (2,767 lines); massive code duplication, uses `eval()` |
-| **Compiler — HTML Parser** | 7/10 | Proper hand-rolled state machine parser; good edge-case handling |
-| **Compiler — Component Precompiler** | 7/10 | Good AST usage with CTFE; `vm.runInContext` has security edge |
-| **Compiler — Dead Code Eliminator** | 3/10 | Regex-based on minified output; brittle; stub functions |
-| **Compiler — Minification** | 6/10 | Works but selector minifier uses naive global regex replacement |
-| **Compiler — Routes Precompiler** | 8/10 | Clean AST-based extraction; well-scoped |
-| **Compiler — Register Component Stripper** | 8/10 | Proper AST-based code removal |
-| **Compiler — HTML Bootstrap Injector** | 7/10 | AST-based; solid but `injectBootstrapHTML` is a no-op |
-| **Compiler — Global CSS Bundler** | 8/10 | Simple, correct, does its job |
-| **Compiler — Post-Build Processor** | 6/10 | Module-level mutable state; mixed concerns |
-| **Compiler — Type Checker** | 5/10 | Shells out to `tsc --noEmit`; no error propagation to esbuild |
-| **Utilities** | 8/10 | Well-factored AST utils; good source editor; caching |
-| **Types & Error Handling** | 7/10 | Good type definitions; error codes defined but underused |
-| **CLI** | 7/10 | Clean argument parsing; good help text |
-| **Pipeline Architecture** | 6/10 | Two parallel systems (pipeline-runner unused vs direct esbuild plugins) |
-| **Test Coverage** | 3/10 | Only `signal.test.ts` exists; no compiler tests |
-| **Documentation** | 7/10 | Good JSDoc comments throughout; README present |
+> Evaluated: February 7, 2026
+> Codebase: 37 files, ~10,500 lines (runtime: ~1,830 excl. tests, compiler: ~8,000)
 
 ---
 
-## Detailed Scoring by File/Module
+## Benchmark Results (v0.0.4 vs v0.0.2)
 
-### 1. Runtime — `signal.ts` — Score: 8/10
+| Benchmark | v0.0.4 | v0.0.2 | Delta | Verdict |
+|---|---|---|---|---|
+| Create 1k rows | 46.2ms (1.29) | 43.1ms (1.20) | +7.2% | 🔴 Regressed |
+| Replace all rows | 49.9ms (1.18) | 49.5ms (1.17) | +0.8% | 🟡 Flat |
+| Partial update | 39.0ms (1.30) | 40.9ms (1.36) | **−4.6%** | 🟢 Improved |
+| Select row | 8.6ms (1.04) | 9.5ms (1.14) | **−9.5%** | 🟢 Improved |
+| Swap rows | 34.8ms (1.17) | 36.2ms (1.21) | **−3.9%** | 🟢 Improved |
+| Remove row | 26.7ms (1.16) | 27.6ms (1.19) | **−3.3%** | 🟢 Improved |
+| Create 10k rows | 489.8ms (1.21) | 492.5ms (1.21) | −0.5% | 🟡 Flat |
+| Append 1k rows | 53.2ms (1.14) | 55.8ms (1.20) | **−4.7%** | 🟢 Improved |
+| Clear rows | 28.8ms (1.19) | 31.4ms (1.29) | **−8.3%** | 🟢 Improved |
+| **Weighted mean** | **1.20** | **1.22** | **−1.6%** | 🟢 Better |
+| Ready memory | 0.62MB (1.27) | 0.57MB (1.16) | +9.5% | 🔴 Regressed |
+| Run memory | 3.45MB (1.78) | 3.41MB (1.76) | +1.2% | 🟡 Flat |
+| First paint | 187.8ms (1.40) | 164.3ms (1.23) | +14.3% | 🔴 Regressed |
+
+### Key Observations
+- v0.0.4 has the best weighted geometric mean of all three versions (1.20)
+- 6 of 9 duration benchmarks improved vs v0.0.2, select row improved significantly
+- Create 1k rows regressed — this is the initial render path (innerHTML parsing + binding setup)
+- Ready memory and first paint regressed — likely caused by component.ts changes (queueMicrotask batching, CSS.escape)
+- The runtime code is essentially identical to v0.0.2 except: CSS.escape in getElementById, queueMicrotask style batching, createComponentHTMLSelector dedup, keyFn param on __bindNestedRepeat
+
+---
+
+## Scoring Matrix
+
+### 1. Runtime Performance — 7.5/10
 
 **Strengths:**
-- Clean, minimal signal implementation
-- Lazy subscriber array initialization (`null` until first subscribe)
-- Fast notification loop with cached length
-- Returns unsubscribe function (proper cleanup pattern)
+- Signal implementation is extremely lean (~68 lines, zero dependencies)
+- Array-backed subscribers with indexed for-loop — optimal for V8 JIT
+- No unnecessary allocations in hot paths (signal get/set)
+- DOM reconciler has excellent fast paths: swap detection, bulk replace detection, single-remove detection
+- Container detach optimization for bulk insertions prevents per-item reflow
+- Template cloning path (`__bindRepeatTpl`) avoids innerHTML parsing per item
+- Event delegation avoids per-element listener overhead
+- `textContent = ''` for fast bulk clear
 
 **Weaknesses:**
-- `subscribers.splice(idx, 1)` in unsubscribe is O(n); for signals with many subscribers, this could become a bottleneck
-- No batching/transaction mechanism for multiple signal updates
-- Strict reference equality (`value !== newValue`) means object/array mutations are invisible — this is intentional but could surprise users with deep objects
-- No error boundary around subscriber callbacks — one throwing subscriber kills all subsequent subscribers
+- Create 1k rows at 1.29x slowdown — innerHTML parsing + signal creation per row is the bottleneck
+- Ready memory at 1.27x — each signal creates a closure + array overhead
+- No subscriber notification batching (multiple signals changing in sequence cause separate DOM updates)
+- `CSS.escape()` called in getElementById hot path — adds overhead to every binding lookup
+- Reconciler creates `new Set()` for key collection on every general reconciliation
+- `managedItems.splice(idx, 1)` in general keyed reconciliation — O(n) array shift
+- Cleanup arrays grow unboundedly per item (push-only)
 
----
-
-### 2. Runtime — `component.ts` — Score: 6/10
+### 2. Compiler Architecture — 8/10
 
 **Strengths:**
-- Clean registration pattern with factory functions
-- Scoped styles via `:host` → `.selector` replacement
-- Static template cloning when available (compiler-optimized path)
-- `mountComponent` with proper selector extraction
+- Clean esbuild plugin architecture with clear sequential pipeline
+- Compile-time function evaluation (CTFE) for component calls — eliminates runtime overhead
+- Sophisticated reactive binding compiler generates optimal subscription code
+- Template pre-compilation with DOM navigation paths eliminates runtime querySelector
+- Source file caching across plugins prevents redundant I/O and parsing
+- Custom HTML parser purpose-built for template syntax with proper diagnostics
 
 **Weaknesses:**
-- `el.getElementById` is implemented via `el.querySelector('#${id}')` — vulnerable to CSS selector injection if `id` contains special characters (e.g., dots, colons)
-- `createComponentHTMLSelector` and `generateComponentHTML` duplicated between compiler and runtime
-- `registerGlobalStyles` appends to `textContent` which causes full style recalc each time a component registers
-- No component lifecycle hooks (onMount, onDestroy, etc.)
-- No component unmount/cleanup mechanism — `componentFactories` map grows forever
-- Style registration uses `registeredStyles.has(selector)` but first registration uses the css string not the selector — inconsistent check
+- Reactive binding compiler is 2,758 lines in a single file — maintenance risk
+- Duplicate filesystem scans (component-precompiler and html-bootstrap-injector both scan src/)
+- Duplicate constants across ast-utils.ts and constants.ts
+- CLI files thane.ts and wcf.ts are near-identical copies
+- Module-level mutable state in several plugins (minification, bootstrap injector, type checker)
+- Pipeline directory is empty (referenced in structure but no files exist)
+- Type checker doesn't fail the build on errors — silent type violations get bundled
+- ErrorCode enum defined but never used by any plugin
 
----
-
-### 3. Runtime — `dom-binding.ts` — Score: 7/10
+### 3. Code Quality & Documentation — 8/10
 
 **Strengths:**
-- Well-structured event delegation system with modifier support
-- Efficient keyed reconciliation with multiple fast paths (swap, single removal, complete replacement)
-- `__bindRepeatTpl` with template cloning and DOM path navigation — genuinely excellent optimization
-- Container detach optimization during bulk creation
-- Comment marker approach for mixed-content text bindings
-- Lazy initialization of conditional content bindings
+- Consistent JSDoc documentation on all public APIs
+- Well-typed interfaces (Signal, ComponentConfig, Diagnostic, etc.)
+- Clean error handling patterns with graceful fallbacks
+- Comprehensive test suite for signals (49 tests, 103 assertions)
+- Clear separation: runtime knows nothing about the compiler
+- Proper TypeScript strict mode
 
 **Weaknesses:**
-- `__bindRepeat` and `__bindRepeatTpl` duplicate ~200 lines of reconciliation logic — should share a core reconciler
-- The keyed reconciliation general case re-reads `managedItems` after splice operations which could cause index misalignment in edge cases
-- No `requestAnimationFrame` batching for rapid signal updates — each signal update triggers immediate DOM work
-- `getTempEl()` reuses a single template element which is not safe if used re-entrantly (shouldn't happen in practice, but fragile)
-- `__findEl` builds a compound CSS selector `#${id},[data-bind-id="${id}"]` — `id` is compiler-generated so safe, but architecturally fragile
-- `__bindNestedRepeat` doesn't support keyed reconciliation (always index-based)
+- No tests for compiler plugins, dom-binding, or component
+- Reactive binding compiler has significant internal code duplication (~3 copies of nested conditional handling)
+- Template minifier's inline element detection uses hardcoded block-element list
+- Blunt backtick replacement pattern (`.replace(/\x60/g, '\`')`) used across plugins could corrupt strings
 
----
-
-### 4. Compiler — `reactive-binding-compiler.ts` — Score: 5/10
+### 4. Bundle Size — 7/10
 
 **Strengths:**
-- Correctly handles complex nested scenarios (when inside repeat, repeat inside repeat, whenElse)
-- Uses the HTML parser AST rather than pure regex for template analysis
-- Generates efficient binding code with consolidated subscriptions
-- Static template optimization for repeat blocks is well-designed
-- Properly handles event modifiers and delegation
+- Uncompressed 10.1KB, compressed 4.0KB — competitive
+- Dead code elimination strips unused registerComponent branches
+- Selector minification shortens class names
+- Template minification strips whitespace
 
 **Weaknesses:**
-- **2,767 lines in a single file** — the longest file by far; should be split into at least 5 modules
-- **Uses `eval()` for evaluating initial conditional values** — appears at least 6 times across the file. While only evaluating compiler-controlled expressions, this is a code smell and potential security issue. Should use a safe expression evaluator or the TypeScript AST
-- **Massive code duplication**: `processHtmlTemplateWithConditionals`, `processItemTemplateRecursively`, and `processSubTemplateWithNesting` all share ~70% identical logic for handling conditionals, whenElse, and bindings. This is the single biggest maintainability problem in the codebase
-- **Regex fallback for item bindings**: `itemExprRegex` and `attrItemRegex` use regex to find item bindings in templates instead of leveraging the HTML parser AST
-- `analyzeTextBindingContext` manually scans HTML backwards/forwards with character-by-character parsing instead of using the already-parsed AST tree
-- `addIdsToNestedElements` uses regex-based tag matching that could match wrong elements in edge cases
-- `generateInitBindingsFunction` is ~400 lines and generates code as string concatenation — should use a proper code builder
-- Several `RegExp` objects created inside loops (e.g., `new RegExp(...)` per signal per iteration) — should be cached
-- The `processConditionalElementHtml` function uses regex to strip event attributes but the parser already identified them
+- Slightly larger than v0.0.2 (10.1 vs 9.9KB uncompressed) — queueMicrotask/CSS.escape additions
+- Three repeat implementations are fully inlined (no shared reconciler) — code duplication in output
+- No tree-shaking of unused runtime exports (when/whenElse/repeat always included)
 
----
-
-### 5. Compiler — `html-parser.ts` — Score: 7/10
+### 5. Developer Experience — 7/10
 
 **Strengths:**
-- Proper hand-rolled state machine parser (not regex-based)
-- Handles template literal expressions inside HTML (`${...}` with nested braces, backticks)
-- Correctly tracks element hierarchy, attributes, text nodes
-- Good set of utility functions (walkElements, findElements, etc.)
-- Handles self-closing tags, void elements, comments
-- `parseWhenElseExpression` and `parseRepeatExpression` properly handle nested template literals
+- Simple signal API: `const count = signal(0); count(); count(1);`
+- Familiar template syntax with html`` and css`` tagged templates
+- Hot reload dev server with SSE
+- Colored build output with file sizes
+- Type-safe component registration
 
 **Weaknesses:**
-- No error recovery — malformed HTML silently produces wrong parse trees
-- Doesn't handle HTML entities at all
-- Comment handling is simplistic (just skips `<!-- ... -->`) — doesn't handle conditional comments or CDATA
-- `findBindingsInText` creates new RegExp objects per call
-- The `ATTR_EQ` state has a special case for unquoted `${...}` values but doesn't handle all edge cases (e.g., `${expr} more text`)
-- No source map or position tracking for error reporting back to the user
-- `injectIdIntoFirstElement` uses a simple regex that could break with unusual whitespace
+- No source maps in dev mode
+- Type checker errors don't fail the build
+- No incremental TypeScript compilation (full program created each time)
+- CLI argument parsing doesn't validate values
+- Limited content type support in dev server
 
 ---
 
-### 6. Compiler — `component-precompiler.ts` — Score: 7/10
+## Overall Score: 7.5/10
 
-**Strengths:**
-- Proper AST-based analysis of component definitions and imports
-- CTFE (Compile-Time Function Evaluation) system for evaluating props at build time
-- Correct handling of import transformations (named → side-effect)
-- Sandboxed evaluation via `vm.createContext` with limited API surface
-- Iterative resolution of interdependent class properties
-
-**Weaknesses:**
-- `vm.runInContext` with 1000ms timeout is overly generous; 100ms would be safer
-- `evaluateExpressionCTFE` falls through to `vm.runInContext` for any unrecognized expression — could execute arbitrary code at build time
-- The `findComponentCallsCTFE` function manually scans backwards/forwards for `${` and `}` markers instead of using span positions from the AST
-- `extractClassPropertiesCTFE` returns `undefined` for unresolvable properties which is also the sentinel for "failed to evaluate" — ambiguous
-- Source file is re-parsed via `sourceCache.parse()` even when already cached via `sourceCache.get()`
+The framework demonstrates strong engineering fundamentals with a sophisticated compile-time optimization strategy. The runtime is lean and fast, competitive at 1.20x the vanilla JS baseline. The main gaps are in the create/initial-render path, memory overhead per signal, and compiler maintainability.
 
 ---
 
-### 7. Compiler — `dead-code-eliminator.ts` — Score: 3/10
+## Improvement Plan (v0.0.5+)
 
-**Strengths:**
-- Good concept — eliminating dead conditionals and console statements
-- Performance measurement and logging
+Improvements are categorized: **[RUNTIME]** changes affect benchmark performance, **[COMPILER]** changes affect build quality/DX, **[INFRA]** changes affect maintainability.
 
-**Weaknesses:**
-- **Entirely regex-based** operating on minified/bundled output — extremely fragile
-- `analyzeSignals` looks for pattern `f(this,"_name",T(value))` — any change to esbuild's minification strategy breaks this entirely
-- `eliminateDeadConditionals` looks for `A(e,this._name,"b0",...)` — same fragility
-- `inlineStaticBindings` is a no-op (logs but doesn't actually inline)
-- `removeUnusedVars` is a complete stub (empty function body)
-- `eliminateConsole` regex `console.\w+\([^)]*\)` doesn't handle nested parentheses, string arguments with parens, or multi-line calls
-- `simplifyEmptyCallbacks` runs the same regex twice
-- Operates on concatenated bundle output instead of per-file pre-minification — wrong stage in pipeline
+### High Priority — Performance Impact
 
----
+#### 1. [RUNTIME] Revert component.ts to v0.0.2 (remove CSS.escape, queueMicrotask batching, createComponentHTMLSelector dedup)
+- **Impact**: Ready memory regressed +9.5%, first paint regressed +14.3%
+- **Approach**: Revert all three component.ts changes — CSS.escape adds cost to every getElementById call in the hot path, queueMicrotask adds startup overhead, createComponentHTMLSelector dedup changes call patterns
+- **Risk**: Low — straightforward revert
+- **Expected gain**: Restore v0.0.2 ready memory (0.57→0.62MB) and first paint (164→188ms)
 
-### 8. Compiler — `minification/selector-minifier.ts` — Score: 6/10
+#### 2. [RUNTIME] Batch signal notifications with microtask scheduling
+- **Impact**: When multiple signals update synchronously (e.g., during reconciliation), each triggers separate DOM updates
+- **Approach**: Queue subscriber notifications, deduplicate callbacks, flush in a single microtask. Must preserve synchronous read-after-write semantics (signal value updates immediately, only notifications are batched)
+- **Risk**: Medium — changes timing semantics, may break assumptions about synchronous subscriber execution
+- **Expected gain**: Improvement on replace all, partial update, any multi-signal update operation
 
-**Strengths:**
-- Clean `SelectorMap` class with bidirectional lookup
-- Deterministic minified selector generation
+#### 3. [RUNTIME] Reduce per-signal memory allocation
+- **Impact**: Ready memory at 1.27x, run memory at 1.78x
+- **Approach**: Explore alternatives — WeakMap-backed state, shared subscriber registry indexed by signal ID, or prototype-based signal objects instead of per-instance closures
+- **Risk**: High — fundamental signal architecture change, must not regress hot-path performance
+- **Expected gain**: Lower memory footprint across all benchmarks
 
-**Weaknesses:**
-- `applySelectorsToSource` does naive global regex replacement which could match selectors inside string literals, comments, or unrelated contexts
-- `extractSelectorsFromSource` only finds `selector: 'xxx'` pattern — misses selectors from other contexts
-- No protection against minified selectors colliding with existing HTML element names or reserved words
-- `generateMinifiedSelector` always produces names with a hyphen (required for custom elements) — but the format `a-a`, `a-b` etc. could conflict with utility class names
+#### 4. [RUNTIME] Optimize create rows — ensure template cloning path is used
+- **Impact**: Create 1k at 1.29x is the weakest benchmark
+- **Approach**: Verify the benchmark app's repeat directive compiles to `__bindRepeatTpl` (template cloning) rather than `__bindRepeat` (innerHTML per item). If it already does, profile to identify the actual bottleneck in the create path
+- **Risk**: Low — compiler-side investigation
+- **Expected gain**: Template cloning is ~2-3x faster than innerHTML parsing per item
 
----
+#### 5. [RUNTIME] Use flat parallel arrays for managed items instead of object-per-item
+- **Impact**: Object allocation per managed item ({itemSignal, el, cleanups}) creates GC pressure at scale
+- **Approach**: Store item data in parallel typed arrays: signals[], elements[], cleanups[][] indexed by position. Reduces object count and improves cache locality
+- **Risk**: Medium — more complex code, harder to maintain
+- **Expected gain**: Lower GC pressure, better memory utilization for large lists
 
-### 9. Compiler — `minification/template-minifier.ts` — Score: 6/10
+### Medium Priority — Build Quality & DX
 
-**Strengths:**
-- Properly handles template literals with nested expressions
-- Distinguishes HTML, CSS, and plain text content
-- Handles string literals and comments correctly (doesn't minify them)
+#### 6. [COMPILER] Split reactive-binding-compiler.ts into sub-modules
+- **Impact**: 2,758 lines is a maintenance risk, code duplication within the file
+- **Approach**: Extract into: analysis.ts (template parsing, binding detection), codegen.ts (code generation), repeat-codegen.ts (repeat-specific generation), types.ts (interfaces)
+- **Risk**: Low — pure refactor, no behavioral change
 
-**Weaknesses:**
-- `minifyHTML` removes all comments including those used as binding markers (`<!--b0-->`)
-- `minifyCSS` is duplicated between `global-css-bundler.ts` and `template-minifier.ts`
-- `minifyTemplateContent` heuristic for detecting HTML vs CSS could misfire on edge cases
-- Building result as `string[]` with character-by-character `push` then `.join('')` is slower than direct string concatenation for small templates
+#### 7. [COMPILER] Deduplicate thane.ts and wcf.ts CLI entry points
+- **Impact**: DRY violation, double maintenance burden
+- **Approach**: Extract shared CLI logic into a common function parameterized by name/defaults
+- **Risk**: Low
 
----
+#### 8. [COMPILER] Deduplicate constants between ast-utils.ts and constants.ts
+- **Impact**: Confusing dual source of truth for RUNTIME_FUNCTIONS, HTML_TAG_FUNCTIONS, etc.
+- **Approach**: Keep canonical definitions in constants.ts only, import in ast-utils.ts
+- **Risk**: Low
 
-### 10. Compiler — `post-build-processor.ts` — Score: 5/10
+#### 9. [COMPILER] Enable source maps in dev mode
+- **Impact**: Developer experience — currently no way to debug compiled output back to source
+- **Approach**: Set `sourcemap: 'inline'` or `sourcemap: true` in dev esbuild config
+- **Risk**: Low
 
-**Strengths:**
-- Comprehensive build output handling (hash management, assets, compression)
-- Live reload via SSE
-- Proper gzip and brotli compression
+#### 10. [COMPILER] Make type checker configurable — option to fail build on errors
+- **Impact**: Type errors currently silently pass through and get bundled
+- **Approach**: Add `strictTypeCheck` boolean to BuildConfig, fail build when enabled
+- **Risk**: Low
 
-**Weaknesses:**
-- **Module-level mutable state** (`totalBundleSizeInBytes`, `fileSizeLog`, `serverStarted`, `sseClients`, `config`, `bootstrapConfig`) — not safe for concurrent builds
-- Mixed concerns: file copying, compression, server, HTML injection, size reporting all in one file
-- `compressAndServe` creates a new Brotli compressor per request with quality 11 — extremely CPU-intensive for on-the-fly compression in dev mode
-- `watchAndRecursivelyCopyAssetsIntoDist` doesn't debounce file system events
-- `gzipDistFiles` mixes async `createReadStream` for gzip with sync `readFileSync` + `brotliCompressSync` for brotli — inconsistent and blocks the event loop
-- Error handlers silently swallow errors in `recursivelyCopyAssetsIntoDist` and `processMetafileAndUpdateHTML`
-- `promptForPort` uses `readline` which conflicts with process.stdin if other tools are using it
+#### 11. [COMPILER] Share filesystem scan results between plugins
+- **Impact**: component-precompiler and html-bootstrap-injector both independently scan src/ and apps/
+- **Approach**: Run scan once in build setup, pass results to plugins via shared context object
+- **Risk**: Low — requires minor plugin interface change
 
----
+#### 12. [COMPILER] Use incremental TypeScript compilation in type checker
+- **Impact**: Full ts.createProgram on every build start is slow for large projects
+- **Approach**: Use `ts.createIncrementalProgram` or `ts.createSolutionBuilder` and cache between builds
+- **Risk**: Medium — incremental API has different semantics and edge cases
 
-### 11. Compiler — `type-checker/tsc-type-checker.ts` — Score: 5/10
+### Lower Priority — Code Health
 
-**Strengths:**
-- Simple, non-blocking type checking via child process
+#### 13. [COMPILER] Wire up ErrorCode enum to actual plugin diagnostics
+- **Impact**: Error codes are defined but unused — plugins use free-form diagnostic strings
+- **Approach**: Replace string diagnostics with createError(message, location, ErrorCode.XXX) calls
+- **Risk**: Low
 
-**Weaknesses:**
-- Uses `exec` (shells out to `tsc`) instead of the TypeScript compiler API — extra process spawn per build
-- No error propagation to esbuild — type errors are logged but build continues with no diagnostic feedback
-- `isRunning` guard prevents concurrent checks but also means type errors from the second build in watch mode are silently skipped
-- No caching of previous results — re-checks everything every time
+#### 14. [INFRA] Add compiler plugin test suite
+- **Impact**: Zero test coverage for the most complex code (reactive binding compiler, template minifier, HTML parser)
+- **Approach**: Unit tests with snapshot testing for template parsing, binding detection, code generation
+- **Risk**: Low — purely additive, no code changes
 
----
-
-### 12. Compiler — Utilities — Score: 8/10
-
-**`ast-utils.ts` — 8/10:**
-- Clean, well-organized AST utility functions
-- Good separation of concerns (detection, extraction, traversal)
-- Proper TypeScript AST usage throughout
-- `toCamelCase` duplicated between `ast-utils.ts` and `file-utils.ts`
-
-**`cache.ts` — 7/10:**
-- Simple but effective source file cache
-- `parse()` method doesn't cache — always creates new SourceFile (by design, but worth noting)
-- No cache size limits or eviction policy
-
-**`source-editor.ts` — 9/10:**
-- Clean, well-documented position-based editing
-- Correct bottom-to-top edit application
-- Good utility functions for line/column conversion
-
-**`html-parser.ts` — 7/10:** (scored above)
-
-**`logger.ts` — 8/10:**
-- Clean structured logging with multiple levels
-- Good overload support for tag-based logging
-- Proper ANSI color handling
-
-**`plugin-helper.ts` — 7/10:**
-- Good quick-check functions to avoid expensive AST parsing
-- `extendsComponentQuick` is a simple string check which could false-positive on comments/strings
-
----
-
-### 13. Pipeline Architecture — Score: 6/10
-
-**Strengths:**
-- Well-defined plugin order
-- Configuration-based toggle system
-- Debug tap for intermediate output inspection
-
-**Weaknesses:**
-- **Two parallel plugin systems**: `pipeline-runner.ts` defines a registration-based pipeline but `build.ts` directly uses esbuild plugins — the pipeline runner appears unused in production
-- `pipeline-config.ts` defines toggle types but `build.ts` hardcodes plugin arrays
-- `createPipelineConfig` creates `basePluginToggles` but never uses it
-- The pipeline runner and the actual build don't share any plugin resolution logic
-
----
-
-### 14. CLI — Score: 7/10
-
-**Strengths:**
-- Clean argument parsing
-- Good help text with examples
-- Version detection from package.json
-- Sensible defaults
-
-**Weaknesses:**
-- Manual arg parsing instead of a library — won't handle `--flag=value` syntax
-- No input validation on `--app` value
-- No error message for unknown flags
-- `--debug-tap` flag is parsed but `debugTap` isn't actually wired into the build config properly (it's defined but the build.ts doesn't use the pipeline-runner)
-
----
-
-### 15. Test Coverage — Score: 3/10
-
-- Only `signal.test.ts` exists (685 lines, thorough for signals)
-- **Zero tests** for: HTML parser, reactive binding compiler, component precompiler, template minifier, selector minifier, dead code eliminator, routes precompiler, DOM binding, component registration
-- This is the single biggest risk for production readiness
-
----
-
-## Risk Assessment
-
-| Risk | Severity | Area |
-|------|----------|------|
-| `eval()` usage in compiler | 🔴 High | reactive-binding-compiler |
-| No compiler tests | 🔴 High | Overall |
-| Dead code eliminator regex fragility | 🔴 High | dead-code-eliminator |
-| Module-level mutable state | 🟡 Medium | post-build-processor |
-| Massive file size (2,767 lines) | 🟡 Medium | reactive-binding-compiler |
-| Code duplication in template processing | 🟡 Medium | reactive-binding-compiler |
-| Reconciliation logic duplication | 🟡 Medium | dom-binding |
-| Selector injection via getElementById | 🟡 Medium | component.ts |
-| No subscriber error boundaries | 🟡 Medium | signal.ts |
-| Comment markers removed by minifier | 🟡 Medium | template-minifier |
-| Unused pipeline runner system | 🟢 Low | pipeline-runner |
-| `toCamelCase` duplication | 🟢 Low | ast-utils, file-utils |
-| CSS minification duplication | 🟢 Low | global-css-bundler, template-minifier |
+#### 15. [COMPILER] Fix module-level mutable state in plugins
+- **Impact**: SelectorMinifier instance, bootstrapSelector, isRunning flag are module-level — not safe for concurrent/multiple instantiation
+- **Approach**: Move state into plugin factory closure or pass via plugin context
+- **Risk**: Low

@@ -4,7 +4,7 @@ export { RoutesPrecompilerPlugin } from './routes-precompiler/routes-precompiler
 
 export { ComponentPrecompilerPlugin } from './component-precompiler/component-precompiler.js';
 
-export { ReactiveBindingPlugin } from './reactive-binding-compiler/reactive-binding-compiler.js';
+export { ReactiveBindingPlugin } from './reactive-binding-compiler/index.js';
 
 export { RegisterComponentStripperPlugin } from './register-component-stripper/register-component-stripper.js';
 
