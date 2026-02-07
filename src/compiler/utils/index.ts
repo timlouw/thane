@@ -5,7 +5,7 @@
 export { consoleColors, ansi } from './colors.js';
 export { logger, Logger } from './logger.js';
 
-export { safeReadFile, collectFilesRecursively, directoryExists, getContentType } from './file-utils.js';
+export { safeReadFile, collectFilesRecursively, directoryExists, getContentType, createBuildContext } from './file-utils.js';
 
 export { applyEdits, removeCode, insertAt, replaceRange, getLineAndColumn, getPosition } from './source-editor.js';
 export type { SourceEdit, CodeRemoval } from './source-editor.js';

@@ -4,13 +4,13 @@ export { RoutesPrecompilerPlugin } from './routes-precompiler/routes-precompiler
 
 export { ComponentPrecompilerPlugin } from './component-precompiler/component-precompiler.js';
 
-export { ReactiveBindingPlugin } from './reactive-binding-compiler/reactive-binding-compiler.js';
+export { ReactiveBindingPlugin } from './reactive-binding-compiler/index.js';
 
 export { RegisterComponentStripperPlugin } from './register-component-stripper/register-component-stripper.js';
 
 export { GlobalCSSBundlerPlugin } from './global-css-bundler/global-css-bundler.js';
 
-export { HTMLBootstrapInjectorPlugin, injectBootstrapHTML } from './html-bootstrap-injector/html-bootstrap-injector.js';
+export { HTMLBootstrapInjectorPlugin } from './html-bootstrap-injector/html-bootstrap-injector.js';
 
 export { MinificationPlugin, minifySelectorsInHTML } from './minification/minification.js';
 

@@ -1,6 +1,9 @@
 export const FN = {
   REGISTER_COMPONENT: 'registerComponent',
   SIGNAL: 'signal',
+  WHEN: 'when',
+  WHEN_ELSE: 'whenElse',
+  REPEAT: 'repeat',
   HTML: 'html',
   CSS: 'css',
 } as const;

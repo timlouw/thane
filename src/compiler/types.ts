@@ -46,58 +46,6 @@ export interface Diagnostic {
 }
 
 /**
- * Result of a compilation step
- */
-export interface CompilationResult {
-  success: boolean;
-  diagnostics: Diagnostic[];
-  code?: string;
-  sourceMap?: string;
-}
-
-/**
- * Pipeline configuration
- */
-export interface PipelineConfig {
-  entry: string;
-  outDir: string;
-  environment: Environment;
-  minify: boolean;
-  sourceMap: boolean;
-  gzip: boolean;
-  verbose: boolean;
-  silent: boolean;
-  assetsDir?: string;
-  htmlTemplate?: string;
-}
-
-/**
- * Plugin interface
- */
-export interface Plugin {
-  name: string;
-  enabled?: boolean;
-  transform: (code: string, filePath: string, config: PipelineConfig) => CompilationResult;
-}
-
-/**
- * Plugin result
- */
-export interface PluginResult {
-  code: string;
-  diagnostics: Diagnostic[];
-}
-
-/**
- * File transformation context
- */
-export interface TransformContext {
-  filePath: string;
-  code: string;
-  config: PipelineConfig;
-}
-
-/**
  * Component definition
  */
 export interface ComponentDefinition {
@@ -173,4 +121,18 @@ export interface ImportInfo {
   start: number;
   end: number;
   quoteChar: string;
+}
+
+/**
+ * Shared build context passed across plugins to avoid duplicate work.
+ * The filesystem scan results are populated once during onStart and
+ * shared by ComponentPrecompiler and HTMLBootstrapInjector.
+ */
+export interface BuildContext {
+  /** All .ts files discovered by the shared scan */
+  tsFiles: string[];
+  /** Component definitions found during the scan, keyed by component name */
+  componentsByName: Map<string, ComponentDefinition>;
+  /** Component definitions found during the scan, keyed by selector */
+  componentsBySelector: Map<string, ComponentDefinition>;
 }

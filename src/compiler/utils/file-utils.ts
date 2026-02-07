@@ -1,4 +1,8 @@
 import fs from 'fs';
+import path from 'path';
+import type { BuildContext, ComponentDefinition } from '../types.js';
+import { sourceCache } from './cache.js';
+import { extractComponentDefinitions } from './ast-utils.js';
 
 export const safeReadFile = async (filePath: string): Promise<string | null> => {
   try {
@@ -39,8 +43,6 @@ export const directoryExists = (dir: string): boolean => {
   }
 };
 
-export const toCamelCase = (str: string): string => str.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
-
 export const getContentType = (url: string): string => {
   const ext = url.substring(url.lastIndexOf('.'));
   switch (ext) {
@@ -62,4 +64,39 @@ export const getContentType = (url: string): string => {
     default:
       return 'text/plain';
   }
+};
+
+/**
+ * Create a shared BuildContext by scanning workspace directories once.
+ * Both ComponentPrecompiler and HTMLBootstrapInjector use this to avoid
+ * duplicate filesystem scans.
+ */
+export const createBuildContext = async (): Promise<BuildContext> => {
+  const workspaceRoot = process.cwd();
+  const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
+  const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
+
+  const tsFiles: string[] = [];
+  const componentsByName = new Map<string, ComponentDefinition>();
+  const componentsBySelector = new Map<string, ComponentDefinition>();
+
+  sourceCache.clear();
+
+  for (const dir of searchDirs) {
+    const files = await collectFilesRecursively(dir, tsFilter);
+    tsFiles.push(...files);
+
+    for (const filePath of files) {
+      const cached = await sourceCache.get(filePath);
+      if (cached) {
+        const definitions = extractComponentDefinitions(cached.sourceFile, filePath);
+        for (const def of definitions) {
+          componentsByName.set(def.name, def);
+          componentsBySelector.set(def.selector, def);
+        }
+      }
+    }
+  }
+
+  return { tsFiles, componentsByName, componentsBySelector };
 };

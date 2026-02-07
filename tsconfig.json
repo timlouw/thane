@@ -20,6 +20,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "sourceMap": true,
+    "types": ["bun"],
 
     /* AND if you're building for a library: */
     "declaration": true,
@@ -28,5 +29,5 @@
     "declarationMap": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/debug-output/**"]
+  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/debug-output/**", "benchmark"]
 }

@@ -6,35 +6,10 @@
 
 import ts from 'typescript';
 import type { ComponentDefinition } from '../types.js';
+import { FN, CLASS, PROP, COMPONENT_TYPE } from './constants.js';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-export const FN = {
-  REGISTER_COMPONENT: 'registerComponent',
-  SIGNAL: 'signal',
-  WHEN: 'when',
-  WHEN_ELSE: 'whenElse',
-  REPEAT: 'repeat',
-  HTML: 'html',
-  CSS: 'css',
-} as const;
-
-export const CLASS = {
-  COMPONENT: 'Component',
-} as const;
-
-export const PROP = {
-  SELECTOR: 'selector',
-  TYPE: 'type',
-  COMPONENT_MODULE: 'componentModule',
-} as const;
-
-export const COMPONENT_TYPE = {
-  PAGE: 'page',
-  COMPONENT: 'component',
-} as const;
+// Re-export for backwards compatibility
+export { FN, CLASS, PROP, COMPONENT_TYPE };
 
 // ============================================================================
 // Source File Creation

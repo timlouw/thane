@@ -104,16 +104,23 @@ const ensureGlobalStyleElement = (): HTMLStyleElement => {
 };
 
 /**
+ * Append a CSS string directly to the global style element
+ */
+const appendStyle = (css: string): void => {
+  const styleEl = ensureGlobalStyleElement();
+  styleEl.textContent += css + '\n';
+};
+
+/**
  * Register global styles to be added to the document
  * 
  * @param styles - CSS strings to register
  */
 export function registerGlobalStyles(...styles: string[]): void {
-  const styleEl = ensureGlobalStyleElement();
   for (const css of styles) {
     if (!registeredStyles.has(css)) {
       registeredStyles.add(css);
-      styleEl.textContent += css + '\n';
+      appendStyle(css);
     }
   }
 }
@@ -157,12 +164,11 @@ export function registerComponent<T extends ComponentProps>(
   // Register component styles if not already registered
   if (component.styles && !registeredStyles.has(selector)) {
     registeredStyles.add(selector);
-    const styleEl = ensureGlobalStyleElement();
     // Scope :host selectors to component class
     const scopedStyles = component.styles
       .replace(/:host\b/g, `.${selector}`)
       .replace(/:host\(/g, `.${selector}(`);
-    styleEl.textContent += `/* ${selector} */\n${scopedStyles}\n`;
+    appendStyle(`/* ${selector} */\n${scopedStyles}`);
   }
   
   // Create factory function for component instantiation
@@ -194,16 +200,8 @@ export function registerComponent<T extends ComponentProps>(
   if (config.type === 'page') {
     return `<${selector}></${selector}>` as PageHTMLSelector;
   } else {
-    // Return a function that generates component HTML with props
-    return (props: T) => {
-      const propsString = Object.entries(props)
-        .map(([key, value]) => {
-          const val = typeof value === 'string' ? value : JSON.stringify(value) || '';
-          return `${key}="${val.replace(/"/g, '&quot;')}"`;
-        })
-        .join(' ');
-      return `<div data-thane-component="${selector}" ${propsString}></div>`;
-    };
+    // Reuse the shared HTML selector builder
+    return createComponentHTMLSelector<T>(selector);
   }
 }
 
@@ -262,11 +260,5 @@ export function generateComponentHTML(
   selector: ValidComponentSelector,
   props: ComponentProps = {}
 ): string {
-  const propsString = Object.entries(props)
-    .map(([key, value]) => {
-      const val = typeof value === 'string' ? value : JSON.stringify(value) || '';
-      return `${key}="${val.replace(/"/g, '&quot;')}"`;
-    })
-    .join(' ');
-  return `<${selector} ${propsString}></${selector}>`;
+  return createComponentHTMLSelector<ComponentProps>(selector)(props);
 }

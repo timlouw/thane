@@ -3,7 +3,7 @@ import path from 'path';
 import ts from 'typescript';
 import type { Plugin } from 'esbuild';
 import { logger, collectFilesRecursively, sourceCache, extractComponentDefinitions } from '../../utils/index.js';
-import type { ComponentDefinition } from '../../types.js';
+import type { ComponentDefinition, BuildContext } from '../../types.js';
 
 const NAME = 'html-bootstrap';
 type MountTarget = { type: 'body' } | { type: 'element'; id: string };
@@ -230,7 +230,11 @@ const findBootstrapConfig = async (entryPointPath: string): Promise<Omit<Bootstr
   }
 };
 
-const collectComponentDefinitions = async (): Promise<Map<string, ComponentDefinition>> => {
+const collectComponentDefinitions = async (ctx?: BuildContext): Promise<Map<string, ComponentDefinition>> => {
+  if (ctx) {
+    return ctx.componentsBySelector;
+  }
+
   const componentDefinitions = new Map<string, ComponentDefinition>();
   const workspaceRoot = process.cwd();
   const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
@@ -260,6 +264,7 @@ export const getBootstrapConfig = (): BootstrapConfig | null => bootstrapConfig;
 
 export interface HTMLBootstrapInjectorOptions {
   entryPoints: string[];
+  buildContext?: BuildContext;
 }
 
 export const HTMLBootstrapInjectorPlugin = (options: HTMLBootstrapInjectorOptions): Plugin => ({
@@ -279,7 +284,7 @@ export const HTMLBootstrapInjectorPlugin = (options: HTMLBootstrapInjectorOption
         logger.info(NAME, 'No mount() call found in main.ts');
         return;
       }
-      const components = await collectComponentDefinitions();
+      const components = await collectComponentDefinitions(options.buildContext);
       const componentDef = components.get(config.selector);
 
       bootstrapConfig = { ...config, componentDef };
@@ -289,7 +294,3 @@ export const HTMLBootstrapInjectorPlugin = (options: HTMLBootstrapInjectorOption
     });
   },
 });
-
-export const injectBootstrapHTML = (htmlContent: string): string => {
-  return htmlContent;
-};

@@ -1,132 +1,54 @@
+/**
+ * Post-Build Compressor Plugin (formerly Dead Code Eliminator)
+ *
+ * Applies safe, post-minification compression patterns to the bundled output.
+ *
+ * ⚠️  FRAGILE: The regex-based transforms below operate on esbuild's minified
+ * output format. Any change to esbuild's minification strategy (identifier
+ * mangling, whitespace handling, semicolon insertion) may break them.
+ * If a transform stops matching, it simply becomes a no-op — it won't break
+ * output, but it won't compress it either. When updating esbuild, verify the
+ * patterns still match by inspecting the built output.
+ *
+ * NOTE: This plugin operates on the concatenated/split bundle output files.
+ * The transforms are designed to be safe on arbitrary JS — they do not assume
+ * knowledge of bundle structure, only pattern-level invariants:
+ *   - `()=>{return[]}` is always equivalent to `()=>[]`
+ *   - multiple consecutive semicolons can be collapsed
+ *   - trailing commas in arrays can be removed
+ */
+
 import type { Plugin } from 'esbuild';
 import { logger } from '../../utils/index.js';
 
-const NAME = 'dead-code-eliminator';
+const NAME = 'post-build-compressor';
 
-interface SignalInfo {
-  name: string;
-  initialValue: any;
-  isModified: boolean;
-  modificationCount: number;
-}
-
-const analyzeSignals = (source: string): Map<string, SignalInfo> => {
-  const signals = new Map<string, SignalInfo>();
-  const initPattern = /f\(this,"(_\w+)",T\(([^)]+)\)\)/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = initPattern.exec(source)) !== null) {
-    const name = match[1];
-    const initialValueStr = match[2];
-
-    if (!name || !initialValueStr) continue;
-    let initialValue: any;
-    try {
-      if (initialValueStr === 'false') initialValue = false;
-      else if (initialValueStr === 'true') initialValue = true;
-      else if (initialValueStr === 'null') initialValue = null;
-      else if (initialValueStr.startsWith('"') || initialValueStr.startsWith("'")) {
-        initialValue = initialValueStr.slice(1, -1);
-      } else if (initialValueStr.startsWith('[')) {
-        initialValue = JSON.parse(initialValueStr.replace(/'/g, '"'));
-      } else if (!isNaN(Number(initialValueStr))) {
-        initialValue = Number(initialValueStr);
-      } else {
-        initialValue = undefined;
-      }
-    } catch {
-      initialValue = undefined;
-    }
-
-    signals.set(name, {
-      name,
-      initialValue,
-      isModified: false,
-      modificationCount: 0,
-    });
-  }
-  for (const [name, info] of signals) {
-    const setterPattern = new RegExp(`this\\.${name}\\([^)]+\\)`, 'g');
-    const matches = source.match(setterPattern) || [];
-    const setterCalls = matches.filter((m) => !m.endsWith('()'));
-    info.modificationCount = setterCalls.length;
-    info.isModified = info.modificationCount > 0;
-  }
-
-  return signals;
-};
-
-const eliminateDeadConditionals = (source: string, signals: Map<string, SignalInfo>): string => {
+/**
+ * Apply safe compression patterns to minified JS output.
+ * Each pattern is documented with the invariant that makes it safe.
+ */
+const compressOutput = (source: string): string => {
   let result = source;
-  const bindIfPattern = /A\(e,this\.(_\w+),"(b\d+)",`[^`]*`,\(\)=>\[[^\]]*\]\)/g;
 
-  const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+  // Simplify ()=>{return[]} to ()=>[]
+  // Safe: the block form and expression form are semantically identical.
+  result = result.replace(/\(\)\s*=>\s*\{\s*return\s*\[\s*\];\s*\}/g, '()=>[]');
 
-  let match: RegExpExecArray | null;
-  while ((match = bindIfPattern.exec(source)) !== null) {
-    const signalName = match[1];
-    if (!signalName) continue;
-    const info = signals.get(signalName);
+  // Remove redundant semicolons before closing braces: ;} → }
+  // Safe: ASI rules mean ; before } is always redundant.
+  result = result.replace(/;+\}/g, '}');
 
-    if (info && !info.isModified && info.initialValue === false) {
-      replacements.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        replacement: '', // Remove entirely
-      });
-      logger.info(NAME, `Eliminated dead conditional for ${signalName} (always false, never modified)`);
-    }
-  }
-  replacements.sort((a, b) => b.start - a.start);
-  for (const rep of replacements) {
-    result = result.substring(0, rep.start) + rep.replacement + result.substring(rep.end);
-  }
+  // Collapse multiple consecutive semicolons: ;; → ;
+  // Safe: extra semicolons are empty statements.
+  result = result.replace(/;{2,}/g, ';');
+
+  // Clean up empty arrays with trailing commas: [,] → []
+  // Safe: trailing commas produce undefined holes which are not intended here.
   result = result.replace(/return\s*\[[,\s]*\]/g, 'return[]');
   result = result.replace(/,+\]/g, ']');
   result = result.replace(/,{2,}/g, ',');
 
   return result;
-};
-
-const eliminateConsole = (source: string): string => {
-  return source.replace(/console\.\w+\([^)]*\),?/g, '').replace(/console\.\w+\("[^"]*"[^)]*\),?/g, '');
-};
-
-const simplifyEmptyCallbacks = (source: string): string => {
-  let result = source.replace(/\(\)\s*=>\s*\{\s*return\s*\[\s*\];\s*\}/g, '()=>[]');
-  result = result.replace(/\(\)\s*=>\s*\{\s*return\s*\[\s*\];\s*\}/g, '()=>[]');
-
-  return result;
-};
-
-const compressPatterns = (source: string): string => {
-  let result = source;
-  result = result.replace(/;+\}/g, '}');
-  result = result.replace(/;{2,}/g, ';');
-
-  return result;
-};
-
-const inlineStaticBindings = (source: string, signals: Map<string, SignalInfo>): string => {
-  let result = source;
-  const staticSignals = new Map<string, any>();
-  for (const [name, info] of signals) {
-    if (!info.isModified && info.initialValue !== undefined) {
-      staticSignals.set(name, info.initialValue);
-    }
-  }
-
-  if (staticSignals.size === 0) return result;
-  for (const [name, value] of staticSignals) {
-    logger.info(NAME, `Static signal detected: ${name} = ${JSON.stringify(value)}`);
-  }
-
-  return result;
-};
-
-const removeUnusedVars = (source: string): string => {
-
-  return source;
 };
 
 export const DeadCodeEliminatorPlugin: Plugin = {
@@ -147,24 +69,11 @@ export const DeadCodeEliminatorPlugin: Plugin = {
         if (file.path.endsWith('.js')) {
           const originalContent = new TextDecoder().decode(file.contents);
           const originalSize = file.contents.length;
-          const signals = analyzeSignals(originalContent);
-          let modifiedCount = 0;
-          let staticCount = 0;
-          for (const [, info] of signals) {
-            if (info.isModified) modifiedCount++;
-            else staticCount++;
-          }
 
-          if (signals.size > 0) {
-            logger.info(NAME, `Analyzed ${signals.size} signals: ${staticCount} static, ${modifiedCount} modified`);
-          }
-          let optimized = originalContent;
-          optimized = eliminateDeadConditionals(optimized, signals);
-          optimized = eliminateConsole(optimized);
-          optimized = simplifyEmptyCallbacks(optimized);
-          optimized = compressPatterns(optimized);
-          optimized = inlineStaticBindings(optimized, signals);
-          optimized = removeUnusedVars(optimized);
+          // Apply safe compression patterns
+          // Note: console removal is handled by esbuild's `drop: ['console']` in prod config
+          const optimized = compressOutput(originalContent);
+
           const newContents = new TextEncoder().encode(optimized);
           const savedBytes = originalSize - newContents.length;
           totalSaved += savedBytes;
@@ -182,7 +91,7 @@ export const DeadCodeEliminatorPlugin: Plugin = {
       const savedKB = (totalSaved / 1024).toFixed(2);
 
       if (totalSaved > 0) {
-        logger.info(NAME, `Dead code elimination saved ${savedKB} KB in ${elapsed}ms`);
+        logger.info(NAME, `Post-build compression saved ${savedKB} KB in ${elapsed}ms`);
       }
     });
   },

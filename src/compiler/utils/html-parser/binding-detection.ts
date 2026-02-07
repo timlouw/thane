@@ -1,0 +1,400 @@
+/**
+ * HTML Parser — Binding detection
+ * 
+ * Finds signal bindings, events, when/whenElse/repeat directives in parsed HTML.
+ */
+
+import type { HtmlElement, BindingInfo } from './types.js';
+import { WHEN_ELSE_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX, SIGNAL_CALL_REGEX, STYLE_EXPR_REGEX, ATTR_EXPR_REGEX } from './types.js';
+
+/**
+ * Shared argument parser for both whenElse and repeat expressions.
+ * 
+ * Parses a comma-separated argument list from a `${directive(` call,
+ * handling nested template literals and balanced parentheses.
+ *
+ * @param text - full text being parsed
+ * @param startPos - position right after the opening paren of the directive
+ * @returns parsed args and end position, or null if parsing fails
+ */
+function parseDirectiveArgs(
+  text: string,
+  startPos: number,
+): { args: string[]; end: number } | null {
+  let pos = startPos;
+  let parenDepth = 1;
+
+  const args: string[] = [];
+  let currentArg = '';
+  let inBacktick = false;
+  let templateBraceDepth = 0;
+
+  while (pos < text.length) {
+    const char = text[pos];
+
+    if (char === '`' && !inBacktick) {
+      inBacktick = true;
+      templateBraceDepth = 0;
+      currentArg += char;
+      pos++;
+      continue;
+    }
+
+    if (char === '`' && inBacktick && templateBraceDepth === 0) {
+      inBacktick = false;
+      currentArg += char;
+      pos++;
+      continue;
+    }
+
+    if (inBacktick && char === '$' && text[pos + 1] === '{') {
+      templateBraceDepth++;
+      currentArg += '${';
+      pos += 2;
+      continue;
+    }
+
+    if (inBacktick && char === '}' && templateBraceDepth > 0) {
+      templateBraceDepth--;
+      currentArg += char;
+      pos++;
+      continue;
+    }
+
+    if (inBacktick) {
+      currentArg += char;
+      pos++;
+      continue;
+    }
+
+    if (char === '(') {
+      parenDepth++;
+      currentArg += char;
+    } else if (char === ')') {
+      parenDepth--;
+      if (parenDepth === 0) {
+        args.push(currentArg.trim());
+        pos++;
+        if (text[pos] === '}') {
+          pos++;
+        }
+        return { args, end: pos };
+      }
+      currentArg += char;
+    } else if (char === ',' && parenDepth === 1) {
+      args.push(currentArg.trim());
+      currentArg = '';
+    } else {
+      currentArg += char;
+    }
+
+    pos++;
+  }
+
+  return null;
+}
+
+function extractHtmlTemplateContent(arg: string): string {
+  const htmlMatch = arg.match(/^html`([\s\S]*)`$/);
+  if (htmlMatch && htmlMatch[1] !== undefined) {
+    return htmlMatch[1];
+  }
+  
+  const plainMatch = arg.match(/^`([\s\S]*)`$/);
+  if (plainMatch && plainMatch[1] !== undefined) {
+    return plainMatch[1];
+  }
+  
+  return arg;
+}
+
+function extractSignalsFromExpression(expression: string): string[] {
+  SIGNAL_CALL_REGEX.lastIndex = 0;
+  const signals: string[] = [];
+  let signalMatch: RegExpExecArray | null;
+  while ((signalMatch = SIGNAL_CALL_REGEX.exec(expression)) !== null) {
+    const signalName = signalMatch[1];
+    if (signalName && !signals.includes(signalName)) {
+      signals.push(signalName);
+    }
+  }
+  return signals;
+}
+
+export function parseWhenElseExpression(
+  text: string,
+  startPos: number,
+): {
+  end: number;
+  condition: string;
+  thenTemplate: string;
+  elseTemplate: string;
+  signals: string[];
+} | null {
+  const argsStart = startPos + '${whenElse('.length;
+  const parsed = parseDirectiveArgs(text, argsStart);
+  if (!parsed || parsed.args.length !== 3) return null;
+
+  const condition = parsed.args[0];
+  const arg1 = parsed.args[1];
+  const arg2 = parsed.args[2];
+  if (!condition || !arg1 || !arg2) return null;
+
+  const thenTemplate = extractHtmlTemplateContent(arg1);
+  const elseTemplate = extractHtmlTemplateContent(arg2);
+  const signals = extractSignalsFromExpression(condition);
+
+  return {
+    end: parsed.end,
+    condition,
+    thenTemplate,
+    elseTemplate,
+    signals,
+  };
+}
+
+export function parseRepeatExpression(
+  text: string,
+  startPos: number,
+): {
+  end: number;
+  itemsExpression: string;
+  itemVar: string;
+  indexVar?: string;
+  itemTemplate: string;
+  emptyTemplate?: string;
+  trackByFn?: string;
+  signals: string[];
+} | null {
+  const argsStart = startPos + '${repeat('.length;
+  const parsed = parseDirectiveArgs(text, argsStart);
+  if (!parsed) return null;
+
+  const filteredArgs = parsed.args.filter(a => a.trim() !== '');
+
+  if (filteredArgs.length < 2 || filteredArgs.length > 4) {
+    return null;
+  }
+
+  const itemsExpression = filteredArgs[0];
+  const templateFn = filteredArgs[1];
+  if (!itemsExpression || !templateFn) {
+    return null;
+  }
+
+  const arrowMatch = templateFn.match(/^\(([^)]*)\)\s*=>\s*(.*)$/s);
+  if (!arrowMatch) {
+    return null;
+  }
+
+  const arrowParams = arrowMatch[1];
+  const arrowBody = arrowMatch[2];
+  if (!arrowParams || !arrowBody) return null;
+
+  const params = arrowParams.split(',').map((p) => p.trim());
+  const itemVar = params[0];
+  if (!itemVar) return null;
+  const indexVar = params[1];
+
+  const templateBody = arrowBody.trim();
+  const itemTemplate = extractHtmlTemplateContent(templateBody);
+
+  let emptyTemplate: string | undefined;
+  const arg2 = filteredArgs[2];
+  if (filteredArgs.length >= 3 && arg2 && arg2.trim() !== 'null' && arg2.trim() !== 'undefined') {
+    emptyTemplate = extractHtmlTemplateContent(arg2.trim());
+  }
+
+  let trackByFn: string | undefined;
+  const arg3 = filteredArgs[3];
+  if (filteredArgs.length === 4 && arg3) {
+    const trimmed = arg3.trim();
+    const arrowPattern = /^\(?[\w,\s]+\)?\s*=>\s*[\w.[\]]+$/;
+    if (!arrowPattern.test(trimmed)) {
+      console.warn(`[thane] trackBy function should be an arrow function returning a key property, e.g., (item) => item.id`);
+    }
+    trackByFn = trimmed;
+  }
+
+  const signals = extractSignalsFromExpression(itemsExpression);
+
+  return {
+    end: parsed.end,
+    itemsExpression,
+    itemVar,
+    indexVar,
+    itemTemplate,
+    emptyTemplate,
+    trackByFn,
+    signals,
+  };
+}
+
+export function findBindingsInText(text: string, textStart: number, parent: HtmlElement | null, bindings: BindingInfo[]): void {
+  if (!parent) return;
+
+  const complexExprPositions: Array<{ start: number; end: number }> = [];
+
+  WHEN_ELSE_REGEX.lastIndex = 0;
+  let whenElseMatch: RegExpExecArray | null;
+
+  while ((whenElseMatch = WHEN_ELSE_REGEX.exec(text)) !== null) {
+    const startPos = whenElseMatch.index;
+    const parsed = parseWhenElseExpression(text, startPos);
+    if (parsed) {
+      complexExprPositions.push({ start: startPos, end: parsed.end });
+
+      bindings.push({
+        element: parent,
+        type: 'whenElse',
+        signalName: parsed.signals[0] || '',
+        signalNames: parsed.signals,
+        expressionStart: textStart + startPos,
+        expressionEnd: textStart + parsed.end,
+        fullExpression: text.substring(startPos, parsed.end),
+        jsExpression: parsed.condition,
+        thenTemplate: parsed.thenTemplate,
+        elseTemplate: parsed.elseTemplate,
+      });
+    }
+  }
+
+  REPEAT_REGEX.lastIndex = 0;
+  let repeatMatch: RegExpExecArray | null;
+
+  while ((repeatMatch = REPEAT_REGEX.exec(text)) !== null) {
+    const startPos = repeatMatch.index;
+    const parsed = parseRepeatExpression(text, startPos);
+    if (parsed) {
+      complexExprPositions.push({ start: startPos, end: parsed.end });
+
+      bindings.push({
+        element: parent,
+        type: 'repeat',
+        signalName: parsed.signals[0] || '',
+        signalNames: parsed.signals,
+        expressionStart: textStart + startPos,
+        expressionEnd: textStart + parsed.end,
+        fullExpression: text.substring(startPos, parsed.end),
+        itemsExpression: parsed.itemsExpression,
+        itemVar: parsed.itemVar,
+        indexVar: parsed.indexVar,
+        itemTemplate: parsed.itemTemplate,
+        emptyTemplate: parsed.emptyTemplate,
+        trackByFn: parsed.trackByFn,
+      });
+    }
+  }
+
+  SIGNAL_EXPR_REGEX.lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = SIGNAL_EXPR_REGEX.exec(text)) !== null) {
+    const pos = match.index;
+    const insideComplex = complexExprPositions.some((cp) => pos >= cp.start && pos < cp.end);
+    if (insideComplex) continue;
+
+    const signalName = match[1];
+    if (!signalName) continue;
+
+    bindings.push({
+      element: parent,
+      type: 'text',
+      signalName,
+      expressionStart: textStart + match.index,
+      expressionEnd: textStart + match.index + match[0].length,
+      fullExpression: match[0],
+    });
+  }
+}
+
+export function findBindingsInAttributes(element: HtmlElement, bindings: BindingInfo[]): void {
+  if (element.whenDirective) {
+    const whenMatch = element.whenDirective.match(/^"\$\{when\((.+)\)\}"$/);
+    if (whenMatch) {
+      const innerExpr = whenMatch[1];
+      if (!innerExpr) return;
+      const signals = extractSignalsFromExpression(innerExpr);
+
+      const primarySignal = signals[0];
+      if (signals.length > 0 && primarySignal) {
+        bindings.push({
+          element,
+          type: 'when',
+          signalName: primarySignal,
+          signalNames: signals,
+          expressionStart: element.whenDirectiveStart!,
+          expressionEnd: element.whenDirectiveEnd!,
+          fullExpression: element.whenDirective,
+          jsExpression: innerExpr,
+        });
+      }
+    }
+  }
+
+  for (const [name, attr] of element.attributes) {
+    if (name.startsWith('@')) {
+      const eventParts = name.slice(1).split('.');
+      const eventName = eventParts[0];
+      const modifiers = eventParts.slice(1);
+
+      const eventExprMatch = attr.value.match(/^\$\{(.+)\}$/s);
+      if (eventExprMatch && eventExprMatch[1]) {
+        const handlerExpression = eventExprMatch[1].trim();
+        bindings.push({
+          element,
+          type: 'event',
+          signalName: '',
+          eventName,
+          eventModifiers: modifiers,
+          handlerExpression,
+          expressionStart: attr.start,
+          expressionEnd: attr.end,
+          fullExpression: `@${name.slice(1)}="${attr.value}"`,
+        });
+      }
+      continue;
+    }
+
+    if (name === 'style') {
+      STYLE_EXPR_REGEX.lastIndex = 0;
+      let styleMatch: RegExpExecArray | null;
+
+      while ((styleMatch = STYLE_EXPR_REGEX.exec(attr.value)) !== null) {
+        const fullExpr = styleMatch[2];
+        const signalName = styleMatch[3];
+        const propertyName = styleMatch[1];
+        if (!fullExpr || !signalName || !propertyName) continue;
+
+        const exprStartInValue = styleMatch.index + styleMatch[0].indexOf(fullExpr);
+        bindings.push({
+          element,
+          type: 'style',
+          signalName,
+          property: propertyName,
+          expressionStart: attr.valueStart + exprStartInValue,
+          expressionEnd: attr.valueStart + exprStartInValue + fullExpr.length,
+          fullExpression: fullExpr,
+        });
+      }
+      continue;
+    }
+
+    ATTR_EXPR_REGEX.lastIndex = 0;
+    let attrMatch: RegExpExecArray | null;
+
+    while ((attrMatch = ATTR_EXPR_REGEX.exec(attr.value)) !== null) {
+      const signalName = attrMatch[1];
+      if (!signalName) continue;
+      bindings.push({
+        element,
+        type: 'attr',
+        signalName,
+        property: name,
+        expressionStart: attr.valueStart + attrMatch.index,
+        expressionEnd: attr.valueStart + attrMatch.index + attrMatch[0].length,
+        fullExpression: attrMatch[0],
+      });
+    }
+  }
+}

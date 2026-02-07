@@ -3,7 +3,7 @@ import path from 'path';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
 import vm from 'vm';
-import type { ComponentDefinition } from '../../types.js';
+import type { ComponentDefinition, BuildContext } from '../../types.js';
 import {
   extractComponentDefinitions,
   findEnclosingClass,
@@ -17,7 +17,15 @@ import {
   extendsComponentQuick,
   generateComponentHTML,
 } from '../../utils/index.js';
-import { transformComponentSource } from '../reactive-binding-compiler/reactive-binding-compiler.js';
+import { transformComponentSource } from '../reactive-binding-compiler/index.js';
+import { ErrorCode, createError } from '../../errors.js';
+
+/**
+ * Sentinel value distinguishing "evaluation failed" from "evaluated to undefined".
+ * Using a unique symbol prevents any ambiguity.
+ */
+const EVAL_FAILED = Symbol('EVAL_FAILED');
+type EvalResult<T = any> = T | typeof EVAL_FAILED;
 
 interface ComponentImportInfo {
   importPath: string;
@@ -128,7 +136,41 @@ const createCTFEContext = (classProperties: Map<string, any>) => {
   return vm.createContext(sandbox);
 };
 
-const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classProperties: Map<string, any>): any => {
+/**
+ * Remove `this.` property accesses from an expression string using AST-aware rewriting.
+ * Only replaces `this.` in actual property accesses, not inside string literals.
+ */
+const stripThisAccessAST = (code: string): string => {
+  try {
+    const tempSource = ts.createSourceFile('__ctfe_temp.ts', code, ts.ScriptTarget.ESNext, true, ts.ScriptKind.TS);
+    const edits: { start: number; end: number }[] = [];
+
+    const visit = (node: ts.Node): void => {
+      if (ts.isPropertyAccessExpression(node) && node.expression.kind === ts.SyntaxKind.ThisKeyword) {
+        // Record the `this.` portion for removal (from `this` start to dot end)
+        edits.push({
+          start: node.expression.getStart(tempSource),
+          end: node.expression.getEnd() + 1, // +1 for the dot
+        });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(tempSource);
+
+    // Apply edits in reverse order to preserve positions
+    let result = code;
+    for (let i = edits.length - 1; i >= 0; i--) {
+      const edit = edits[i]!;
+      result = result.substring(0, edit.start) + result.substring(edit.end);
+    }
+    return result;
+  } catch {
+    // Fallback: if AST parsing fails, return original
+    return code;
+  }
+};
+
+const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classProperties: Map<string, any>): EvalResult => {
   if (ts.isStringLiteral(node)) return node.text;
   if (ts.isNumericLiteral(node)) return Number(node.text);
   if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
@@ -141,7 +183,7 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
     if (classProperties.has(propName)) {
       return classProperties.get(propName);
     }
-    return undefined;
+    return EVAL_FAILED;
   }
 
   if (ts.isObjectLiteralExpression(node)) {
@@ -159,8 +201,8 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
           continue;
         }
         const value = evaluateExpressionCTFE(prop.initializer, sourceFile, classProperties);
-        if (value === undefined && prop.initializer.kind !== ts.SyntaxKind.UndefinedKeyword) {
-          return undefined;
+        if (value === EVAL_FAILED) {
+          return EVAL_FAILED;
         }
         obj[key] = value;
       } else if (ts.isShorthandPropertyAssignment(prop)) {
@@ -168,7 +210,7 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
         if (classProperties.has(key)) {
           obj[key] = classProperties.get(key);
         } else {
-          return undefined;
+          return EVAL_FAILED;
         }
       }
     }
@@ -179,11 +221,11 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
     const arr = [];
     for (const el of node.elements) {
       if (ts.isSpreadElement(el)) {
-        return undefined;
+        return EVAL_FAILED;
       }
       const value = evaluateExpressionCTFE(el, sourceFile, classProperties);
-      if (value === undefined && el.kind !== ts.SyntaxKind.UndefinedKeyword) {
-        return undefined;
+      if (value === EVAL_FAILED) {
+        return EVAL_FAILED;
       }
       arr.push(value);
     }
@@ -193,14 +235,14 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
   try {
     const context = createCTFEContext(classProperties);
     let code = node.getText(sourceFile);
-    code = code.replace(/this\./g, '');
+    code = stripThisAccessAST(code);
 
     const result = vm.runInContext(`(${code})`, context, {
-      timeout: 1000,
+      timeout: 50,
     });
     return result;
   } catch {
-    return undefined;
+    return EVAL_FAILED;
   }
 };
 
@@ -229,7 +271,7 @@ const extractClassPropertiesCTFE = (classNode: ts.ClassExpression | ts.ClassDecl
 
     for (const [propName, initializer] of unresolvedProperties) {
       const value = evaluateExpressionCTFE(initializer, sourceFile, resolvedProperties);
-      if (value !== undefined) {
+      if (value !== EVAL_FAILED) {
         resolvedProperties.set(propName, value);
         unresolvedProperties.delete(propName);
         resolved = true;
@@ -280,27 +322,36 @@ const findComponentCallsCTFE = (
 
                 const props = evaluateExpressionCTFE(propsArg, sourceFile, classProperties);
 
-                if (props !== undefined && typeof props === 'object' && props !== null) {
-                  const exprStart = expr.getStart(sourceFile);
-                  const exprEnd = expr.getEnd();
-
-                  let searchStart = exprStart - 1;
-                  while (searchStart >= 0 && source.substring(searchStart, searchStart + 2) !== '${') {
-                    searchStart--;
+                if (props !== EVAL_FAILED && typeof props === 'object' && props !== null) {
+                  // Use the template span's position info directly.
+                  // The template head/previous span literal ends right before `${`,
+                  // and the span's literal text starts right after `}`.
+                  // We need the enclosing `${...}` which is:
+                  //   - Start: the head/prev literal's end position - that's where `${` begins
+                  //   - End: the span literal's start position + 1 (after `}`)
+                  
+                  // Get the span index to find the preceding literal end
+                  const spanIndex = template.templateSpans.indexOf(span);
+                  let dollarBraceStart: number;
+                  
+                  if (spanIndex === 0) {
+                    // First span: `${` comes right after the template head
+                    dollarBraceStart = template.head.getEnd() - 2; // head ends with `${`, subtract 2 to get `$` pos
+                  } else {
+                    // Subsequent span: `${` comes at end of previous span's literal
+                    const prevSpan = template.templateSpans[spanIndex - 1]!;
+                    dollarBraceStart = prevSpan.literal.getEnd() - 2;
                   }
+                  
+                  // The closing `}` is at the start of this span's literal text
+                  const closingBrace = span.literal.getStart(sourceFile);
 
-                  let searchEnd = exprEnd;
-                  while (searchEnd < source.length && source[searchEnd] !== '}') {
-                    searchEnd++;
-                  }
-                  searchEnd++;
-
-                  if (searchStart >= 0 && searchEnd <= source.length) {
+                  if (dollarBraceStart >= 0 && closingBrace <= source.length) {
                     calls.push({
                       componentName,
                       props,
-                      startIndex: searchStart,
-                      endIndex: searchEnd,
+                      startIndex: dollarBraceStart,
+                      endIndex: closingBrace,
                     });
                   }
                 }
@@ -318,7 +369,7 @@ const findComponentCallsCTFE = (
   return calls;
 };
 
-export const ComponentPrecompilerPlugin: Plugin = {
+export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
   name: NAME,
   setup(build) {
     const componentDefinitions = new Map<string, ComponentDefinition>();
@@ -327,22 +378,31 @@ export const ComponentPrecompilerPlugin: Plugin = {
 
     build.onStart(async () => {
       componentDefinitions.clear();
-      sourceCache.clear();
 
-      const workspaceRoot = process.cwd();
-      const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
+      if (ctx) {
+        // Use shared context from BuildContext
+        for (const [name, def] of ctx.componentsByName) {
+          componentDefinitions.set(name, def);
+        }
+      } else {
+        // Fallback: do our own scan
+        sourceCache.clear();
 
-      const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
+        const workspaceRoot = process.cwd();
+        const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
 
-      for (const dir of searchDirs) {
-        const files = await collectFilesRecursively(dir, tsFilter);
+        const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
 
-        for (const filePath of files) {
-          const cached = await sourceCache.get(filePath);
-          if (cached) {
-            const definitions = extractComponentDefinitions(cached.sourceFile, filePath);
-            for (const def of definitions) {
-              componentDefinitions.set(def.name, def);
+        for (const dir of searchDirs) {
+          const files = await collectFilesRecursively(dir, tsFilter);
+
+          for (const filePath of files) {
+            const cached = await sourceCache.get(filePath);
+            if (cached) {
+              const definitions = extractComponentDefinitions(cached.sourceFile, filePath);
+              for (const def of definitions) {
+                componentDefinitions.set(def.name, def);
+              }
             }
           }
         }
@@ -441,9 +501,14 @@ export const ComponentPrecompilerPlugin: Plugin = {
 
         return createLoaderResult(modifiedSource);
       } catch (error) {
-        logger.error(NAME, `Error processing ${args.path}`, error);
+        const diagnostic = createError(
+          `Error processing ${args.path}: ${error instanceof Error ? error.message : error}`,
+          { file: args.path, line: 0, column: 0 },
+          ErrorCode.PLUGIN_ERROR,
+        );
+        logger.diagnostic(diagnostic);
         return undefined;
       }
     });
   },
-};
+});
