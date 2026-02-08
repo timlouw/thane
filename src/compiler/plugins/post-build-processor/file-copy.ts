@@ -4,6 +4,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { logger } from '../../utils/index.js';
 
 export const recursivelyCopyAssetsIntoDist = async (src: string, dest: string): Promise<void> => {
   await fs.promises.mkdir(dest, { recursive: true });
@@ -21,7 +22,8 @@ export const recursivelyCopyAssetsIntoDist = async (src: string, dest: string): 
         await fs.promises.copyFile(srcPath, destPath);
       }
     }
-  } catch {
+  } catch (error) {
+    logger.verbose(`[file-copy] Failed to copy assets from ${src}: ${error instanceof Error ? error.message : error}`);
   }
 };
 
@@ -73,8 +75,9 @@ export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string)
             await fs.promises.rm(destPath, { recursive: true, force: true }).catch(() => {});
           }
         }
-      } catch {
-        // Ignore errors from race conditions during rapid file changes
+      } catch (error) {
+        // Race conditions during rapid file changes
+        logger.verbose(`[file-copy] Watcher error for ${filename}: ${error instanceof Error ? error.message : error}`);
       }
     }, DEBOUNCE_MS));
   });

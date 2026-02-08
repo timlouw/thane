@@ -17,7 +17,6 @@ export const generateMinifiedSelector = (index: number): string => {
 
 export class SelectorMap {
   private originalToMinified = new Map<string, string>();
-  private minifiedToOriginal = new Map<string, string>();
   private nextIndex = 0;
 
   register(originalSelector: string): string {
@@ -28,16 +27,7 @@ export class SelectorMap {
 
     const minified = generateMinifiedSelector(this.nextIndex++);
     this.originalToMinified.set(originalSelector, minified);
-    this.minifiedToOriginal.set(minified, originalSelector);
     return minified;
-  }
-
-  getMinified(original: string): string | undefined {
-    return this.originalToMinified.get(original);
-  }
-
-  getOriginal(minified: string): string | undefined {
-    return this.minifiedToOriginal.get(minified);
   }
 
   entries(): IterableIterator<[string, string]> {
@@ -50,7 +40,6 @@ export class SelectorMap {
 
   clear(): void {
     this.originalToMinified.clear();
-    this.minifiedToOriginal.clear();
     this.nextIndex = 0;
   }
 }

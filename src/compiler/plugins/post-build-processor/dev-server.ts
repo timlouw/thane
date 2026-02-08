@@ -7,7 +7,7 @@ import http from 'http';
 import path from 'path';
 import readline from 'readline';
 import zlib from 'zlib';
-import { consoleColors, ansi, getContentType } from '../../utils/index.js';
+import { consoleColors, ansi, getContentType, logger } from '../../utils/index.js';
 
 const injectLiveReloadScript = (html: string): string => {
   const script = `<script>new EventSource('/__live-reload').onmessage=()=>location.reload()</script>`;
@@ -25,7 +25,7 @@ const promptForPort = (): Promise<number> => {
       rl.close();
       const port = parseInt(answer, 10);
       if (isNaN(port) || port < 1 || port > 65535) {
-        console.error(consoleColors.red, 'Invalid port number. Please enter a number between 1 and 65535.');
+        logger.error('dev-server', 'Invalid port number. Please enter a number between 1 and 65535.');
         resolve(promptForPort());
       } else {
         resolve(port);
@@ -96,7 +96,7 @@ export class DevServer {
       }
     };
 
-    const server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse) => {
+    const server = http.createServer(async (req: http.IncomingMessage, res: http.ServerResponse) => {
       const requestedUrl = req.url || '/';
       const requestedPath = path.join(distDir, requestedUrl);
       const indexPath = path.join(distDir, 'index.html');
@@ -114,19 +114,29 @@ export class DevServer {
         return;
       }
 
-      if (fs.existsSync(requestedPath) && fs.statSync(requestedPath).isFile()) {
-        compressAndServe(requestedPath, req, res, getContentType(requestedUrl), 'public, max-age=31536000, immutable');
-      } else if (!hasFileExtension) {
-        compressAndServe(indexPath, req, res, 'text/html', 'no-cache');
-      } else {
-        res.statusCode = 404;
-        res.end('Not Found');
+      try {
+        const stat = await fs.promises.stat(requestedPath);
+        if (stat.isFile()) {
+          compressAndServe(requestedPath, req, res, getContentType(requestedUrl), 'public, max-age=31536000, immutable');
+        } else if (!hasFileExtension) {
+          compressAndServe(indexPath, req, res, 'text/html', 'no-cache');
+        } else {
+          res.statusCode = 404;
+          res.end('Not Found');
+        }
+      } catch {
+        if (!hasFileExtension) {
+          compressAndServe(indexPath, req, res, 'text/html', 'no-cache');
+        } else {
+          res.statusCode = 404;
+          res.end('Not Found');
+        }
       }
     });
 
     server.on('error', async (err: Error & { code?: string }) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(consoleColors.red, `Port ${port} is already in use.`);
+        logger.error('dev-server', `Port ${port} is already in use.`);
         const newPort = await promptForPort();
         this.start(newPort);
       } else {

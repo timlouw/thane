@@ -1,7 +1,3 @@
-/**
- * Shared CLI logic for both `thane` and `wcf` entry points.
- */
-
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';

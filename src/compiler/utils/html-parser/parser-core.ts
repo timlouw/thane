@@ -6,12 +6,34 @@ import type { ParserState, HtmlElement, BindingInfo, ParseDiagnostic, ParsedTemp
 import { VOID_ELEMENTS } from './types.js';
 import { findBindingsInText, findBindingsInAttributes } from './binding-detection.js';
 
-function createEmptyElement(tagName: string, tagStart: number, tagNameEnd: number): HtmlElement {
+/**
+ * Mutable builder type used during parsing. All discriminant fields are writable.
+ * Narrowed to the HtmlElement union when pushed into the tree.
+ */
+interface MutableHtmlElement {
+  tagName: string;
+  tagStart: number;
+  tagNameEnd: number;
+  openTagEnd: number;
+  closeTagStart: number;
+  closeTagEnd: number;
+  attributes: Map<string, import('./types.js').AttributeInfo>;
+  children: HtmlElement[];
+  parent: HtmlElement | null;
+  isSelfClosing: boolean;
+  isVoid: boolean;
+  textContent: import('./types.js').TextNode[];
+  whenDirective?: string;
+  whenDirectiveStart?: number;
+  whenDirectiveEnd?: number;
+}
+
+function createEmptyElement(tagName: string, tagStart: number, tagNameEnd: number): MutableHtmlElement {
   const isVoid = VOID_ELEMENTS.has(tagName.toLowerCase());
   return {
     tagName,
     tagStart,
-    tagNameEnd: tagNameEnd,
+    tagNameEnd,
     openTagEnd: 0,
     closeTagStart: 0,
     closeTagEnd: 0,
@@ -24,7 +46,12 @@ function createEmptyElement(tagName: string, tagStart: number, tagNameEnd: numbe
     whenDirective: undefined,
     whenDirectiveStart: undefined,
     whenDirectiveEnd: undefined,
-  } as HtmlElement;
+  };
+}
+
+/** Narrow a mutable builder into the HtmlElement discriminated union. */
+function finalizeElement(el: MutableHtmlElement): HtmlElement {
+  return el as HtmlElement;
 }
 
 export function parseHtmlTemplate(html: string): ParsedTemplate {
@@ -35,7 +62,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
   let state: ParserState = 'TEXT';
   let pos = 0;
 
-  let currentElement: HtmlElement | null = null;
+  let currentElement: MutableHtmlElement | null = null;
   let elementStack: HtmlElement[] = [];
 
   let tagName = '';
@@ -66,7 +93,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
         });
         findBindingsInText(textContent, textStart, parent, bindings);
       } else {
-        const virtualRoot: HtmlElement = {
+        const virtualRoot = finalizeElement({
           tagName: '__root__',
           tagStart: 0,
           tagNameEnd: 0,
@@ -79,14 +106,15 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           isSelfClosing: false,
           isVoid: false,
           textContent: [],
-        } as HtmlElement;
+        });
         findBindingsInText(textContent, textStart, virtualRoot, bindings);
       }
     }
     textContent = '';
   };
 
-  const pushElement = (element: HtmlElement) => {
+  const pushElement = (mutable: MutableHtmlElement): HtmlElement => {
+    const element = finalizeElement(mutable);
     const parent = elementStack[elementStack.length - 1];
     if (parent) {
       parent.children.push(element);
@@ -97,6 +125,7 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
     if (!element.isSelfClosing && !element.isVoid) {
       elementStack.push(element);
     }
+    return element;
   };
 
   const closeElement = (closingTagName: string, closeStart: number, closeEnd: number) => {
@@ -245,20 +274,20 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
             currentElement.closeTagStart = pos + 1;
             currentElement.closeTagEnd = pos + 1;
           }
-          pushElement(currentElement);
-          findBindingsInAttributes(currentElement, bindings);
+          const finalized1 = pushElement(currentElement);
+          findBindingsInAttributes(finalized1, bindings);
           currentElement = null;
           state = 'TEXT';
           textContent = '';
           textStart = pos + 1;
         } else if (char === '/' && nextChar === '>') {
           currentElement = createEmptyElement(tagName, tagStart, pos);
-          (currentElement as any).isSelfClosing = true;
+          currentElement.isSelfClosing = true;
           currentElement.openTagEnd = pos + 2;
           currentElement.closeTagStart = pos + 2;
           currentElement.closeTagEnd = pos + 2;
-          pushElement(currentElement);
-          findBindingsInAttributes(currentElement, bindings);
+          const finalized2 = pushElement(currentElement);
+          findBindingsInAttributes(finalized2, bindings);
           currentElement = null;
           state = 'TEXT';
           pos++;
@@ -274,19 +303,19 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
             currentElement!.closeTagStart = pos + 1;
             currentElement!.closeTagEnd = pos + 1;
           }
-          pushElement(currentElement!);
-          findBindingsInAttributes(currentElement!, bindings);
+          const finalized3 = pushElement(currentElement!);
+          findBindingsInAttributes(finalized3, bindings);
           currentElement = null;
           state = 'TEXT';
           textContent = '';
           textStart = pos + 1;
         } else if (char === '/' && nextChar === '>') {
-          (currentElement as any).isSelfClosing = true;
+          currentElement!.isSelfClosing = true;
           currentElement!.openTagEnd = pos + 2;
           currentElement!.closeTagStart = pos + 2;
           currentElement!.closeTagEnd = pos + 2;
-          pushElement(currentElement!);
-          findBindingsInAttributes(currentElement!, bindings);
+          const finalized4 = pushElement(currentElement!);
+          findBindingsInAttributes(finalized4, bindings);
           currentElement = null;
           state = 'TEXT';
           pos++;
@@ -303,9 +332,9 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
               if (braceDepth === 0 && html[i + 1] === '"') {
                 const directiveEnd = i + 2;
                 const directive = html.substring(directiveStart, directiveEnd);
-                (currentElement as any).whenDirective = directive;
-                (currentElement as any).whenDirectiveStart = directiveStart;
-                (currentElement as any).whenDirectiveEnd = directiveEnd;
+                currentElement!.whenDirective = directive;
+                currentElement!.whenDirectiveStart = directiveStart;
+                currentElement!.whenDirectiveEnd = directiveEnd;
                 pos = directiveEnd - 1;
                 break;
               }
@@ -358,8 +387,8 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
             currentElement!.closeTagStart = pos + 1;
             currentElement!.closeTagEnd = pos + 1;
           }
-          pushElement(currentElement!);
-          findBindingsInAttributes(currentElement!, bindings);
+          const finalized5 = pushElement(currentElement!);
+          findBindingsInAttributes(finalized5, bindings);
           currentElement = null;
           state = 'TEXT';
           textContent = '';
@@ -452,8 +481,8 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
             currentElement!.closeTagStart = pos + 1;
             currentElement!.closeTagEnd = pos + 1;
           }
-          pushElement(currentElement!);
-          findBindingsInAttributes(currentElement!, bindings);
+          const finalized6 = pushElement(currentElement!);
+          findBindingsInAttributes(finalized6, bindings);
           currentElement = null;
           state = 'TEXT';
           textContent = '';

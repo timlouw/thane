@@ -62,11 +62,9 @@ export {
   Component, 
   registerComponent, 
   registerGlobalStyles, 
-  globalStyleManager,
   mountComponent,
   mount,
   createComponentHTMLSelector,
-  generateComponentHTML,
   type ComponentRoot as NativeComponentRoot
 } from './component.js';
 

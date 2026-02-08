@@ -7,7 +7,7 @@ export { logger, Logger } from './logger.js';
 
 export { safeReadFile, collectFilesRecursively, directoryExists, getContentType, createBuildContext } from './file-utils.js';
 
-export { applyEdits, removeCode, insertAt, replaceRange, getLineAndColumn, getPosition } from './source-editor.js';
+export { applyEdits, removeCode } from './source-editor.js';
 export type { SourceEdit, CodeRemoval } from './source-editor.js';
 
 export {
@@ -41,8 +41,7 @@ export {
 
 export { sourceCache } from './cache.js';
 
-export { processFileWithAST, shouldSkipPath, hasSignalPatterns, createLoaderResult, extendsComponentQuick } from './plugin-helper.js';
-export type { ProcessResult, ProcessOptions } from './plugin-helper.js';
+export { shouldSkipPath, hasSignalPatterns, createLoaderResult, extendsComponentQuick } from './plugin-helper.js';
 
 export { PLUGIN_NAME, BIND_FN, generateSelectorHTML } from './constants.js';
 

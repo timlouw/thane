@@ -123,10 +123,10 @@ export function createSignalReplacementEdits(
   excludeRanges: Array<{ start: number; end: number }> = [],
 ): HtmlEdit[] {
   const edits: HtmlEdit[] = [];
-  SIGNAL_EXPR_REGEX.lastIndex = 0;
+  const signalExprRegex = SIGNAL_EXPR_REGEX();
   let match: RegExpExecArray | null;
 
-  while ((match = SIGNAL_EXPR_REGEX.exec(html)) !== null) {
+  while ((match = signalExprRegex.exec(html)) !== null) {
     const exprStart = match.index;
     const exprEnd = exprStart + match[0].length;
 

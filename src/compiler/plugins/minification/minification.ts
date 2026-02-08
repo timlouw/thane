@@ -7,7 +7,8 @@ import { logger } from '../../utils/index.js';
 
 const NAME = 'minification';
 
-// Instance-scoped SelectorMap — avoids module-level mutable state for concurrent builds.
+// Module-level SelectorMap — set per-build in onStart. Safe because esbuild serializes builds,
+// but would need redesign for hypothetical concurrent builds.
 let activeSelectorMap = new SelectorMap();
 
 export const MinificationPlugin: Plugin = {
@@ -89,8 +90,6 @@ export const MinificationPlugin: Plugin = {
     });
   },
 };
-
-export const getSelectorMap = (): SelectorMap => activeSelectorMap;
 
 export const minifySelectorsInHTML = (html: string): string => {
   if (activeSelectorMap.size === 0) return html;

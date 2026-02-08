@@ -15,7 +15,7 @@ import { RegisterComponentStripperPlugin } from '../plugins/register-component-s
 import { GlobalCSSBundlerPlugin } from '../plugins/global-css-bundler/global-css-bundler.js';
 import { HTMLBootstrapInjectorPlugin } from '../plugins/html-bootstrap-injector/html-bootstrap-injector.js';
 import { MinificationPlugin } from '../plugins/minification/minification.js';
-import { DeadCodeEliminatorPlugin } from '../plugins/dead-code-eliminator/dead-code-eliminator.js';
+import { PostBuildCompressorPlugin } from '../plugins/post-build-compressor/post-build-compressor.js';
 import { PostBuildPlugin } from '../plugins/post-build-processor/post-build-processor.js';
 
 export async function runBuild(config: BuildConfig): Promise<void> {
@@ -52,7 +52,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
   const prodPlugins = [
     ...basePlugins,
     MinificationPlugin,
-    DeadCodeEliminatorPlugin,
+    PostBuildCompressorPlugin,
     PostBuildPlugin(postBuildOptions),
   ];
 

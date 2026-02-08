@@ -180,10 +180,10 @@ export function decodeHtmlEntities(text: string): string {
   return result;
 }
 
-// Pre-compiled regexes for binding detection (reset lastIndex before each use)
-export const WHEN_ELSE_REGEX = /\$\{whenElse\(/g;
-export const REPEAT_REGEX = /\$\{repeat\(/g;
-export const SIGNAL_EXPR_REGEX = /\$\{this\.(\w+)\(\)\}/g;
-export const SIGNAL_CALL_REGEX = /this\.(\w+)\(\)/g;
-export const STYLE_EXPR_REGEX = /([\w-]+)\s*:\s*(\$\{this\.(\w+)\(\)\})/g;
-export const ATTR_EXPR_REGEX = /\$\{this\.(\w+)\(\)\}/g;
+// Pre-compiled regex factories — return fresh instances to avoid stale lastIndex bugs with /g
+export const WHEN_ELSE_REGEX = () => /\$\{whenElse\(/g;
+export const REPEAT_REGEX = () => /\$\{repeat\(/g;
+export const SIGNAL_EXPR_REGEX = () => /\$\{this\.(\w+)\(\)\}/g;
+export const SIGNAL_CALL_REGEX = () => /this\.(\w+)\(\)/g;
+export const STYLE_EXPR_REGEX = () => /([\w-]+)\s*:\s*(\$\{this\.(\w+)\(\)\})/g;
+export const ATTR_EXPR_REGEX = () => /\$\{this\.(\w+)\(\)\}/g;

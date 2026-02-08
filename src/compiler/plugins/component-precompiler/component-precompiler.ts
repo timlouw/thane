@@ -413,6 +413,23 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
       }
     });
 
+    /**
+     * Apply reactive binding transformation, strip template tags, and produce loader result.
+     * Shared by all three code paths (no component calls, no CTFE matches, and CTFE-inlined).
+     */
+    const buildTransformedResult = (source: string, modifiedSource: string, filePath: string): { contents: string; loader: 'ts' } => {
+      let result = modifiedSource;
+      if (extendsComponentQuick(source)) {
+        const transformed = transformComponentSource(result, filePath);
+        if (transformed) {
+          result = transformed;
+        }
+      }
+      result = result.replace(/css`/g, '`');
+      result = result.replace(/html`/g, '`');
+      return createLoaderResult(result);
+    };
+
     build.onLoad({ filter: /\.ts$/ }, async (args) => {
       try {
         if (args.path.includes('scripts') || args.path.includes('node_modules')) {
@@ -434,36 +451,14 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
         }
 
         if (!hasComponentCalls) {
-          let modifiedSource = source;
-          
-          if (extendsComponentQuick(source)) {
-            const transformed = transformComponentSource(modifiedSource, args.path);
-            if (transformed) {
-              modifiedSource = transformed;
-            }
-          }
-          
-          modifiedSource = modifiedSource.replace(/css`/g, '`');
-          modifiedSource = modifiedSource.replace(/html`/g, '`');
-          return createLoaderResult(modifiedSource);
+          return buildTransformedResult(source, source, args.path);
         }
 
         const sourceFile = sourceCache.parse(args.path, source);
         const componentCalls = findComponentCallsCTFE(source, sourceFile, componentDefinitions);
 
         if (componentCalls.length === 0) {
-          let modifiedSource = source;
-          
-          if (extendsComponentQuick(source)) {
-            const transformed = transformComponentSource(modifiedSource, args.path);
-            if (transformed) {
-              modifiedSource = transformed;
-            }
-          }
-          
-          modifiedSource = modifiedSource.replace(/css`/g, '`');
-          modifiedSource = modifiedSource.replace(/html`/g, '`');
-          return createLoaderResult(modifiedSource);
+          return buildTransformedResult(source, source, args.path);
         }
 
         const ctfedComponents = new Set<string>();
@@ -489,17 +484,7 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
           modifiedSource = transformComponentImportsToSideEffects(modifiedSource, sourceFile, componentImports, ctfedComponents);
         }
 
-        if (extendsComponentQuick(source)) {
-          const transformed = transformComponentSource(modifiedSource, args.path);
-          if (transformed) {
-            modifiedSource = transformed;
-          }
-        }
-
-        modifiedSource = modifiedSource.replace(/css`/g, '`');
-        modifiedSource = modifiedSource.replace(/html`/g, '`');
-
-        return createLoaderResult(modifiedSource);
+        return buildTransformedResult(source, modifiedSource, args.path);
       } catch (error) {
         const diagnostic = createError(
           `Error processing ${args.path}: ${error instanceof Error ? error.message : error}`,

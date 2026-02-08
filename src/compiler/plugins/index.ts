@@ -14,6 +14,6 @@ export { HTMLBootstrapInjectorPlugin } from './html-bootstrap-injector/html-boot
 
 export { MinificationPlugin, minifySelectorsInHTML } from './minification/minification.js';
 
-export { DeadCodeEliminatorPlugin } from './dead-code-eliminator/dead-code-eliminator.js';
+export { PostBuildCompressorPlugin } from './post-build-compressor/post-build-compressor.js';
 
 export { PostBuildPlugin } from './post-build-processor/post-build-processor.js';

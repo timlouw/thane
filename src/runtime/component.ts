@@ -76,15 +76,6 @@ export abstract class NativeComponent {
 // Export NativeComponent as Component for public API
 export { NativeComponent as Component };
 
-/**
- * Global style manager for registering shared styles
- */
-export const globalStyleManager = {
-  register(..._styles: string[]): void {
-    // Styles are managed by registerGlobalStyles
-  }
-};
-
 // Track registered styles to avoid duplicates
 const registeredStyles = new Set<string>();
 
@@ -216,7 +207,7 @@ export function mountComponent(
   pageSelector: PageHTMLSelector | string,
   target: HTMLElement = document.body
 ): NativeComponent | null {
-  const match = pageSelector.match(/<([^>]+)>/);
+  const match = pageSelector.match(/<([a-z][a-z0-9-]*)/i);
   if (!match) return null;
   
   const selector = match[1]!;
@@ -253,12 +244,3 @@ export function createComponentHTMLSelector<T extends ComponentProps>(
   };
 }
 
-/**
- * Generate component HTML string (for static rendering)
- */
-export function generateComponentHTML(
-  selector: ValidComponentSelector,
-  props: ComponentProps = {}
-): string {
-  return createComponentHTMLSelector<ComponentProps>(selector)(props);
-}

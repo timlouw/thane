@@ -1,5 +1,5 @@
 /**
- * Post-Build Compressor Plugin (formerly Dead Code Eliminator)
+ * Post-Build Compressor Plugin
  *
  * Applies safe, post-minification compression patterns to the bundled output.
  *
@@ -51,7 +51,7 @@ const compressOutput = (source: string): string => {
   return result;
 };
 
-export const DeadCodeEliminatorPlugin: Plugin = {
+export const PostBuildCompressorPlugin: Plugin = {
   name: NAME,
   setup(build) {
     build.onEnd(async (result) => {

@@ -6,6 +6,7 @@
 
 import type { HtmlElement, BindingInfo } from './types.js';
 import { WHEN_ELSE_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX, SIGNAL_CALL_REGEX, STYLE_EXPR_REGEX, ATTR_EXPR_REGEX } from './types.js';
+import { logger } from '../logger.js';
 
 /**
  * Shared argument parser for both whenElse and repeat expressions.
@@ -109,10 +110,10 @@ function extractHtmlTemplateContent(arg: string): string {
 }
 
 function extractSignalsFromExpression(expression: string): string[] {
-  SIGNAL_CALL_REGEX.lastIndex = 0;
+  const signalCallRegex = SIGNAL_CALL_REGEX();
   const signals: string[] = [];
   let signalMatch: RegExpExecArray | null;
-  while ((signalMatch = SIGNAL_CALL_REGEX.exec(expression)) !== null) {
+  while ((signalMatch = signalCallRegex.exec(expression)) !== null) {
     const signalName = signalMatch[1];
     if (signalName && !signals.includes(signalName)) {
       signals.push(signalName);
@@ -211,7 +212,7 @@ export function parseRepeatExpression(
     const trimmed = arg3.trim();
     const arrowPattern = /^\(?[\w,\s]+\)?\s*=>\s*[\w.[\]]+$/;
     if (!arrowPattern.test(trimmed)) {
-      console.warn(`[thane] trackBy function should be an arrow function returning a key property, e.g., (item) => item.id`);
+      logger.warn('html-parser', `trackBy function should be an arrow function returning a key property, e.g., (item) => item.id`);
     }
     trackByFn = trimmed;
   }
@@ -235,10 +236,10 @@ export function findBindingsInText(text: string, textStart: number, parent: Html
 
   const complexExprPositions: Array<{ start: number; end: number }> = [];
 
-  WHEN_ELSE_REGEX.lastIndex = 0;
+  const whenElseRegex = WHEN_ELSE_REGEX();
   let whenElseMatch: RegExpExecArray | null;
 
-  while ((whenElseMatch = WHEN_ELSE_REGEX.exec(text)) !== null) {
+  while ((whenElseMatch = whenElseRegex.exec(text)) !== null) {
     const startPos = whenElseMatch.index;
     const parsed = parseWhenElseExpression(text, startPos);
     if (parsed) {
@@ -259,10 +260,10 @@ export function findBindingsInText(text: string, textStart: number, parent: Html
     }
   }
 
-  REPEAT_REGEX.lastIndex = 0;
+  const repeatRegex = REPEAT_REGEX();
   let repeatMatch: RegExpExecArray | null;
 
-  while ((repeatMatch = REPEAT_REGEX.exec(text)) !== null) {
+  while ((repeatMatch = repeatRegex.exec(text)) !== null) {
     const startPos = repeatMatch.index;
     const parsed = parseRepeatExpression(text, startPos);
     if (parsed) {
@@ -286,10 +287,10 @@ export function findBindingsInText(text: string, textStart: number, parent: Html
     }
   }
 
-  SIGNAL_EXPR_REGEX.lastIndex = 0;
+  const signalExprRegex = SIGNAL_EXPR_REGEX();
   let match: RegExpExecArray | null;
 
-  while ((match = SIGNAL_EXPR_REGEX.exec(text)) !== null) {
+  while ((match = signalExprRegex.exec(text)) !== null) {
     const pos = match.index;
     const insideComplex = complexExprPositions.some((cp) => pos >= cp.start && pos < cp.end);
     if (insideComplex) continue;
@@ -357,10 +358,10 @@ export function findBindingsInAttributes(element: HtmlElement, bindings: Binding
     }
 
     if (name === 'style') {
-      STYLE_EXPR_REGEX.lastIndex = 0;
+      const styleExprRegex = STYLE_EXPR_REGEX();
       let styleMatch: RegExpExecArray | null;
 
-      while ((styleMatch = STYLE_EXPR_REGEX.exec(attr.value)) !== null) {
+      while ((styleMatch = styleExprRegex.exec(attr.value)) !== null) {
         const fullExpr = styleMatch[2];
         const signalName = styleMatch[3];
         const propertyName = styleMatch[1];
@@ -380,10 +381,10 @@ export function findBindingsInAttributes(element: HtmlElement, bindings: Binding
       continue;
     }
 
-    ATTR_EXPR_REGEX.lastIndex = 0;
+    const attrExprRegex = ATTR_EXPR_REGEX();
     let attrMatch: RegExpExecArray | null;
 
-    while ((attrMatch = ATTR_EXPR_REGEX.exec(attr.value)) !== null) {
+    while ((attrMatch = attrExprRegex.exec(attr.value)) !== null) {
       const signalName = attrMatch[1];
       if (!signalName) continue;
       bindings.push({
