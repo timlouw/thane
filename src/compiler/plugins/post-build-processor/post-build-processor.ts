@@ -27,11 +27,11 @@ export interface PostBuildOptions {
   distDir: string;
   inputHTMLFilePath: string;
   outputHTMLFilePath: string;
-  assetsInputDir?: string;
-  assetsOutputDir?: string;
-  serve?: boolean;
-  isProd?: boolean;
-  useGzip?: boolean;
+  assetsInputDir?: string | undefined;
+  assetsOutputDir?: string | undefined;
+  serve?: boolean | undefined;
+  isProd?: boolean | undefined;
+  useGzip?: boolean | undefined;
 }
 
 export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
@@ -48,9 +48,9 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
   const copyIndexHTMLIntoDistAndStartServer = async (hashedFileNames: Record<string, string | undefined>): Promise<void> => {
     const { inputHTMLFilePath, outputHTMLFilePath, isProd, serve, useGzip, distDir } = config;
     const placeholders: Record<string, string | undefined> = {
-      MAIN_JS_FILE_PLACEHOLDER: hashedFileNames.main,
-      ROUTER_JS_FILE_PLACEHOLDER: hashedFileNames.router,
-      INDEX_JS_FILE_PLACEHOLDER: hashedFileNames.index,
+      MAIN_JS_FILE_PLACEHOLDER: hashedFileNames['main'],
+      ROUTER_JS_FILE_PLACEHOLDER: hashedFileNames['router'],
+      INDEX_JS_FILE_PLACEHOLDER: hashedFileNames['index'],
     };
     let data = await fs.promises.readFile(inputHTMLFilePath, 'utf8');
     for (const [placeholder, fileName] of Object.entries(placeholders)) {
@@ -112,11 +112,11 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
       fileSizeLog.push({ fileName, sizeInBytes });
       if (info.entryPoint) {
         if (info.entryPoint.includes('main.ts') || info.entryPoint.includes('main-')) {
-          hashedFileNames.main = fileName;
+          hashedFileNames['main'] = fileName;
         } else if (info.entryPoint.includes('router.ts')) {
-          hashedFileNames.router = fileName;
+          hashedFileNames['router'] = fileName;
         } else if (info.entryPoint.includes('index.ts')) {
-          hashedFileNames.index = fileName;
+          hashedFileNames['index'] = fileName;
         }
       }
     }
@@ -138,7 +138,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
         await fs.promises.mkdir(distDir, { recursive: true });
       });
 
-      build.onEnd(async (result: { metafile?: Metafile }) => {
+      build.onEnd(async (result) => {
         totalBundleSizeInBytes = 0;
 
         const { assetsInputDir, assetsOutputDir, serve } = config;

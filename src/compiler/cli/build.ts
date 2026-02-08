@@ -11,7 +11,7 @@ import { TypeCheckPlugin } from '../plugins/tsc-type-checker/tsc-type-checker.js
 import { RoutesPrecompilerPlugin } from '../plugins/routes-precompiler/routes-precompiler.js';
 import { ComponentPrecompilerPlugin } from '../plugins/component-precompiler/component-precompiler.js';
 import { ReactiveBindingPlugin } from '../plugins/reactive-binding-compiler/index.js';
-import { RegisterComponentStripperPlugin } from '../plugins/register-component-stripper/register-component-stripper.js';
+import { ThaneLinterPlugin } from '../plugins/thane-linter/thane-linter.js';
 import { GlobalCSSBundlerPlugin } from '../plugins/global-css-bundler/global-css-bundler.js';
 import { HTMLBootstrapInjectorPlugin } from '../plugins/html-bootstrap-injector/html-bootstrap-injector.js';
 import { MinificationPlugin } from '../plugins/minification/minification.js';
@@ -29,11 +29,11 @@ export async function runBuild(config: BuildConfig): Promise<void> {
   
   // Create plugins with config
   const basePlugins = [
-    TypeCheckPlugin({ strict: config.strictTypeCheck }),
+    TypeCheckPlugin({ ...(config.strictTypeCheck != null && { strict: config.strictTypeCheck }) }),
+    ThaneLinterPlugin(),
     RoutesPrecompilerPlugin,
     ComponentPrecompilerPlugin(buildContext),
     ReactiveBindingPlugin,
-    RegisterComponentStripperPlugin,
     GlobalCSSBundlerPlugin({ minify: config.isProd }),
     HTMLBootstrapInjectorPlugin({ entryPoints: config.entryPoints, buildContext }),
   ];

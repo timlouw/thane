@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import ts from 'typescript';
 import type { Plugin } from 'esbuild';
-import { logger, collectFilesRecursively, sourceCache, extractComponentDefinitions } from '../../utils/index.js';
+import { logger, collectFilesRecursively, sourceCache, extractComponentDefinitions, extractPageSelector } from '../../utils/index.js';
 import type { ComponentDefinition, BuildContext } from '../../types.js';
 
 const NAME = 'html-bootstrap';
@@ -11,7 +11,7 @@ type MountTarget = { type: 'body' } | { type: 'element'; id: string };
 interface BootstrapConfig {
   selector: string;
   target: MountTarget;
-  componentDef?: ComponentDefinition;
+  componentDef?: ComponentDefinition | undefined;
 }
 
 const resolveImportPath = (fromFile: string, importPath: string): string => {
@@ -170,31 +170,9 @@ const findImportPath = (sourceFile: ts.SourceFile, identifierName: string): stri
 };
 
 const extractSelectorFromComponent = (sourceFile: ts.SourceFile): string | null => {
-  let selector: string | null = null;
-
-  const visit = (node: ts.Node): void => {
-    if (selector) return;
-
-    if (ts.isCallExpression(node)) {
-      const expr = node.expression;
-      if (ts.isIdentifier(expr) && expr.text === 'registerComponent' && node.arguments.length >= 1) {
-        const configArg = node.arguments[0];
-        if (configArg && ts.isObjectLiteralExpression(configArg)) {
-          for (const prop of configArg.properties) {
-            if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'selector' && ts.isStringLiteral(prop.initializer)) {
-              selector = prop.initializer.text;
-              return;
-            }
-          }
-        }
-      }
-    }
-
-    ts.forEachChild(node, visit);
-  };
-
-  visit(sourceFile);
-  return selector;
+  // Use the shared utility which supports both defineComponent and legacy registerComponent
+  const pageSelector = extractPageSelector(sourceFile);
+  return pageSelector;
 };
 
 const findBootstrapConfig = async (entryPointPath: string): Promise<Omit<BootstrapConfig, 'componentDef'> | null> => {
@@ -216,7 +194,7 @@ const findBootstrapConfig = async (entryPointPath: string): Promise<Omit<Bootstr
     const componentSourceFile = ts.createSourceFile(componentFilePath, componentSource, ts.ScriptTarget.Latest, true);
     const selector = extractSelectorFromComponent(componentSourceFile);
     if (!selector) {
-      logger.warn(NAME, `Could not find registerComponent() selector in ${componentFilePath}`);
+      logger.warn(NAME, `Could not find component selector in ${componentFilePath}`);
       return null;
     }
 

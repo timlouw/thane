@@ -22,28 +22,11 @@ export type Signal<T> = {
 export type SignalFactory = <T>(initialValue: T) => Signal<T>;
 
 /**
- * Base class that all Thane components extend
+ * The root element for binding lookups (element with getElementById)
  */
-export abstract class Component extends HTMLElement {
-  static styles: string;
-  abstract render(): string;
-  initializeBindings?(): void;
-}
-
-/**
- * Configuration for registering a component
- */
-export interface ComponentConfig {
-  selector: `${Lowercase<string>}-${Lowercase<string>}`;    // Must be kebab-case with hyphen
-  type: 'page' | 'component';
-}
-
-/**
- * The root element for binding lookups (shadow root or element with getElementById)
- */
-export type ComponentRoot = ShadowRoot | (HTMLElement & { 
+export type ComponentRoot = HTMLElement & { 
   getElementById(id: string): HTMLElement | null 
-});
+};
 
 /**
  * Event handler map for event delegation

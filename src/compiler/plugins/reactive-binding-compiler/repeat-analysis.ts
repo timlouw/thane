@@ -659,7 +659,7 @@ export const processItemTemplateRecursively = (
   const parentElementIds = new Map<number, string>(); // tagStart -> id
   
   for (const textMatch of itemTextMatches) {
-    const { start, end, expr, id, isSoleContent, parentTagStart, parentTagNameEnd } = textMatch;
+    const { start, end, expr, id, isSoleContent, parentTagStart, parentTagNameEnd: _parentTagNameEnd } = textMatch;
     const transformedExpr = expr.replace(new RegExp(`\\b${itemVar}\\b`, 'g'), `${itemVar}$()`);
     
     if (isSoleContent && parentTagStart >= 0) {

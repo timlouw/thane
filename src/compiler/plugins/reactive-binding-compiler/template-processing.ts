@@ -87,7 +87,7 @@ export const safeEvaluateCondition = (
  * Replace ${this._signalName()} expressions with their initial values
  */
 export const replaceExpressionsWithValues = (html: string, signalInitializers: Map<string, string | number | boolean>): string => {
-  return html.replace(/\$\{this\.(\w+)\(\)\}/g, (match, signalName) => {
+  return html.replace(/\$\{this\.(\w+)\(\)\}/g, (_match, signalName) => {
     const value = signalInitializers.get(signalName);
     return value !== undefined ? String(value) : '';
   });

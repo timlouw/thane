@@ -161,10 +161,10 @@ export function parseRepeatExpression(
   end: number;
   itemsExpression: string;
   itemVar: string;
-  indexVar?: string;
+  indexVar?: string | undefined;
   itemTemplate: string;
-  emptyTemplate?: string;
-  trackByFn?: string;
+  emptyTemplate?: string | undefined;
+  trackByFn?: string | undefined;
   signals: string[];
 } | null {
   const argsStart = startPos + '${repeat('.length;

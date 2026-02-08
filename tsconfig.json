@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    /* Base Options: */
+    /* Base Options */
     "esModuleInterop": true,
     "skipLibCheck": true,
     "target": "ESNext",
@@ -10,22 +10,30 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
 
-    /* Strictness */
+    /* Strictness: The "Everything" Suite */
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "exactOptionalPropertyTypes": true,
+    "useUnknownInCatchVariables": true,
 
-    /* If transpiling with TypeScript: */
+    /* Framework/Compiler Specifics */
     "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "outDir": "dist",
     "rootDir": "src",
     "sourceMap": true,
     "types": ["bun"],
 
-    /* AND if you're building for a library: */
+    /* Library & Monorepo Support */
     "declaration": true,
-
-    /* AND if you're building for a library in a monorepo: */
     "declarationMap": true
   },
   "include": ["src/**/*.ts"],

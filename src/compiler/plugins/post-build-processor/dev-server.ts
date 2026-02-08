@@ -36,8 +36,8 @@ const promptForPort = (): Promise<number> => {
 
 export interface DevServerOptions {
   distDir: string;
-  isProd?: boolean;
-  useGzip?: boolean;
+  isProd?: boolean | undefined;
+  useGzip?: boolean | undefined;
 }
 
 export class DevServer {

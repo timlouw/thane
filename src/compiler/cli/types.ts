@@ -12,13 +12,13 @@ export interface CLIOptions {
   /** Application name */
   app: string;
   /** Entry point file */
-  entry?: string;
+  entry?: string | undefined;
   /** Output directory */
-  outDir?: string;
+  outDir?: string | undefined;
   /** Assets source directory */
-  assetsDir?: string;
+  assetsDir?: string | undefined;
   /** HTML template file */
-  htmlTemplate?: string;
+  htmlTemplate?: string | undefined;
   /** Start dev server after build */
   serve: boolean;
 }
@@ -29,9 +29,9 @@ export interface BuildConfig {
   /** Output directory */
   outDir: string;
   /** Assets input directory */
-  assetsInputDir?: string;
+  assetsInputDir?: string | undefined;
   /** Assets output directory */
-  assetsOutputDir?: string;
+  assetsOutputDir?: string | undefined;
   /** Input HTML file path */
   inputHTMLFilePath: string;
   /** Output HTML file path */
@@ -43,5 +43,5 @@ export interface BuildConfig {
   /** Whether to use gzip/brotli compression */
   useGzip: boolean;
   /** Whether to fail the build on type errors (default: false = warn only) */
-  strictTypeCheck?: boolean;
+  strictTypeCheck?: boolean | undefined;
 }

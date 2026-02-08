@@ -6,7 +6,9 @@ export { ComponentPrecompilerPlugin } from './component-precompiler/component-pr
 
 export { ReactiveBindingPlugin } from './reactive-binding-compiler/index.js';
 
-export { RegisterComponentStripperPlugin } from './register-component-stripper/register-component-stripper.js';
+export { ThaneLinterPlugin } from './thane-linter/thane-linter.js';
+export type { ThaneLinterOptions } from './thane-linter/thane-linter.js';
+export type { LintRule, LintRuleMeta, LintRuleDefinition } from './thane-linter/rules/types.js';
 
 export { GlobalCSSBundlerPlugin } from './global-css-bundler/global-css-bundler.js';
 

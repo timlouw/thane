@@ -6,10 +6,10 @@
 
 import ts from 'typescript';
 import type { ComponentDefinition } from '../types.js';
-import { FN, CLASS, PROP, COMPONENT_TYPE } from './constants.js';
+import { FN, PROP } from './constants.js';
 
 // Re-export for backwards compatibility
-export { FN, CLASS, PROP, COMPONENT_TYPE };
+export { FN, PROP };
 
 // ============================================================================
 // Source File Creation
@@ -34,17 +34,28 @@ export const isFunctionCall = (node: ts.CallExpression, functionName: string): b
 };
 
 /**
- * Check if node is a registerComponent() call
- */
-export const isRegisterComponentCall = (node: ts.CallExpression): boolean => {
-  return isFunctionCall(node, FN.REGISTER_COMPONENT);
-};
-
-/**
  * Check if node is a signal() call
  */
 export const isSignalCall = (node: ts.CallExpression): boolean => {
   return isFunctionCall(node, FN.SIGNAL);
+};
+
+/**
+ * Check if node is a defineComponent() call
+ */
+export const isDefineComponentCall = (node: ts.CallExpression): boolean => {
+  return isFunctionCall(node, FN.DEFINE_COMPONENT);
+};
+
+/**
+ * Convert PascalCase to kebab-case for auto-derived selectors.
+ * Example: 'MyCounter' → 'my-counter', 'TodoItem' → 'todo-item'
+ */
+export const pascalToKebab = (name: string): string => {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase();
 };
 
 // ============================================================================
@@ -52,39 +63,18 @@ export const isSignalCall = (node: ts.CallExpression): boolean => {
 // ============================================================================
 
 /**
- * Get signal name from a getter call like this._count()
- * Returns null if not a signal getter call
+ * Get signal name from a bare getter call like count() (defineComponent pattern).
+ * Only matches simple identifier calls with no arguments.
+ * Returns null if not a bare function call.
  */
-export const getSignalGetterName = (node: ts.CallExpression): string | null => {
+export const getBareSignalGetterName = (node: ts.CallExpression): string | null => {
   if (
-    ts.isPropertyAccessExpression(node.expression) &&
-    node.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
-    ts.isIdentifier(node.expression.name) &&
+    ts.isIdentifier(node.expression) &&
     node.arguments.length === 0
   ) {
-    return node.expression.name.text;
+    return node.expression.text;
   }
   return null;
-};
-
-/**
- * Find all signal names referenced in an expression
- */
-export const findSignalReferences = (node: ts.Node, sourceFile: ts.SourceFile): string[] => {
-  const signals: string[] = [];
-  
-  const visit = (n: ts.Node) => {
-    if (ts.isCallExpression(n)) {
-      const signalName = getSignalGetterName(n);
-      if (signalName && !signals.includes(signalName)) {
-        signals.push(signalName);
-      }
-    }
-    ts.forEachChild(n, visit);
-  };
-  
-  visit(node);
-  return signals;
 };
 
 /**
@@ -109,15 +99,35 @@ export const extractStaticValue = (arg: ts.Expression): string | number | boolea
 };
 
 /**
- * Find all signal property declarations and their initial values
+ * Find all signal property declarations and their initial values.
+ * Supports both class property pattern (this._count = signal(0)) 
+ * and variable pattern (const count = signal(0)).
  */
 export const findSignalInitializers = (sourceFile: ts.SourceFile): Map<string, string | number | boolean> => {
   const initializers = new Map<string, string | number | boolean>();
 
   const visit = (node: ts.Node) => {
+    // Class property pattern: private _count = signal(0)
     if (
       ts.isPropertyDeclaration(node) && 
       node.name && 
+      ts.isIdentifier(node.name) && 
+      node.initializer && 
+      ts.isCallExpression(node.initializer) && 
+      isSignalCall(node.initializer)
+    ) {
+      const args = node.initializer.arguments;
+      const firstArg = args[0];
+      if (args.length > 0 && firstArg) {
+        const value = extractStaticValue(firstArg);
+        if (value !== null) {
+          initializers.set(node.name.text, value);
+        }
+      }
+    }
+
+    // Variable pattern: const count = signal(0)
+    if (ts.isVariableDeclaration(node) && 
       ts.isIdentifier(node.name) && 
       node.initializer && 
       ts.isCallExpression(node.initializer) && 
@@ -174,15 +184,6 @@ export const findClassExtending = (
 };
 
 /**
- * Find the Component class in a source file
- */
-export const findComponentClass = (
-  sourceFile: ts.SourceFile
-): ts.ClassExpression | ts.ClassDeclaration | null => {
-  return findClassExtending(sourceFile, CLASS.COMPONENT);
-};
-
-/**
  * Find the enclosing class for a given node
  */
 export const findEnclosingClass = (node: ts.Node): ts.ClassExpression | ts.ClassDeclaration | null => {
@@ -194,24 +195,6 @@ export const findEnclosingClass = (node: ts.Node): ts.ClassExpression | ts.Class
     current = current.parent;
   }
   return null;
-};
-
-/**
- * Check if a class extends Component
- */
-export const extendsComponent = (node: ts.ClassDeclaration | ts.ClassExpression): boolean => {
-  if (!node.heritageClauses) return false;
-  
-  for (const clause of node.heritageClauses) {
-    if (clause.token === ts.SyntaxKind.ExtendsKeyword) {
-      for (const type of clause.types) {
-        if (ts.isIdentifier(type.expression) && type.expression.text === CLASS.COMPONENT) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
 };
 
 // ============================================================================
@@ -277,36 +260,9 @@ export const extractTemplateContent = (
 // Component Registration
 // ============================================================================
 
-interface ComponentRegistrationConfig {
-  selector: string | null;
-  type: string | null;
-}
-
 /**
- * Extract configuration from registerComponent() config argument
- */
-export const extractRegisterComponentConfig = (
-  configArg: ts.ObjectLiteralExpression
-): ComponentRegistrationConfig => {
-  let selector: string | null = null;
-  let type: string | null = null;
-
-  for (const prop of configArg.properties) {
-    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-      if (prop.name.text === PROP.SELECTOR && ts.isStringLiteral(prop.initializer)) {
-        selector = prop.initializer.text;
-      }
-      if (prop.name.text === PROP.TYPE && ts.isStringLiteral(prop.initializer)) {
-        type = prop.initializer.text;
-      }
-    }
-  }
-
-  return { selector, type };
-};
-
-/**
- * Extract all component definitions from a source file
+ * Extract all component definitions from a source file.
+ * Supports defineComponent() pattern.
  */
 export const extractComponentDefinitions = (sourceFile: ts.SourceFile, filePath: string): ComponentDefinition[] => {
   const definitions: ComponentDefinition[] = [];
@@ -316,15 +272,26 @@ export const extractComponentDefinitions = (sourceFile: ts.SourceFile, filePath:
       const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
       if (hasExport) {
         for (const decl of node.declarationList.declarations) {
-          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isCallExpression(decl.initializer) && isRegisterComponentCall(decl.initializer)) {
-            const configArg = decl.initializer.arguments[0];
-            if (configArg && ts.isObjectLiteralExpression(configArg)) {
-              const { selector, type } = extractRegisterComponentConfig(configArg);
+          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isCallExpression(decl.initializer)) {
+            const exportName = decl.name.text;
+            const call = decl.initializer;
 
-              // Only register 'component' type (not 'page')
-              if (selector && type === COMPONENT_TYPE.COMPONENT) {
+            // defineComponent pattern
+            if (isDefineComponentCall(call)) {
+              let selector: string | null = null;
+
+              // Check if first arg is a string literal (explicit selector)
+              const firstArg = call.arguments[0];
+              if (firstArg && ts.isStringLiteral(firstArg)) {
+                selector = firstArg.text;
+              } else {
+                // Auto-derive from export name
+                selector = pascalToKebab(exportName);
+              }
+
+              if (selector) {
                 definitions.push({
-                  name: decl.name.text,
+                  name: exportName,
                   selector,
                   filePath,
                 });
@@ -343,19 +310,27 @@ export const extractComponentDefinitions = (sourceFile: ts.SourceFile, filePath:
 };
 
 /**
- * Extract the page selector from a source file
+ * Extract the page selector from a source file.
+ * Supports defineComponent() (named exports).
  */
 export const extractPageSelector = (sourceFile: ts.SourceFile): string | null => {
   let selector: string | null = null;
 
   const visit = (node: ts.Node) => {
-    if (ts.isExportAssignment(node) && !node.isExportEquals) {
-      const expr = node.expression;
-      if (ts.isCallExpression(expr) && isRegisterComponentCall(expr)) {
-        const configArg = expr.arguments[0];
-        if (configArg && ts.isObjectLiteralExpression(configArg)) {
-          const config = extractRegisterComponentConfig(configArg);
-          selector = config.selector;
+    // export const X = defineComponent(...)
+    if (ts.isVariableStatement(node)) {
+      const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+      if (hasExport) {
+        for (const decl of node.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isCallExpression(decl.initializer) && isDefineComponentCall(decl.initializer)) {
+            const exportName = decl.name.text;
+            const firstArg = decl.initializer.arguments[0];
+            if (firstArg && ts.isStringLiteral(firstArg)) {
+              selector = firstArg.text;
+            } else {
+              selector = pascalToKebab(exportName);
+            }
+          }
         }
       }
     }

@@ -3,11 +3,11 @@ export const shouldSkipPath = (filePath: string): boolean => {
 };
 
 export const hasSignalPatterns = (source: string): boolean => {
-  return source.includes('this.') && source.includes('()') && source.includes('signal(');
+  return source.includes('signal(');
 };
 
 export const extendsComponentQuick = (source: string): boolean => {
-  return source.includes('extends Component');
+  return source.includes('defineComponent');
 };
 
 export const createLoaderResult = (contents: string): { contents: string; loader: 'ts' } => ({

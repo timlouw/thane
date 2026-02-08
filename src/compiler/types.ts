@@ -41,8 +41,8 @@ export interface SourceLocation {
 export interface Diagnostic {
   severity: DiagnosticSeverity;
   message: string;
-  location?: SourceLocation;
-  code?: string;
+  location?: SourceLocation | undefined;
+  code?: string | undefined;
 }
 
 /**

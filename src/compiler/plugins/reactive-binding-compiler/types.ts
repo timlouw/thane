@@ -2,7 +2,7 @@
  * Type definitions for the reactive binding compiler
  */
 
-import type { HtmlElement } from '../../utils/html-parser.js';
+
 
 export interface ConditionalBlock {
   id: string;
@@ -42,10 +42,10 @@ export interface RepeatBlock {
   signalNames: string[]; // All signals in the expression
   itemsExpression: string; // e.g., "this._countries()"
   itemVar: string; // e.g., "country"
-  indexVar?: string; // e.g., "index" (optional)
+  indexVar?: string | undefined; // e.g., "index" (optional)
   itemTemplate: string; // HTML template for each item (processed)
-  emptyTemplate?: string; // HTML template shown when list is empty
-  trackByFn?: string; // Custom trackBy function source (deprecated - no longer used)
+  emptyTemplate?: string | undefined; // HTML template shown when list is empty
+  trackByFn?: string | undefined; // Custom trackBy function source (deprecated - no longer used)
   startIndex: number; // Position in HTML where ${repeat starts
   endIndex: number; // Position after }
   itemBindings: ItemBinding[]; // Bindings inside item template that reference item/index
@@ -60,7 +60,7 @@ export interface RepeatBlock {
 export interface ItemBinding {
   elementId: string; // ID assigned to the element (e.g., 'i0', 'i1')
   type: 'text' | 'attr' | 'style'; // Type of binding
-  property?: string; // For attr/style: the property name
+  property?: string | undefined; // For attr/style: the property name
   expression: string; // The JS expression (e.g., 'item.label', 'item.count > 0')
   /**
    * For text bindings: how the binding is rendered in the DOM
@@ -91,9 +91,9 @@ export interface BindingInfo {
   id: string;
   signalName: string;
   type: 'text' | 'style' | 'attr';
-  property?: string; // For style/attr bindings
+  property?: string | undefined; // For style/attr bindings
   isInsideConditional: boolean;
-  conditionalId?: string; // Which conditional block this is inside
+  conditionalId?: string | undefined; // Which conditional block this is inside
 }
 
 /**
@@ -108,7 +108,7 @@ export interface StaticTemplateInfo {
     path: number[];
     bindings: Array<{
       type: 'text' | 'attr';
-      property?: string;
+      property?: string | undefined;
       expression: string;
     }>;
   }>;

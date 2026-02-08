@@ -373,8 +373,6 @@ export const generateInitBindingsFunction = (
         const pureItemBindings: ItemBinding[] = [];
         const mixedBindings: { binding: ItemBinding; componentSignals: Set<string> }[] = [];
         
-        const hasCommentMarkerBindings = rep.itemBindings.some(b => b.type === 'text' && b.textBindingMode === 'commentMarker');
-
         for (const binding of rep.itemBindings) {
           const componentSignalRegex = /this\.(_\w+)\(\)/g;
           const componentSignals = new Set<string>();
@@ -399,7 +397,6 @@ export const generateInitBindingsFunction = (
             bindingsByElement.get(binding.elementId)!.push(binding);
           }
           
-          const elementIds = Array.from(bindingsByElement.keys());
           const elementCacheDecls: string[] = [];
           const updateStatements: string[] = [];
           

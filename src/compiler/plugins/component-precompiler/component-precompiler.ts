@@ -17,7 +17,7 @@ import {
   extendsComponentQuick,
   generateComponentHTML,
 } from '../../utils/index.js';
-import { transformComponentSource } from '../reactive-binding-compiler/index.js';
+import { transformDefineComponentSource } from '../reactive-binding-compiler/index.js';
 import { ErrorCode, createError } from '../../errors.js';
 
 /**
@@ -82,7 +82,7 @@ const findComponentImports = (sourceFile: ts.SourceFile, knownComponents: Map<st
   return imports;
 };
 
-const transformComponentImportsToSideEffects = (source: string, sourceFile: ts.SourceFile, componentImports: ComponentImportInfo[], ctfedComponents: Set<string>): string => {
+const transformComponentImportsToSideEffects = (source: string, _sourceFile: ts.SourceFile, componentImports: ComponentImportInfo[], ctfedComponents: Set<string>): string => {
   const sortedImports = [...componentImports].sort((a, b) => b.importStart - a.importStart);
 
   let modifiedSource = source;
@@ -420,7 +420,7 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
     const buildTransformedResult = (source: string, modifiedSource: string, filePath: string): { contents: string; loader: 'ts' } => {
       let result = modifiedSource;
       if (extendsComponentQuick(source)) {
-        const transformed = transformComponentSource(result, filePath);
+        const transformed = transformDefineComponentSource(result, filePath);
         if (transformed) {
           result = transformed;
         }

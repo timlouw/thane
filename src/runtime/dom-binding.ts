@@ -303,11 +303,11 @@ interface ReconcilerConfig<T> {
   /** Factory: create a ManagedItem and insert its element before refNode */
   createItem: (item: T, index: number, refNode: Node) => ManagedItem<T>;
   /** Optional key function for keyed reconciliation */
-  keyFn?: KeyFn<T>;
+  keyFn?: KeyFn<T> | undefined;
   /** Optional HTML to show when array is empty */
-  emptyTemplate?: string;
+  emptyTemplate?: string | undefined;
   /** Whether to use detach optimization for bulk creates (disabled for nested repeats) */
-  useDetachOptimization?: boolean;
+  useDetachOptimization?: boolean | undefined;
 }
 
 /**

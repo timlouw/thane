@@ -28,6 +28,10 @@ export enum ErrorCode {
   // Runtime errors
   INVALID_SELECTOR = 'THANE300',
   DUPLICATE_COMPONENT = 'THANE301',
+  
+  // Lint rules
+  NO_DEFAULT_EXPORT_COMPONENT = 'THANE400',
+  COMPONENT_PROPERTY_ORDER = 'THANE401',
 }
 
 /**

@@ -23,9 +23,9 @@ interface MutableHtmlElement {
   isSelfClosing: boolean;
   isVoid: boolean;
   textContent: import('./types.js').TextNode[];
-  whenDirective?: string;
-  whenDirectiveStart?: number;
-  whenDirectiveEnd?: number;
+  whenDirective?: string | undefined;
+  whenDirectiveStart?: number | undefined;
+  whenDirectiveEnd?: number | undefined;
 }
 
 function createEmptyElement(tagName: string, tagStart: number, tagNameEnd: number): MutableHtmlElement {

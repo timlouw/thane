@@ -85,23 +85,23 @@ export interface BindingInfo {
   element: HtmlElement;
   type: 'text' | 'style' | 'attr' | 'when' | 'whenElse' | 'repeat' | 'event';
   signalName: string;
-  signalNames?: string[];
-  property?: string;
+  signalNames?: string[] | undefined;
+  property?: string | undefined;
   expressionStart: number;
   expressionEnd: number;
   fullExpression: string;
-  jsExpression?: string;
-  thenTemplate?: string;
-  elseTemplate?: string;
-  itemsExpression?: string;
-  itemVar?: string;
-  indexVar?: string;
-  itemTemplate?: string;
-  emptyTemplate?: string;
-  trackByFn?: string;
-  eventName?: string;
-  eventModifiers?: string[];
-  handlerExpression?: string;
+  jsExpression?: string | undefined;
+  thenTemplate?: string | undefined;
+  elseTemplate?: string | undefined;
+  itemsExpression?: string | undefined;
+  itemVar?: string | undefined;
+  indexVar?: string | undefined;
+  itemTemplate?: string | undefined;
+  emptyTemplate?: string | undefined;
+  trackByFn?: string | undefined;
+  eventName?: string | undefined;
+  eventModifiers?: string[] | undefined;
+  handlerExpression?: string | undefined;
 }
 
 export interface ParseDiagnostic {

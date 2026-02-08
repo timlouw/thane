@@ -52,20 +52,20 @@ declare global {
 }
 
 // Export types
-export type { Signal, SignalFactory, ComponentConfig, ComponentRoot, EventHandlerMap, ItemEventHandlerMap, TrackByFn } from './types.js';
+export type { Signal, SignalFactory, ComponentRoot, EventHandlerMap, ItemEventHandlerMap, TrackByFn } from './types.js';
 
 // Export signal
 export { signal } from './signal.js';
 
 // Export component
 export { 
-  Component, 
-  registerComponent, 
+  defineComponent,
   registerGlobalStyles, 
   mountComponent,
   mount,
   createComponentHTMLSelector,
-  type ComponentRoot as NativeComponentRoot
+  type ComponentContext,
+  type ComponentReturnType,
 } from './component.js';
 
 // Export DOM binding utilities
