@@ -363,6 +363,194 @@ export const toKebabCase = (str: string): string => {
 };
 
 // ============================================================================
+// AST-based Expression Utilities
+// ============================================================================
+
+/**
+ * Rename all occurrences of an identifier in a JS expression using the TS AST.
+ * 
+ * Unlike `\bname\b` regex, this only renames actual identifier tokens — it will
+ * never match inside string literals, template literals, or property-access
+ * chains that happen to contain the same text.
+ *
+ * @param expression - A JavaScript expression string, e.g. `item.label`
+ * @param oldName - The identifier to find, e.g. `item`
+ * @param newName - The replacement identifier, e.g. `v`
+ * @returns The expression with all identifier occurrences renamed
+ */
+export const renameIdentifierInExpression = (expression: string, oldName: string, newName: string): string => {
+  // Wrap in parens so the expression is parseable as a statement
+  const wrapped = `(${expression})`;
+  const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  // Collect all identifier positions that match (in reverse order for safe splicing)
+  const positions: Array<{ start: number; end: number }> = [];
+
+  const visit = (node: ts.Node) => {
+    if (ts.isIdentifier(node) && node.text === oldName) {
+      // Exclude property-access names (x.item should not rename 'item')
+      const parent = node.parent;
+      if (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) {
+        // This is the .prop part of x.prop — skip
+      } else {
+        // Adjust for the wrapping paren offset (subtract 1)
+        positions.push({ start: node.getStart(sf) - 1, end: node.getEnd() - 1 });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+
+  // Apply replacements in reverse order
+  positions.sort((a, b) => b.start - a.start);
+  let result = expression;
+  for (const pos of positions) {
+    result = result.substring(0, pos.start) + newName + result.substring(pos.end);
+  }
+  return result;
+};
+
+/**
+ * Check whether an expression references a given identifier (AST-based).
+ * 
+ * Unlike `\bname\b` regex, this only matches actual identifier tokens.
+ */
+export const expressionReferencesIdentifier = (expression: string, identifierName: string): boolean => {
+  const wrapped = `(${expression})`;
+  const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  let found = false;
+  const visit = (node: ts.Node) => {
+    if (found) return;
+    if (ts.isIdentifier(node) && node.text === identifierName) {
+      const parent = node.parent;
+      if (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) {
+        // This is the .prop part — not a reference to the identifier
+      } else {
+        found = true;
+      }
+    }
+    if (!found) ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+};
+
+/**
+ * Detect component-level signal call expressions in a JS expression.
+ * 
+ * In class mode, these look like `this._signal()`.
+ * In closure mode, these look like `_signal()` (bare calls with no dot-prefix).
+ * 
+ * Returns the set of signal names found.
+ */
+export const findComponentSignalCalls = (expression: string, classStyle: boolean): Set<string> => {
+  const wrapped = `(${expression})`;
+  const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  const signals = new Set<string>();
+  const visit = (node: ts.Node) => {
+    if (ts.isCallExpression(node) && node.arguments.length === 0) {
+      if (classStyle) {
+        // Class mode: this._signalName()
+        if (
+          ts.isPropertyAccessExpression(node.expression) &&
+          node.expression.expression.kind === ts.SyntaxKind.ThisKeyword &&
+          ts.isIdentifier(node.expression.name) &&
+          node.expression.name.text.startsWith('_')
+        ) {
+          signals.add(node.expression.name.text);
+        }
+      } else {
+        // Closure mode: _signalName() — bare identifier call, not a method call
+        if (
+          ts.isIdentifier(node.expression) &&
+          node.expression.text.startsWith('_')
+        ) {
+          // Ensure it's not a method call like obj._signal()
+          const parent = node.parent;
+          const isBareCall = !(parent && ts.isPropertyAccessExpression(parent));
+          if (isBareCall) {
+            signals.add(node.expression.text);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return signals;
+};
+
+/**
+ * Parse an arrow function expression and return its parameter list and body.
+ * 
+ * Unlike regex-based parsing, this correctly handles:
+ * - Destructured parameters: `({a, b}) => a + b`
+ * - Default values: `(x = 10) => x`
+ * - Multi-line bodies: `(x) => { ... }`
+ * - Nested parentheses: `(x) => fn(x, y)`
+ * 
+ * Returns null if the expression is not an arrow function.
+ */
+export const parseArrowFunction = (expression: string): {
+  params: string;
+  body: string;
+  isBlockBody: boolean;
+} | null => {
+  const wrapped = `(${expression})`;
+  const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  let result: { params: string; body: string; isBlockBody: boolean } | null = null;
+
+  const visit = (node: ts.Node) => {
+    if (result) return;
+    if (ts.isArrowFunction(node)) {
+      const params = node.parameters.map(p => p.getText(sf)).join(', ');
+      const body = node.body.getText(sf);
+      const isBlockBody = ts.isBlock(node.body);
+      result = { params, body, isBlockBody };
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return result;
+};
+
+/**
+ * Check if an expression is a simple `this.methodName` or `this._methodName` reference
+ * (not a call — just the reference itself).
+ */
+export const isThisMethodReference = (expression: string): boolean => {
+  const trimmed = expression.trim();
+  const wrapped = `(${trimmed})`;
+  const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+
+  let found = false;
+  const visit = (node: ts.Node) => {
+    if (found) return;
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ThisKeyword &&
+      ts.isIdentifier(node.name)
+    ) {
+      // Ensure this is the top-level expression (not nested inside another expr)
+      // The structure is: ExpressionStatement > ParenthesizedExpression > PropertyAccessExpression
+      if (
+        node.parent && ts.isParenthesizedExpression(node.parent) &&
+        node.parent.parent && ts.isExpressionStatement(node.parent.parent)
+      ) {
+        found = true;
+      }
+    }
+    if (!found) ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+};
+
+// ============================================================================
 // Component HTML Generation (Compile-time)
 // ============================================================================
 

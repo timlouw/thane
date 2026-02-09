@@ -135,4 +135,6 @@ export interface BuildContext {
   componentsByName: Map<string, ComponentDefinition>;
   /** Component definitions found during the scan, keyed by selector */
   componentsBySelector: Map<string, ComponentDefinition>;
+  /** Selector minification map, populated by MinificationPlugin during onEnd */
+  selectorMap?: import('./plugins/minification/selector-minifier.js').SelectorMap;
 }

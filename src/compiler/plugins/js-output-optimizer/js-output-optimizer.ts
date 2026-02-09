@@ -1,7 +1,7 @@
 /**
- * Post-Build Compressor Plugin
+ * JS Output Optimizer Plugin
  *
- * Applies safe, post-minification compression patterns to the bundled output.
+ * Applies safe, post-minification optimization patterns to the bundled output.
  *
  * ⚠️  FRAGILE: The regex-based transforms below operate on esbuild's minified
  * output format. Any change to esbuild's minification strategy (identifier
@@ -21,13 +21,13 @@
 import type { Plugin } from 'esbuild';
 import { logger } from '../../utils/index.js';
 
-const NAME = 'post-build-compressor';
+const NAME = 'js-output-optimizer';
 
 /**
- * Apply safe compression patterns to minified JS output.
+ * Apply safe optimization patterns to minified JS output.
  * Each pattern is documented with the invariant that makes it safe.
  */
-const compressOutput = (source: string): string => {
+const optimizeOutput = (source: string): string => {
   let result = source;
 
   // Simplify ()=>{return[]} to ()=>[]
@@ -48,10 +48,18 @@ const compressOutput = (source: string): string => {
   result = result.replace(/,+\]/g, ']');
   result = result.replace(/,{2,}/g, ',');
 
+  // Remove trailing semicolons before EOF
+  // Safe: last statement in a file never needs a semicolon.
+  result = result.replace(/;+$/, '');
+
+  // Collapse consecutive newlines in minified output to a single newline
+  // Safe: whitespace between statements is insignificant in minified JS.
+  result = result.replace(/\n{2,}/g, '\n');
+
   return result;
 };
 
-export const PostBuildCompressorPlugin: Plugin = {
+export const JsOutputOptimizerPlugin: Plugin = {
   name: NAME,
   setup(build) {
     build.onEnd(async (result) => {
@@ -70,9 +78,9 @@ export const PostBuildCompressorPlugin: Plugin = {
           const originalContent = new TextDecoder().decode(file.contents);
           const originalSize = file.contents.length;
 
-          // Apply safe compression patterns
+          // Apply safe optimization patterns
           // Note: console removal is handled by esbuild's `drop: ['console']` in prod config
-          const optimized = compressOutput(originalContent);
+          const optimized = optimizeOutput(originalContent);
 
           const newContents = new TextEncoder().encode(optimized);
           const savedBytes = originalSize - newContents.length;
@@ -91,7 +99,7 @@ export const PostBuildCompressorPlugin: Plugin = {
       const savedKB = (totalSaved / 1024).toFixed(2);
 
       if (totalSaved > 0) {
-        logger.info(NAME, `Post-build compression saved ${savedKB} KB in ${elapsed}ms`);
+        logger.info(NAME, `JS output optimization saved ${savedKB} KB in ${elapsed}ms`);
       }
     });
   },

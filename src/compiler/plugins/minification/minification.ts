@@ -4,20 +4,17 @@ import type { Plugin } from 'esbuild';
 import { SelectorMap, applySelectorsToSource, extractSelectorsFromSource } from './selector-minifier.js';
 import { minifyTemplatesInSource } from './template-minifier.js';
 import { logger } from '../../utils/index.js';
+import type { BuildContext } from '../../types.js';
 
 const NAME = 'minification';
 
-// Module-level SelectorMap — set per-build in onStart. Safe because esbuild serializes builds,
-// but would need redesign for hypothetical concurrent builds.
-let activeSelectorMap = new SelectorMap();
-
-export const MinificationPlugin: Plugin = {
+export const MinificationPlugin = (ctx: BuildContext): Plugin => ({
   name: NAME,
   setup(build) {
     const selectorMap = new SelectorMap();
     build.onStart(() => {
       selectorMap.clear();
-      activeSelectorMap = selectorMap;
+      ctx.selectorMap = selectorMap;
     });
     build.onEnd(async (result) => {
       if (!result.outputFiles || result.outputFiles.length === 0) {
@@ -89,9 +86,9 @@ export const MinificationPlugin: Plugin = {
       }
     });
   },
-};
+});
 
-export const minifySelectorsInHTML = (html: string): string => {
-  if (activeSelectorMap.size === 0) return html;
-  return applySelectorsToSource(html, activeSelectorMap);
+export const minifySelectorsInHTML = (html: string, ctx: BuildContext): string => {
+  if (!ctx.selectorMap || ctx.selectorMap.size === 0) return html;
+  return applySelectorsToSource(html, ctx.selectorMap);
 };

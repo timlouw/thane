@@ -7,6 +7,7 @@
 import type { HtmlElement, BindingInfo } from './types.js';
 import { WHEN_ELSE_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX, SIGNAL_CALL_REGEX, STYLE_EXPR_REGEX, ATTR_EXPR_REGEX } from './types.js';
 import { logger } from '../logger.js';
+import { parseArrowFunction } from '../ast-utils.js';
 
 /**
  * Shared argument parser for both whenElse and repeat expressions.
@@ -183,21 +184,17 @@ export function parseRepeatExpression(
     return null;
   }
 
-  const arrowMatch = templateFn.match(/^\(([^)]*)\)\s*=>\s*(.*)$/s);
-  if (!arrowMatch) {
+  const arrowParsed = parseArrowFunction(templateFn);
+  if (!arrowParsed) {
     return null;
   }
 
-  const arrowParams = arrowMatch[1];
-  const arrowBody = arrowMatch[2];
-  if (!arrowParams || !arrowBody) return null;
-
-  const params = arrowParams.split(',').map((p) => p.trim());
+  const params = arrowParsed.params.split(',').map((p) => p.trim());
   const itemVar = params[0];
   if (!itemVar) return null;
   const indexVar = params[1];
 
-  const templateBody = arrowBody.trim();
+  const templateBody = arrowParsed.body.trim();
   const itemTemplate = extractHtmlTemplateContent(templateBody);
 
   let emptyTemplate: string | undefined;
@@ -210,8 +207,8 @@ export function parseRepeatExpression(
   const arg3 = filteredArgs[3];
   if (filteredArgs.length === 4 && arg3) {
     const trimmed = arg3.trim();
-    const arrowPattern = /^\(?[\w,\s]+\)?\s*=>\s*[\w.[\]]+$/;
-    if (!arrowPattern.test(trimmed)) {
+    const parsed2 = parseArrowFunction(trimmed);
+    if (!parsed2) {
       logger.warn('html-parser', `trackBy function should be an arrow function returning a key property, e.g., (item) => item.id`);
     }
     trackByFn = trimmed;

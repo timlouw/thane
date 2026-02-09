@@ -52,7 +52,7 @@ declare global {
 }
 
 // Export types
-export type { Signal, SignalFactory, ComponentRoot, EventHandlerMap, ItemEventHandlerMap, TrackByFn } from './types.js';
+export type { Signal, ComponentRoot } from './types.js';
 
 // Export signal
 export { signal } from './signal.js';
@@ -63,7 +63,6 @@ export {
   registerGlobalStyles, 
   mountComponent,
   mount,
-  createComponentHTMLSelector,
   type ComponentContext,
   type ComponentReturnType,
 } from './component.js';

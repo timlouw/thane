@@ -1,6 +1,6 @@
 {
   "name": "thane",
-  "version": "0.0.8",
+  "version": "0.0.18",
   "description": "Lightweight compiled web component framework",
   "author": "Tim Louw",
   "license": "MIT",

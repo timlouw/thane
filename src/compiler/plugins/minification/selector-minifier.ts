@@ -61,15 +61,13 @@ export const applySelectorsToSource = (source: string, selectorMap: SelectorMap)
   const alternatives = escapedEntries.map(e => e.escaped).join('|');
   const lookup = new Map(escapedEntries.map(e => [e.original, e.minified]));
 
-  // Combined pattern covers all five replacement contexts in one pass:
+  // Combined pattern covers all four replacement contexts in one pass:
   //   1. <selector(\s|>|/)   — HTML open tags
   //   2. </selector>          — HTML close tags
   //   3. (['"])selector\1     — quoted strings
   //   4. .selector(?=[\s{(,:>+~[\]])  — CSS class selectors
-  //   5. (data-thane(?:-component)?=["'])selector(["'])  — data-thane attrs
   const combined = new RegExp(
-    `<(${alternatives})([\\s>/])|</(${alternatives})>|(['"])(${alternatives})\\4|\\.(${alternatives})(?=[\\s{(,:>+~\\[\\]])|` +
-    `(data-thane(?:-component)?=["'])(${alternatives})(["'])`,
+    `<(${alternatives})([\\s>/])|</(${alternatives})>|(['"])(${alternatives})\\4|\\.(${alternatives})(?=[\\s{(,:>+~\\[\\]])`,
     'g',
   );
 
@@ -82,8 +80,6 @@ export const applySelectorsToSource = (source: string, selectorMap: SelectorMap)
     if (args[5]) return `${args[4]}${lookup.get(args[5]) || args[5]}${args[4]}`;
     // Group 6: CSS class .selector
     if (args[6]) return `.${lookup.get(args[6]) || args[6]}`;
-    // Group 7,8,9: data-thane attr
-    if (args[8]) return `${args[7]}${lookup.get(args[8]) || args[8]}${args[9]}`;
     return args[0];
   });
 };
@@ -106,13 +102,7 @@ export const extractSelectorsFromSource = (source: string): string[] => {
     addSelector(match[2]!);
   }
 
-  // Pattern 2: data-thane="xxx" or data-thane-component="xxx"
-  const dataThaneRegex = /data-thane(?:-component)?=["']([a-z][a-z0-9]*-[a-z0-9-]+)["']/gi;
-  while ((match = dataThaneRegex.exec(source)) !== null) {
-    addSelector(match[1]!);
-  }
-
-  // Pattern 3: CSS class selectors .xxx-yyy where xxx-yyy looks like a component selector
+  // Pattern 2: CSS class selectors .xxx-yyy where xxx-yyy looks like a component selector
   const cssClassRegex = /\.([a-z][a-z0-9]*-[a-z0-9-]+)(?=[\s{(,:>+~[\]])/gi;
   while ((match = cssClassRegex.exec(source)) !== null) {
     // Only add if it was already seen as a selector (avoids false positives from arbitrary CSS classes)

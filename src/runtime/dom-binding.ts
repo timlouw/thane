@@ -4,13 +4,8 @@
  * Handles event delegation, conditional rendering, and repeat directives.
  */
 
-import type { Signal } from './types.js';
+import type { Signal, ComponentRoot } from './types.js';
 import { signal as createSignal } from './signal.js';
-
-/**
- * Root element type that supports getElementById
- */
-type ComponentRoot = ShadowRoot | (HTMLElement & { getElementById(id: string): HTMLElement | null });
 
 /**
  * Keyboard key code mappings for event modifiers
@@ -19,7 +14,7 @@ const KEY_CODES: Record<string, string[]> = {
   enter: ['Enter'],
   tab: ['Tab'],
   delete: ['Backspace', 'Delete'],
-  esc: ['Escape'],
+  esc: ['Escape'],    // shorthand alias
   escape: ['Escape'],
   space: [' '],
   up: ['ArrowUp'],
@@ -137,10 +132,8 @@ export const __findEl = (elements: Element[], id: string): Element | null => {
  * Find a text node by comment marker ID within a set of elements
  */
 export const __findTextNode = (elements: Element[], id: string): Text | null => {
-  const searchComment = `${id}`;
-  
   const walkNodes = (node: Node): Text | null => {
-    if (node.nodeType === Node.COMMENT_NODE && node.textContent === searchComment) {
+    if (node.nodeType === Node.COMMENT_NODE && node.textContent === id) {
       const nextSibling = node.nextSibling;
       if (nextSibling && nextSibling.nodeType === Node.TEXT_NODE) {
         return nextSibling as Text;

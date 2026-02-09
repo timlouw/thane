@@ -15,7 +15,7 @@ import { ThaneLinterPlugin } from '../plugins/thane-linter/thane-linter.js';
 import { GlobalCSSBundlerPlugin } from '../plugins/global-css-bundler/global-css-bundler.js';
 import { HTMLBootstrapInjectorPlugin } from '../plugins/html-bootstrap-injector/html-bootstrap-injector.js';
 import { MinificationPlugin } from '../plugins/minification/minification.js';
-import { PostBuildCompressorPlugin } from '../plugins/post-build-compressor/post-build-compressor.js';
+import { JsOutputOptimizerPlugin } from '../plugins/js-output-optimizer/js-output-optimizer.js';
 import { PostBuildPlugin } from '../plugins/post-build-processor/post-build-processor.js';
 
 export async function runBuild(config: BuildConfig): Promise<void> {
@@ -47,12 +47,13 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     serve: config.serve,
     isProd: config.isProd,
     useGzip: config.useGzip,
+    buildContext,
   };
   
   const prodPlugins = [
     ...basePlugins,
-    MinificationPlugin,
-    PostBuildCompressorPlugin,
+    MinificationPlugin(buildContext),
+    JsOutputOptimizerPlugin,
     PostBuildPlugin(postBuildOptions),
   ];
 

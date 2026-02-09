@@ -414,8 +414,35 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
     });
 
     /**
+     * Strip tagged template tags (css`...` → `...`, html`...` → `...`) using AST
+     * to avoid false positives from regex matching inside string literals.
+     */
+    const stripTemplateTags = (code: string): string => {
+      const sf = ts.createSourceFile('__strip.ts', code, ts.ScriptTarget.Latest, true);
+      // Collect positions to strip in reverse order (end → start)
+      const edits: { start: number; end: number }[] = [];
+      const walk = (node: ts.Node) => {
+        if (ts.isTaggedTemplateExpression(node) && ts.isIdentifier(node.tag)) {
+          const tagName = node.tag.text;
+          if (tagName === 'css' || tagName === 'html') {
+            // Remove the tag identifier — keep only the template literal
+            edits.push({ start: node.tag.getStart(sf), end: node.template.getStart(sf) });
+          }
+        }
+        ts.forEachChild(node, walk);
+      };
+      walk(sf);
+      // Apply in reverse to preserve positions
+      let result = code;
+      for (let i = edits.length - 1; i >= 0; i--) {
+        const edit = edits[i]!;
+        result = result.substring(0, edit.start) + result.substring(edit.end);
+      }
+      return result;
+    };
+
+    /**
      * Apply reactive binding transformation, strip template tags, and produce loader result.
-     * Shared by all three code paths (no component calls, no CTFE matches, and CTFE-inlined).
      */
     const buildTransformedResult = (source: string, modifiedSource: string, filePath: string): { contents: string; loader: 'ts' } => {
       let result = modifiedSource;
@@ -425,8 +452,7 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
           result = transformed;
         }
       }
-      result = result.replace(/css`/g, '`');
-      result = result.replace(/html`/g, '`');
+      result = stripTemplateTags(result);
       return createLoaderResult(result);
     };
 
@@ -442,6 +468,8 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
           return undefined;
         }
 
+        // ── CTFE: inline component calls if definitions are available ──
+        let modifiedSource = source;
         let hasComponentCalls = false;
         for (const [componentName] of componentDefinitions) {
           if (source.includes(componentName + '(')) {
@@ -450,38 +478,32 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
           }
         }
 
-        if (!hasComponentCalls) {
-          return buildTransformedResult(source, source, args.path);
-        }
+        if (hasComponentCalls) {
+          const sourceFile = sourceCache.parse(args.path, source);
+          const componentCalls = findComponentCallsCTFE(source, sourceFile, componentDefinitions);
 
-        const sourceFile = sourceCache.parse(args.path, source);
-        const componentCalls = findComponentCallsCTFE(source, sourceFile, componentDefinitions);
+          if (componentCalls.length > 0) {
+            const ctfedComponents = new Set<string>();
+            const sortedCalls = [...componentCalls].sort((a, b) => b.startIndex - a.startIndex);
 
-        if (componentCalls.length === 0) {
-          return buildTransformedResult(source, source, args.path);
-        }
+            for (const call of sortedCalls) {
+              const componentDef = componentDefinitions.get(call.componentName);
+              if (componentDef) {
+                const compiledHTML = generateHTML({
+                  selector: componentDef.selector,
+                  props: call.props,
+                });
 
-        const ctfedComponents = new Set<string>();
+                modifiedSource = modifiedSource.substring(0, call.startIndex) + compiledHTML + modifiedSource.substring(call.endIndex);
+                ctfedComponents.add(call.componentName);
+              }
+            }
 
-        let modifiedSource = source;
-        const sortedCalls = [...componentCalls].sort((a, b) => b.startIndex - a.startIndex);
-
-        for (const call of sortedCalls) {
-          const componentDef = componentDefinitions.get(call.componentName);
-          if (componentDef) {
-            const compiledHTML = generateHTML({
-              selector: componentDef.selector,
-              props: call.props,
-            });
-
-            modifiedSource = modifiedSource.substring(0, call.startIndex) + compiledHTML + modifiedSource.substring(call.endIndex);
-            ctfedComponents.add(call.componentName);
+            const componentImports = findComponentImports(sourceFile, componentDefinitions);
+            if (componentImports.length > 0) {
+              modifiedSource = transformComponentImportsToSideEffects(modifiedSource, sourceFile, componentImports, ctfedComponents);
+            }
           }
-        }
-
-        const componentImports = findComponentImports(sourceFile, componentDefinitions);
-        if (componentImports.length > 0) {
-          modifiedSource = transformComponentImportsToSideEffects(modifiedSource, sourceFile, componentImports, ctfedComponents);
         }
 
         return buildTransformedResult(source, modifiedSource, args.path);

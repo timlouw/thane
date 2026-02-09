@@ -17,17 +17,29 @@ import type {
   RepeatOptimizationSkipReason,
 } from './types.js';
 import {
-  safeEvaluateCondition,
-  processConditionalElementHtml,
   processSubTemplateWithNesting,
 } from './template-processing.js';
 import {
   parseHtmlTemplate,
   walkElements,
   findElementsWithWhenDirective,
-  getBindingsForElement,
+  injectIdIntoFirstElement,
   type HtmlElement,
-} from '../../utils/html-parser.js';
+} from '../../utils/html-parser/index.js';
+import {
+  renameIdentifierInExpression,
+  expressionReferencesIdentifier,
+} from '../../utils/index.js';
+import {
+  collectConditionalBlocks,
+  collectWhenElseBlocks,
+  buildConditionalEdits,
+  buildWhenElseEdits,
+  buildElementIdEdits,
+  applyTemplateEdits,
+  type IdState,
+  type TemplateEdit,
+} from './template-utils.js';
 
 /**
  * Get a human-readable explanation for why optimization was skipped
@@ -65,7 +77,7 @@ export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason)
 export const generateStaticRepeatTemplate = (
   itemTemplate: string,
   itemBindings: ItemBinding[],
-  itemVar: string,
+  _itemVar: string,
 ): StaticTemplateInfo => {
   // Parse the template to get element structure
   const parsed = parseHtmlTemplate(itemTemplate);
@@ -130,10 +142,13 @@ export const generateStaticRepeatTemplate = (
   // Generate static HTML by removing dynamic expressions
   let staticHtml = itemTemplate;
   
-  // Remove template literal expressions ${...} that contain item variable
-  // Replace text content bindings with empty spans or just empty text
-  const itemPattern = new RegExp(`\\$\\{[^}]*\\b${itemVar}[^}]*\\}`, 'g');
-  staticHtml = staticHtml.replace(itemPattern, '');
+  // Strip ALL remaining ${...} template expressions from the static HTML.
+  // By this point, component-level signal bindings have already been replaced
+  // with <span id="...">value</span> elements, and event bindings have been
+  // extracted. The only ${...} expressions left are item-variable bindings,
+  // which are handled at runtime via the element binding paths — so they must
+  // all be removed from the static template.
+  staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
   
   // Remove data-bind-id attributes (we use paths instead)
   staticHtml = staticHtml.replace(/\s*data-bind-id="[^"]*"/g, '');
@@ -329,142 +344,66 @@ export const processItemTemplateRecursively = (
   const itemEvents: ItemEventBinding[] = [];
   const signalBindings: BindingInfo[] = [];
   const eventBindings: EventBinding[] = [];
-  const conditionals: ConditionalBlock[] = [];
-  const whenElseBlocks: WhenElseBlock[] = [];
   const repeatBlocks: RepeatBlock[] = [];
 
-  let idCounter = startingId;
-  const eventIdCounter = { value: 0 };
+  const elementIdMap = new Map<HtmlElement, string>();
+  const state: IdState = { idCounter: startingId, eventIdCounter: { value: 0 }, elementIdMap };
   let itemEventIdCounter = 0;
 
-  const elementIdMap = new Map<HtmlElement, string>();
   const conditionalElements = findElementsWithWhenDirective(parsed.roots);
   const conditionalElementSet = new Set(conditionalElements);
   const elementsInsideConditionals = new Set<HtmlElement>();
   for (const condEl of conditionalElements) {
     walkElements([condEl], (el) => {
-      if (el !== condEl) {
-        elementsInsideConditionals.add(el);
-      }
+      if (el !== condEl) elementsInsideConditionals.add(el);
     });
   }
-  for (const condEl of conditionalElements) {
-    const whenBinding = parsed.bindings.find((b) => b.element === condEl && b.type === 'when');
-    if (!whenBinding || !whenBinding.jsExpression) continue;
 
-    const signalNames = whenBinding.signalNames || [whenBinding.signalName];
-    const jsExpression = whenBinding.jsExpression;
-
-    const conditionalId = `b${idCounter++}`;
-    elementIdMap.set(condEl, conditionalId);
-    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
-    const condBindings = getBindingsForElement(condEl, parsed.bindings);
-    const nestedBindings: BindingInfo[] = [];
-
-    for (const binding of condBindings) {
-      if (binding.type === 'when') continue;
-      if (binding.type === 'event') continue;
-
-      let elementId: string;
-      if (binding.element === condEl) {
-        elementId = conditionalId;
-      } else {
-        if (!elementIdMap.has(binding.element)) {
-          elementIdMap.set(binding.element, `b${idCounter++}`);
+  // ── Conditionals (with item binding transformation) ──
+  const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state, {
+    onConditionalHtml: (html) => {
+      // Find ${...} expressions that reference the item variable using AST check
+      const exprPattern = /\$\{((?:[^{}]|\{[^}]*\})*)\}/g;
+      const condItemBindings: ItemBinding[] = [];
+      let transformedHtml = html;
+      const matches = [...html.matchAll(exprPattern)].filter(
+        m => m[1] !== undefined && expressionReferencesIdentifier(m[1].trim(), itemVar)
+      );
+      if (matches.length > 0) {
+        let offset = 0;
+        for (const match of matches) {
+          const innerExpr = match[1]!.trim();
+          const matchStart = match.index! + offset;
+          const matchEnd = matchStart + match[0].length;
+          const itemBindingId = `i${state.idCounter++}`;
+          const transformedExpr = renameIdentifierInExpression(innerExpr, itemVar, `${itemVar}$()`);
+          const replacement = `<span id="${itemBindingId}">\${${transformedExpr}}</span>`;
+          transformedHtml = transformedHtml.substring(0, matchStart) + replacement + transformedHtml.substring(matchEnd);
+          condItemBindings.push({ elementId: itemBindingId, expression: innerExpr, type: 'text' });
+          offset += replacement.length - match[0].length;
         }
-        elementId = elementIdMap.get(binding.element)!;
       }
+      return { html: transformedHtml, extraData: condItemBindings };
+    },
+  });
+  const conditionals = condResult.conditionals;
+  signalBindings.push(...condResult.bindings);
+  eventBindings.push(...condResult.eventBindings);
 
-      nestedBindings.push({
-        id: elementId,
-        signalName: binding.signalName,
-        type: binding.type as 'text' | 'style' | 'attr',
-        property: binding.property,
-        isInsideConditional: true,
-        conditionalId,
-      });
-    }
+  // ── WhenElse ──
+  const whenElseBlocks = collectWhenElseBlocks(parsed, signalInitializers, state, (template, id) =>
+    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id),
+  );
 
-    const processedCondResult = processConditionalElementHtml(condEl, templateContent, signalInitializers, elementIdMap, conditionalId, undefined, eventIdCounter);
-    const itemPattern = new RegExp(`\\$\\{\\s*${itemVar}\\s*\\}`, 'g');
-    const condItemBindings: ItemBinding[] = [];
-    let transformedCondHtml = processedCondResult.html;
-    const itemMatches = [...processedCondResult.html.matchAll(itemPattern)];
-    if (itemMatches.length > 0) {
-      let offset = 0;
-      for (const match of itemMatches) {
-        const matchStart = match.index! + offset;
-        const matchEnd = matchStart + match[0].length;
-        const itemBindingId = `i${idCounter++}`;
-        const replacement = `<span id="${itemBindingId}">\${${itemVar}$()}</span>`;
-        transformedCondHtml = transformedCondHtml.substring(0, matchStart) + replacement + transformedCondHtml.substring(matchEnd);
-        condItemBindings.push({
-          elementId: itemBindingId,
-          expression: itemVar,
-          type: 'text',
-        });
-        offset += replacement.length - match[0].length;
-      }
-    }
-
-    conditionals.push({
-      id: conditionalId,
-      signalName: signalNames[0] ?? '',
-      signalNames,
-      jsExpression,
-      initialValue,
-      templateContent: transformedCondHtml,
-      startIndex: condEl.tagStart,
-      endIndex: condEl.closeTagEnd,
-      nestedBindings,
-      nestedItemBindings: condItemBindings,
-      nestedConditionals: [],
-      nestedEventBindings: processedCondResult.eventBindings,
-    });
-
-    signalBindings.push(...nestedBindings);
-    eventBindings.push(...processedCondResult.eventBindings);
-  }
-  for (const binding of parsed.bindings) {
-    if (binding.type !== 'whenElse') continue;
-    if (!binding.jsExpression || !binding.thenTemplate || !binding.elseTemplate) continue;
-
-    const signalNames = binding.signalNames || [binding.signalName];
-    const jsExpression = binding.jsExpression;
-
-    const thenId = `b${idCounter++}`;
-    const elseId = `b${idCounter++}`;
-    const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
-    const thenProcessed = processSubTemplateWithNesting(binding.thenTemplate, signalInitializers, idCounter, thenId);
-    idCounter = thenProcessed.nextId;
-    const elseProcessed = processSubTemplateWithNesting(binding.elseTemplate, signalInitializers, idCounter, elseId);
-    idCounter = elseProcessed.nextId;
-
-    whenElseBlocks.push({
-      thenId,
-      elseId,
-      signalName: signalNames[0] || '',
-      signalNames,
-      jsExpression,
-      initialValue,
-      thenTemplate: thenProcessed.processedContent,
-      elseTemplate: elseProcessed.processedContent,
-      startIndex: binding.expressionStart,
-      endIndex: binding.expressionEnd,
-      thenBindings: thenProcessed.bindings,
-      elseBindings: elseProcessed.bindings,
-      nestedConditionals: [...thenProcessed.conditionals, ...elseProcessed.conditionals],
-      nestedWhenElse: [...thenProcessed.whenElseBlocks, ...elseProcessed.whenElseBlocks],
-    });
-  }
+  // ── Nested repeats ──
   for (const binding of parsed.bindings) {
     if (binding.type !== 'repeat') continue;
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
 
     const nestedSignalNames = binding.signalNames || [binding.signalName];
-    const nestedRepeatId = `b${idCounter++}`;
-    const nestedProcessed = processItemTemplateRecursively(binding.itemTemplate, binding.itemVar, binding.indexVar, signalInitializers, idCounter);
-    idCounter = nestedProcessed.nextId;
+    const nestedRepeatId = `b${state.idCounter++}`;
+    const nestedProcessed = processItemTemplateRecursively(binding.itemTemplate, binding.itemVar, binding.indexVar, signalInitializers, state.idCounter);
+    state.idCounter = nestedProcessed.nextId;
     let processedEmptyTemplate: string | undefined;
     if (binding.emptyTemplate) {
       processedEmptyTemplate = binding.emptyTemplate.replace(/\s+/g, ' ').trim();
@@ -491,6 +430,7 @@ export const processItemTemplateRecursively = (
       nestedRepeats: nestedProcessed.nestedRepeats,
     });
   }
+
   const conditionalRanges = conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex }));
   const whenElseRanges = whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex }));
   const repeatRanges = repeatBlocks.map((r) => ({ start: r.startIndex, end: r.endIndex }));
@@ -503,13 +443,13 @@ export const processItemTemplateRecursively = (
     const insideRange = allRanges.some((r) => binding.expressionStart >= r.start && binding.expressionStart < r.end);
     if (insideRange) continue;
     if (binding.type === 'event' && binding.eventName && binding.handlerExpression) {
-      const refsItem = new RegExp(`\\b${itemVar}\\b`).test(binding.handlerExpression);
-      const refsIndex = indexVar ? new RegExp(`\\b${indexVar}\\b`).test(binding.handlerExpression) : false;
+      const refsItem = expressionReferencesIdentifier(binding.handlerExpression, itemVar);
+      const refsIndex = indexVar ? expressionReferencesIdentifier(binding.handlerExpression, indexVar) : false;
 
       if (refsItem || refsIndex) {
         const eventId = `ie${itemEventIdCounter++}`;
         if (!elementIdMap.has(binding.element)) {
-          elementIdMap.set(binding.element, `b${idCounter++}`);
+          elementIdMap.set(binding.element, `b${state.idCounter++}`);
         }
         itemEvents.push({
           eventId,
@@ -518,9 +458,9 @@ export const processItemTemplateRecursively = (
           handlerExpression: binding.handlerExpression,
         });
       } else {
-        const eventId = `e${eventIdCounter.value++}`;
+        const eventId = `e${state.eventIdCounter.value++}`;
         if (!elementIdMap.has(binding.element)) {
-          elementIdMap.set(binding.element, `b${idCounter++}`);
+          elementIdMap.set(binding.element, `b${state.idCounter++}`);
         }
         const elementId = elementIdMap.get(binding.element)!;
         eventBindings.push({
@@ -536,7 +476,7 @@ export const processItemTemplateRecursively = (
       continue;
     }
     if (binding.type === 'text' || binding.type === 'style' || binding.type === 'attr') {
-      const spanId = `b${idCounter++}`;
+      const spanId = `b${state.idCounter++}`;
 
       if (binding.type === 'text') {
         textBindingSpans.set(binding.expressionStart, spanId);
@@ -556,7 +496,9 @@ export const processItemTemplateRecursively = (
       });
     }
   }
-  const itemExprRegex = new RegExp(`\\$\\{([^}]*\\b${itemVar}\\b[^}]*)\\}`, 'g');
+  // Find ${...} expressions that reference the item variable (text bindings)
+  // Use a regex to find all ${...} in the template, then AST to check if they reference itemVar
+  const allExprRegex = /\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g;
   const itemTextMatches: Array<{ 
     start: number; 
     end: number; 
@@ -568,21 +510,37 @@ export const processItemTemplateRecursively = (
   }> = [];
   let match: RegExpExecArray | null;
 
-  while ((match = itemExprRegex.exec(templateContent)) !== null) {
+  while ((match = allExprRegex.exec(templateContent)) !== null) {
     const matchStart = match.index;
     const matchEnd = matchStart + match[0].length;
     const insideRange = allRanges.some((r) => matchStart >= r.start && matchStart < r.end);
     if (insideRange) continue;
-    const beforeText = templateContent.substring(Math.max(0, matchStart - 200), matchStart);
-    const inAttr = /=["'][^"']*$/.test(beforeText);
+    const innerExpr = match[1]?.trim() ?? '';
+    if (!expressionReferencesIdentifier(innerExpr, itemVar)) continue;
 
-    if (!inAttr) {
-      const expression = match[1]?.trim() ?? '';
+    // Check if we're inside an attribute — use parser element positions instead of regex
+    const isInAttr = parsed.bindings.some(
+      (b) => b.type === 'event' && b.expressionStart <= matchStart && b.expressionEnd >= matchEnd
+    ) || (() => {
+      // Check if this position falls inside any element's attribute value
+      let inAttr = false;
+      walkElements(parsed.roots, (el) => {
+        for (const [, attr] of el.attributes) {
+          if (matchStart >= attr.valueStart && matchEnd <= attr.end) {
+            inAttr = true;
+          }
+        }
+      });
+      return inAttr;
+    })();
+
+    if (!isInAttr) {
+      const expression = innerExpr;
       
       // Analyze if this binding is the sole content of its parent element
       const context = analyzeTextBindingContext(templateContent, matchStart, matchEnd);
       
-      const id = `i${idCounter++}`;
+      const id = `i${state.idCounter++}`;
       
       itemBindings.push({
         elementId: id,
@@ -602,42 +560,49 @@ export const processItemTemplateRecursively = (
       });
     }
   }
-  const indexPattern = indexVar ? `|${indexVar}` : '';
-  const attrItemRegex = new RegExp(`(?:^|[>\\s])([\\w-]+)=["']\\$\\{([^}]*\\b(?:${itemVar}${indexPattern})\\b[^}]*)\\}["']`, 'g');
+  // Find attribute bindings that reference item/index variables using the parsed HTML tree
   const itemAttrMatches: Array<{ start: number; end: number; attrName: string; expr: string; id: string }> = [];
 
-  while ((match = attrItemRegex.exec(templateContent)) !== null) {
-    const leadingChar = match[0].match(/^[>\s]/);
-    const leadingOffset = leadingChar ? 1 : 0;
-    const matchStart = match.index + leadingOffset;
-    const matchEnd = match.index + match[0].length;
-    const insideRange = allRanges.some((r) => matchStart >= r.start && matchStart < r.end);
-    if (insideRange) continue;
+  walkElements(parsed.roots, (el) => {
+    if (elementsInsideConditionals.has(el) || conditionalElementSet.has(el)) return;
+    const insideRange = allRanges.some((r) => el.tagStart >= r.start && el.tagStart < r.end);
+    if (insideRange) return;
 
-    const id = `i${idCounter++}`;
-    const attrName = match[1];
-    const expression = match[2]?.trim() ?? '';
-    if (!attrName) continue;
+    for (const [attrName, attr] of el.attributes) {
+      if (attrName.startsWith('@')) continue; // Skip event attrs
+      // Check for ${expr} in attribute values that reference item/index vars
+      const attrExprRegex = /\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g;
+      let attrMatch: RegExpExecArray | null;
+      while ((attrMatch = attrExprRegex.exec(attr.value)) !== null) {
+        const innerExpr = attrMatch[1]?.trim() ?? '';
+        const refsItem = expressionReferencesIdentifier(innerExpr, itemVar);
+        const refsIndex = indexVar ? expressionReferencesIdentifier(innerExpr, indexVar) : false;
+        if (!refsItem && !refsIndex) continue;
 
-    itemBindings.push({
-      elementId: id,
-      type: 'attr',
-      property: attrName,
-      expression: expression,
-    });
+        const id = `i${state.idCounter++}`;
 
-    itemAttrMatches.push({ start: matchStart, end: matchEnd, attrName, expr: expression, id });
-  }
-  const edits: Array<{ start: number; end: number; replacement: string }> = [];
-  for (const cond of conditionals) {
-    const replacement = cond.initialValue ? cond.templateContent : `<template id="${cond.id}"></template>`;
-    edits.push({ start: cond.startIndex, end: cond.endIndex, replacement });
-  }
-  for (const we of whenElseBlocks) {
-    const thenReplacement = we.initialValue ? injectIdIntoFirstElement(we.thenTemplate, we.thenId) : `<template id="${we.thenId}"></template>`;
-    const elseReplacement = we.initialValue ? `<template id="${we.elseId}"></template>` : injectIdIntoFirstElement(we.elseTemplate, we.elseId);
-    edits.push({ start: we.startIndex, end: we.endIndex, replacement: thenReplacement + elseReplacement });
-  }
+        itemBindings.push({
+          elementId: id,
+          type: 'attr',
+          property: attrName,
+          expression: innerExpr,
+        });
+
+        itemAttrMatches.push({
+          start: attr.start,
+          end: attr.end,
+          attrName,
+          expr: innerExpr,
+          id,
+        });
+      }
+    }
+  });
+
+  const edits: TemplateEdit[] = [
+    ...buildConditionalEdits(conditionals),
+    ...buildWhenElseEdits(whenElseBlocks, true, injectIdIntoFirstElement),
+  ];
   for (const rep of repeatBlocks) {
     edits.push({ start: rep.startIndex, end: rep.endIndex, replacement: `<template id="${rep.id}"></template>` });
   }
@@ -660,7 +625,7 @@ export const processItemTemplateRecursively = (
   
   for (const textMatch of itemTextMatches) {
     const { start, end, expr, id, isSoleContent, parentTagStart, parentTagNameEnd: _parentTagNameEnd } = textMatch;
-    const transformedExpr = expr.replace(new RegExp(`\\b${itemVar}\\b`, 'g'), `${itemVar}$()`);
+    const transformedExpr = renameIdentifierInExpression(expr, itemVar, `${itemVar}$()`);
     
     if (isSoleContent && parentTagStart >= 0) {
       // For sole content: just output the expression (no wrapper)
@@ -733,9 +698,9 @@ export const processItemTemplateRecursively = (
       tagStart--;
     }
     const elementId = elementIdByTagStart.get(tagStart) || id;
-    let transformedExpr = expr.replace(new RegExp(`\\b${itemVar}\\b`, 'g'), `${itemVar}$()`);
+    let transformedExpr = renameIdentifierInExpression(expr, itemVar, `${itemVar}$()`);
     if (indexVar) {
-      transformedExpr = transformedExpr.replace(new RegExp(`\\b${indexVar}\\b`, 'g'), indexVar);
+      transformedExpr = renameIdentifierInExpression(transformedExpr, indexVar, indexVar);
     }
     const needsDataBindId = !injectedElementIds.has(tagStart);
     if (needsDataBindId) {
@@ -754,25 +719,7 @@ export const processItemTemplateRecursively = (
         : `${attrName}="\${${transformedExpr}}"`,
     });
   }
-  for (const [element, id] of elementIdMap) {
-    const insideRange = allRanges.some((r) => element.tagStart >= r.start && element.tagStart < r.end);
-    if (insideRange) continue;
-    if (element.attributes.has('id')) continue;
-    const evtAttrs: string[] = [];
-    for (const evt of eventBindings) {
-      if (evt.elementId === id) {
-        const attrValue = evt.modifiers.length > 0 ? `${evt.id}:${evt.modifiers.join(':')}` : evt.id;
-        evtAttrs.push(`data-evt-${evt.eventName}="${attrValue}"`);
-      }
-    }
-    for (const evt of itemEvents) {
-      const attrValue = evt.modifiers.length > 0 ? `${evt.eventId}:${evt.modifiers.join(':')}` : evt.eventId;
-      evtAttrs.push(`data-evt-${evt.eventName}="${attrValue}"`);
-    }
-
-    const attrsToAdd = [`id="${id}"`, ...evtAttrs].join(' ');
-    edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ' ' + attrsToAdd });
-  }
+  edits.push(...buildElementIdEdits(elementIdMap, allRanges, { eventBindings, itemEvents }));
   for (const binding of parsed.bindings) {
     if (binding.type === 'event') {
       const alreadyEdited = edits.some((e) => e.start <= binding.expressionStart && e.end >= binding.expressionEnd);
@@ -781,16 +728,8 @@ export const processItemTemplateRecursively = (
       }
     }
   }
-  edits.sort((a, b) => b.start - a.start);
-
-  let result = templateContent;
-  for (const edit of edits) {
-    result = result.substring(0, edit.start) + edit.replacement + result.substring(edit.end);
-  }
-  result = result.replace(/\s+/g, ' ').trim();
-
   return {
-    processedContent: result,
+    processedContent: applyTemplateEdits(templateContent, edits),
     itemBindings,
     itemEvents,
     signalBindings,
@@ -798,12 +737,9 @@ export const processItemTemplateRecursively = (
     nestedConditionals: conditionals,
     nestedWhenElse: whenElseBlocks,
     nestedRepeats: repeatBlocks,
-    nextId: idCounter,
+    nextId: state.idCounter,
   };
 };
-
-// Need to import injectIdIntoFirstElement
-import { injectIdIntoFirstElement } from '../../utils/html-parser.js';
 
 /**
  * Process an item template (wrapper around processItemTemplateRecursively)

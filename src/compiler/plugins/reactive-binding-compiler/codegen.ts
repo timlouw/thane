@@ -18,8 +18,8 @@ import type {
 } from './types.js';
 import { CLASS_ACCESS } from './types.js';
 import { generateStaticRepeatTemplate, getOptimizationSkipMessage } from './repeat-analysis.js';
-import { toCamelCase, BIND_FN, logger, PLUGIN_NAME } from '../../utils/index.js';
-import { injectIdIntoFirstElement } from '../../utils/html-parser.js';
+import { toCamelCase, BIND_FN, logger, PLUGIN_NAME, renameIdentifierInExpression, expressionReferencesIdentifier, findComponentSignalCalls, parseArrowFunction, isThisMethodReference } from '../../utils/index.js';
+import { injectIdIntoFirstElement } from '../../utils/html-parser/index.js';
 import type { ImportInfo } from '../../types.js';
 
 const NAME = PLUGIN_NAME.REACTIVE;
@@ -304,7 +304,7 @@ export const generateInitBindingsFunction = (
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
           for (const binding of eb.bindings) {
-            const expr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), 'item');
+            const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             if (binding.type === 'text') {
               fillStatements.push(`els[${i}].textContent = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
@@ -319,7 +319,7 @@ export const generateInitBindingsFunction = (
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
           for (const binding of eb.bindings) {
-            const expr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), 'v');
+            const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'v');
             if (binding.type === 'text') {
               updateStatements.push(`els[${i}].textContent = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
@@ -382,17 +382,8 @@ export const generateInitBindingsFunction = (
         const mixedBindings: { binding: ItemBinding; componentSignals: Set<string> }[] = [];
         
         for (const binding of rep.itemBindings) {
-          // Detect component-level signal references in item binding expressions.
-          // Class mode: `this._signal()`, Closure mode: `_signal()` (bare call, no dot prefix)
-          const componentSignalRegex = ap.classStyle
-            ? /this\.(_\w+)\(\)/g
-            : /(?<!\.)(_\w+)\(\)/g;
-          const componentSignals = new Set<string>();
-          let signalMatch: RegExpExecArray | null;
-          while ((signalMatch = componentSignalRegex.exec(binding.expression)) !== null) {
-            componentSignals.add(signalMatch[1]!);
-          }
-          componentSignalRegex.lastIndex = 0;
+          // Detect component-level signal references in item binding expressions
+          const componentSignals = findComponentSignalCalls(binding.expression, ap.classStyle);
 
           if (componentSignals.size === 0) {
             pureItemBindings.push(binding);
@@ -424,7 +415,7 @@ export const generateInitBindingsFunction = (
             }
             
             for (const binding of bindings) {
-              const signalExpr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `v`);
+              const signalExpr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'v');
               if (binding.type === 'text') {
                 updateStatements.push(`${cachedVar}.textContent = ${signalExpr}`);
               } else if (binding.type === 'attr' && binding.property) {
@@ -441,7 +432,7 @@ export const generateInitBindingsFunction = (
           }
         }
         for (const { binding, componentSignals } of mixedBindings) {
-          const signalExpr = binding.expression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `${itemSignalVar}()`);
+          const signalExpr = renameIdentifierInExpression(binding.expression, rep.itemVar, `${itemSignalVar}()`);
           let updateStmt: string;
           if (binding.type === 'text') {
             if (binding.textBindingMode === 'commentMarker') {
@@ -503,15 +494,7 @@ export const generateInitBindingsFunction = (
               const mixedNestedBindings: { binding: (typeof nestedRep.itemBindings)[0]; componentSignals: Set<string> }[] = [];
 
               for (const binding of nestedRep.itemBindings) {
-                const componentSignalRegex = ap.classStyle
-                  ? /this\.(_\w+)\(\)/g
-                  : /(?<!\.)(_\w+)\(\)/g;
-                const componentSignals = new Set<string>();
-                let signalMatch: RegExpExecArray | null;
-                while ((signalMatch = componentSignalRegex.exec(binding.expression)) !== null) {
-                  componentSignals.add(signalMatch[1]!);
-                }
-                componentSignalRegex.lastIndex = 0;
+                const componentSignals = findComponentSignalCalls(binding.expression, ap.classStyle);
 
                 if (componentSignals.size === 0) {
                   pureNestedBindings.push(binding);
@@ -522,7 +505,7 @@ export const generateInitBindingsFunction = (
               if (pureNestedBindings.length > 0) {
                 const updateStatements: string[] = [];
                 for (const binding of pureNestedBindings) {
-                  const signalExpr = binding.expression.replace(new RegExp(`\\b${nestedRep.itemVar}\\b`, 'g'), `v`);
+                  const signalExpr = renameIdentifierInExpression(binding.expression, nestedRep.itemVar, 'v');
                   if (binding.type === 'text') {
                     updateStatements.push(`e = $n('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`);
                   } else if (binding.type === 'attr' && binding.property) {
@@ -534,7 +517,7 @@ export const generateInitBindingsFunction = (
                 }
               }
               for (const { binding, componentSignals } of mixedNestedBindings) {
-                const signalExpr = binding.expression.replace(new RegExp(`\\b${nestedRep.itemVar}\\b`, 'g'), `${nestedItemSignalVar}()`);
+                const signalExpr = renameIdentifierInExpression(binding.expression, nestedRep.itemVar, `${nestedItemSignalVar}()`);
                 let updateStmt: string;
                 if (binding.type === 'text') {
                   updateStmt = `e = $n('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`;
@@ -572,7 +555,7 @@ export const generateInitBindingsFunction = (
                 }
               }
               for (const binding of nestedCond.nestedItemBindings) {
-                const signalExpr = binding.expression.replace(new RegExp(`\\b${nestedRep.itemVar}\\b`, 'g'), `${nestedItemSignalVar}()`);
+                const signalExpr = renameIdentifierInExpression(binding.expression, nestedRep.itemVar, `${nestedItemSignalVar}()`);
 
                 if (binding.type === 'text') {
                   condBindingUpdates.push(`${nestedItemSignalVar}.subscribe(() => { const el = $n('${binding.elementId}'); if (el) el.textContent = ${signalExpr}; }, true)`);
@@ -603,10 +586,10 @@ export const generateInitBindingsFunction = (
             nestedInitBindingsFn = `(nel, ${nestedItemSignalVar}, ${nestedIndexVar}) => []`;
           }
           let nestedArrayExpr: string;
-          const refsParentItem = new RegExp(`\\b${rep.itemVar}\\b`).test(nestedRep.itemsExpression);
+          const refsParentItem = expressionReferencesIdentifier(nestedRep.itemsExpression, rep.itemVar);
 
           if (refsParentItem) {
-            nestedArrayExpr = nestedRep.itemsExpression.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `${itemSignalVar}()`);
+            nestedArrayExpr = renameIdentifierInExpression(nestedRep.itemsExpression, rep.itemVar, `${itemSignalVar}()`);
           } else {
             nestedArrayExpr = nestedRep.itemsExpression;
           }
@@ -672,19 +655,18 @@ export const generateInitBindingsFunction = (
       for (const [eventType, handlers] of eventsByType) {
         const handlerLines = handlers.map((h) => {
           let handlerExpr = h.handlerExpression;
-          handlerExpr = handlerExpr.replace(new RegExp(`\\b${rep.itemVar}\\b`, 'g'), `${itemSignalVar}()`);
+          handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, `${itemSignalVar}()`);
           if (rep.indexVar) {
-            handlerExpr = handlerExpr.replace(new RegExp(`\\b${rep.indexVar}\\b`, 'g'), indexVar);
+            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
           }
-          const arrowMatch = handlerExpr.match(/^\s*\(?([^)]*)\)?\s*=>\s*(.+)$/);
-          if (arrowMatch && arrowMatch[2]) {
-            const body = arrowMatch[2].trim();
-            if (!body.startsWith('{')) {
-              handlerExpr = body;
+          const arrowParsed = parseArrowFunction(handlerExpr);
+          if (arrowParsed) {
+            if (!arrowParsed.isBlockBody) {
+              handlerExpr = arrowParsed.body;
             } else {
-              handlerExpr = body.slice(1, -1).trim();
+              handlerExpr = arrowParsed.body.slice(1, -1).trim();
             }
-          } else if (ap.classStyle && /^this\._?\w+$/.test(handlerExpr)) {
+          } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
             handlerExpr = `${handlerExpr}(e)`;
           }
 
@@ -727,7 +709,7 @@ export const generateInitBindingsFunction = (
     for (const [eventType, handlers] of eventsByType) {
       const handlerEntries = handlers.map((h) => {
         let handlerCode = h.handlerExpression;
-        if (ap.classStyle && /^this\._?\w+$/.test(handlerCode)) {
+        if (ap.classStyle && isThisMethodReference(handlerCode)) {
           handlerCode = `(e) => ${handlerCode}.call(${ap.callContext}, e)`;
         }
         return `'${h.id}': ${handlerCode}`;

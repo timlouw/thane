@@ -335,80 +335,89 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     );
   }
   
-  // ── Step 1: Insert static template declarations before the export ──
-  const exportMatch = result.match(/export\s+const\s+(\w+)\s*=\s*defineComponent\s*\(/);
+  // ── AST-based injection: re-parse the transformed source for reliable positions ──
+  const injectionSf = ts.createSourceFile('__injection.ts', result, ts.ScriptTarget.Latest, true);
   
-  if (exportMatch && exportMatch.index !== undefined) {
+  // Find the export declaration and defineComponent call via AST
+  let exportStart: number | null = null;
+  let dcCallNode: ts.CallExpression | null = null;
+  let dcCallCloseParen: number | null = null;
+  let returnObjectBracePos: number | null = null;
+  
+  const findInjectionPoints = (node: ts.Node) => {
+    // Find: export const X = defineComponent(...)
+    if (ts.isVariableStatement(node) && node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+      for (const decl of node.declarationList.declarations) {
+        if (decl.initializer && ts.isCallExpression(decl.initializer) && isDefineComponentCall(decl.initializer)) {
+          exportStart = node.getStart(injectionSf);
+          dcCallNode = decl.initializer;
+          // The closing paren is at the end of the CallExpression minus 1
+          dcCallCloseParen = dcCallNode.getEnd() - 1;
+        }
+      }
+    }
+    ts.forEachChild(node, findInjectionPoints);
+  };
+  findInjectionPoints(injectionSf);
+  
+  // Find the return statement inside the setup function
+  if (dcCallNode) {
+    const setupArg = (dcCallNode as ts.CallExpression).arguments.length >= 2 
+      ? (dcCallNode as ts.CallExpression).arguments[1] 
+      : (dcCallNode as ts.CallExpression).arguments[0];
+    if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
+      const findReturn = (node: ts.Node) => {
+        // Only look at direct returns in this function, not nested functions
+        if (ts.isArrowFunction(node) && node !== setupArg) return;
+        if (ts.isFunctionExpression(node) && node !== setupArg) return;
+        if (ts.isFunctionDeclaration(node)) return;
+        if (ts.isReturnStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression)) {
+          returnObjectBracePos = node.expression.getStart(injectionSf) + 1; // after {
+        }
+        ts.forEachChild(node, findReturn);
+      };
+      findReturn(setupArg);
+    }
+  }
+  
+  if (exportStart !== null) {
+    // ── Step 1: Insert static template declarations before the export ──
     let declarations = '';
     if (staticTemplateCode.trim()) {
       declarations += staticTemplateCode.trim() + '\n';
     }
     
     if (declarations) {
-      result = result.substring(0, exportMatch.index) + declarations + '\n' + result.substring(exportMatch.index);
+      result = result.substring(0, exportStart) + declarations + '\n' + result.substring(exportStart);
+      // Adjust downstream positions for the inserted text
+      const offset = declarations.length + 1; // +1 for newline
+      if (returnObjectBracePos !== null) returnObjectBracePos = returnObjectBracePos + offset;
+      if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + offset;
     }
     
-    // ── Step 2: Inject __bindings into the return object inside the setup fn ──
-    if (hasAnyBindings && processedBindings.trim()) {
-      // Build the __bindings arrow function
-      const bindingsFnBody = `  __bindings: (ctx) => {\n  ${processedBindings.trim()}\n  },`;
-      
-      // Find the return object literal inside the setup function.
-      // After template processing, the return has `template: \`\``.
-      // We insert __bindings right after the opening brace of the return object.
-      // Look for `return {` pattern inside the defineComponent call.
-      const returnMatch = result.match(/return\s*\{/);
-      if (returnMatch && returnMatch.index !== undefined) {
-        const insertPos = returnMatch.index + returnMatch[0].length;
-        result = result.substring(0, insertPos) + '\n' + bindingsFnBody + result.substring(insertPos);
-      }
+    // ── Step 2: Inject __bindings into the return object ──
+    if (hasAnyBindings && processedBindings.trim() && returnObjectBracePos !== null) {
+      const bindingsFnBody = `\n  __bindings: (ctx) => {\n  ${processedBindings.trim()}\n  },`;
+      result = result.substring(0, returnObjectBracePos) + bindingsFnBody + result.substring(returnObjectBracePos);
+      // Adjust closing paren position
+      if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + bindingsFnBody.length;
     }
     
     // ── Step 3: Pass __tpl + repeat templates as extra args to defineComponent() ──
-    let extraArgs = '';
-    if (lastProcessedTemplateContent) {
-      extraArgs += ', __tpl';
-    } else {
-      extraArgs += ', undefined';
-    }
-    // No __compiledBindings arg needed — bindings are in the return object
-    extraArgs += ', undefined';
-    
-    // Add repeat static templates as name/value pairs
-    for (const name of repeatTemplateNames) {
-      extraArgs += `, '${name}', ${name}`;
-    }
-    
-    // Find the matching closing paren of defineComponent(
-    const dcCallMatch = result.match(/defineComponent\s*\(/);
-    if (dcCallMatch && dcCallMatch.index !== undefined) {
-      let parenDepth = 0;
-      let i = dcCallMatch.index + dcCallMatch[0].length - 1; // at the opening (
-      for (; i < result.length; i++) {
-        if (result[i] === '(') parenDepth++;
-        else if (result[i] === ')') {
-          parenDepth--;
-          if (parenDepth === 0) {
-            result = result.substring(0, i) + extraArgs + result.substring(i);
-            break;
-          }
-        }
-        // Skip over string literals and template literals
-        if (result[i] === '`') {
-          i++;
-          while (i < result.length && result[i] !== '`') {
-            if (result[i] === '\\') i++;
-            i++;
-          }
-        } else if (result[i] === "'" || result[i] === '"') {
-          const q = result[i];
-          i++;
-          while (i < result.length && result[i] !== q) {
-            if (result[i] === '\\') i++;
-            i++;
-          }
-        }
+    if (dcCallCloseParen !== null) {
+      let extraArgs = '';
+      if (lastProcessedTemplateContent) {
+        extraArgs += ', __tpl';
+      } else {
+        extraArgs += ', undefined';
       }
+      extraArgs += ', undefined'; // No __compiledBindings arg
+      
+      for (const name of repeatTemplateNames) {
+        extraArgs += `, '${name}', ${name}`;
+      }
+      
+      result = result.substring(0, dcCallCloseParen) + extraArgs + result.substring(dcCallCloseParen);
     }
   }
   

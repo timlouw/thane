@@ -30,6 +30,11 @@ export {
   toCamelCase,
   pascalToKebab,
   generateComponentHTML,
+  renameIdentifierInExpression,
+  expressionReferencesIdentifier,
+  findComponentSignalCalls,
+  parseArrowFunction,
+  isThisMethodReference,
   FN,
   PROP,
 } from './ast-utils.js';
@@ -40,4 +45,4 @@ export { shouldSkipPath, hasSignalPatterns, createLoaderResult, extendsComponent
 
 export { PLUGIN_NAME, BIND_FN, generateSelectorHTML } from './constants.js';
 
-export * from './html-parser.js';
+export * from './html-parser/index.js';

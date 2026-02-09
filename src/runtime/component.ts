@@ -66,30 +66,19 @@ interface ComponentInstance {
 // Style Management
 // ============================================================================
 
-// Track registered styles to avoid duplicates
+// Track registered styles to avoid duplicates.
+// Keys are either CSS text (from registerGlobalStyles) or selector names (from registerComponentStyles).
 const registeredStyles = new Set<string>();
 
-// Global style element reference
-let globalStyleEl: HTMLStyleElement | null = null;
-
 /**
- * Ensure global style element exists in document head
- */
-const ensureGlobalStyleElement = (): HTMLStyleElement => {
-  if (!globalStyleEl) {
-    globalStyleEl = document.createElement('style');
-    globalStyleEl.id = 'thane-styles';
-    document.head.appendChild(globalStyleEl);
-  }
-  return globalStyleEl;
-};
-
-/**
- * Append a CSS string directly to the global style element
+ * Append a CSS string via adoptedStyleSheets.
+ * Each stylesheet is parsed exactly once — O(n) total vs O(n²) with textContent +=.
+ * No <style> element needed.
  */
 const appendStyle = (cssText: string): void => {
-  const styleEl = ensureGlobalStyleElement();
-  styleEl.textContent += cssText + '\n';
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(cssText);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 };
 
 /**
@@ -119,11 +108,8 @@ const componentFactories = new Map<string, () => ComponentInstance>();
 const createHostElement = (selector: string): ComponentRoot => {
   const el = document.createElement('div') as any;
   el.className = selector;
-  el.setAttribute('data-thane', selector);
-  el.getElementById = (id: string): HTMLElement | null => {
-    if (el.id === id) return el;
-    return el.querySelector(`#${id}`);
-  };
+  el.getElementById = (id: string): HTMLElement | null =>
+    el.querySelector(`#${id}`);
   return el as ComponentRoot;
 };
 
@@ -312,7 +298,7 @@ export function createComponentHTMLSelector<T extends ComponentProps>(
         return `${key}="${val.replace(/"/g, '&quot;')}"`;
       })
       .join(' ');
-    return `<div data-thane-component="${selector}" ${propsString}></div>`;
+    return `<div class="${selector}" ${propsString}></div>`;
   }) as ComponentHTMLSelector<T> & { __componentSelector: string };
   fn.__componentSelector = selector;
   return fn;

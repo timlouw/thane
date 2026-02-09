@@ -15,11 +15,14 @@ import fs from 'fs';
 import path from 'path';
 import type { Metafile, Plugin } from 'esbuild';
 import { sourceCache, PLUGIN_NAME } from '../../utils/index.js';
+import type { BuildContext } from '../../types.js';
 
 import { recursivelyCopyAssetsIntoDist, watchAndRecursivelyCopyAssetsIntoDist } from './file-copy.js';
 import { gzipDistFiles } from './compression.js';
 import { DevServer } from './dev-server.js';
 import { printAllFileSizes, printTotalSizes } from './console-reporting.js';
+import { minifySelectorsInHTML } from '../minification/minification.js';
+import { minifyHTML } from '../minification/template-minifier.js';
 
 const NAME = PLUGIN_NAME.POST_BUILD;
 
@@ -32,6 +35,7 @@ export interface PostBuildOptions {
   serve?: boolean | undefined;
   isProd?: boolean | undefined;
   useGzip?: boolean | undefined;
+  buildContext?: BuildContext | undefined;
 }
 
 export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
@@ -59,10 +63,10 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
       }
     }
     let updatedData = data;
-    const { minifySelectorsInHTML } = await import('../minification/minification.js');
-    updatedData = minifySelectorsInHTML(updatedData);
+    if (config.buildContext) {
+      updatedData = minifySelectorsInHTML(updatedData, config.buildContext);
+    }
     if (isProd) {
-      const { minifyHTML } = await import('../minification/template-minifier.js');
       updatedData = minifyHTML(updatedData);
     }
     if (serve && !isProd) {
