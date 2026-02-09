@@ -102,7 +102,7 @@ What's missing:
 2. **`defer()` utility** — A small helper that wraps a `Promise` into a signal: `const data = defer(fetchItems())` → starts as `undefined`, becomes the resolved value. Sugar on top of the existing model.
 3. **Next.js-inspired `setImmediate` pattern** — Would require the compiler to detect async code inside `onMount` and defer it. Adds complexity for marginal gain since the render is already sync.
 
-**Priority: 🟢 P3** — document the existing pattern, optionally add `defer()` utility.
+**Priority: 🟢 P3** — document the existing pattern
 
 ---
 

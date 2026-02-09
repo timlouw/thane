@@ -23,6 +23,29 @@ import type { ImportInfo } from '../../types.js';
 
 const NAME = PLUGIN_NAME.REACTIVE;
 
+/** Map of event modifier names to their corresponding KeyboardEvent.key values */
+const KEY_MAP: Record<string, string[]> = {
+  enter: ['Enter'], tab: ['Tab'], delete: ['Backspace', 'Delete'],
+  esc: ['Escape'], escape: ['Escape'], space: [' '],
+  up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
+};
+
+/**
+ * Compile key modifier names into a JS guard expression.
+ * Returns `null` if no valid key modifiers are present.
+ * @example compileKeyGuard(['enter', 'tab']) => "e.key !== 'Enter' || e.key !== 'Tab'"
+ */
+const compileKeyGuard = (modifiers: string[]): string | null => {
+  const checks = modifiers
+    .map(mod => {
+      const keys = KEY_MAP[mod];
+      if (!keys) return null;
+      return keys.length === 1 ? `e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(e.key)`;
+    })
+    .filter(Boolean);
+  return checks.length > 0 ? checks.join(' || ') : null;
+};
+
 /**
  * Generate binding update code for a single binding
  */
@@ -95,6 +118,52 @@ export const generateInitBindingsFunction = (
 ): { code: string; staticTemplates: string[] } => {
   const lines: string[] = [];
   const staticTemplates: string[] = []; // Collect static templates for repeat optimizations
+  const buildEventListenerStatements = (events: EventBinding[], rootVar: string): string[] => {
+    const statements: string[] = [];
+    for (const evt of events) {
+      let handlerCode = evt.handlerExpression;
+      if (ap.classStyle && isThisMethodReference(handlerCode)) {
+        handlerCode = `(e) => ${handlerCode}.call(${ap.callContext}, e)`;
+      }
+
+      const hasModifiers = evt.modifiers.length > 0;
+      const hasPrevent = evt.modifiers.includes('prevent');
+      const hasStop = evt.modifiers.includes('stop');
+      const hasSelf = evt.modifiers.includes('self');
+      const keyModifiers = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+
+      let handlerExpr = handlerCode;
+      if (hasModifiers && (hasPrevent || hasStop || hasSelf || keyModifiers.length > 0)) {
+        const bodyParts: string[] = [];
+        if (hasSelf) bodyParts.push('if (e.target !== e.currentTarget) return;');
+        if (keyModifiers.length > 0) {
+          const guard = compileKeyGuard(keyModifiers);
+          if (guard) bodyParts.push(`if (${guard}) return;`);
+        }
+        if (hasPrevent) bodyParts.push('e.preventDefault();');
+        if (hasStop) bodyParts.push('e.stopPropagation();');
+        bodyParts.push(`(${handlerCode})(e);`);
+        handlerExpr = `(e) => { ${bodyParts.join(' ')} }`;
+      }
+
+      statements.push(`const _el_${evt.id} = ${rootVar}.getElementById('${evt.elementId}'); if (_el_${evt.id}) _el_${evt.id}.addEventListener('${evt.eventName}', ${handlerExpr});`);
+    }
+    return statements;
+  };
+  const collectConditionalEventBindings = (conds: ConditionalBlock[]): EventBinding[] => {
+    const collected: EventBinding[] = [];
+    const visit = (cond: ConditionalBlock) => {
+      if (cond.nestedEventBindings?.length) {
+        collected.push(...cond.nestedEventBindings);
+      }
+      if (cond.nestedConditionals?.length) {
+        for (const nested of cond.nestedConditionals) visit(nested);
+      }
+    };
+    for (const cond of conds) visit(cond);
+    return collected;
+  };
+  const conditionalEventIds = new Set(collectConditionalEventBindings(conditionals).map((evt) => evt.id));
   lines.push('  initializeBindings = () => {');
   lines.push(`    ${ap.rootAlias}`);
   const topLevelBindings = bindings.filter((b) => !b.isInsideConditional);
@@ -127,6 +196,12 @@ export const generateInitBindingsFunction = (
         nestedLines.push(`      ${generateInitialValueCode(binding, ap)};`);
       }
       const nestedSignalGroups = groupBindingsBySignal(nestedBindings);
+      if (cond.nestedEventBindings.length > 0) {
+        const nestedEventLines = buildEventListenerStatements(cond.nestedEventBindings, 'r');
+        for (const line of nestedEventLines) {
+          nestedLines.push(`      ${line}`);
+        }
+      }
       nestedLines.push('      return [');
       for (const [signalName, signalBindings] of nestedSignalGroups) {
         nestedLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
@@ -421,8 +496,9 @@ export const generateInitBindingsFunction = (
             if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
             if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
             const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
-            for (const km of keyMods) {
-              modParts.push(`if (e.key !== '${km.charAt(0).toUpperCase() + km.slice(1)}') return`);
+            if (keyMods.length > 0) {
+              const guard = compileKeyGuard(keyMods);
+              if (guard) modParts.push(`if (${guard}) return`);
             }
             const handlerBody = [...modParts, evt.handlerExpr].join('; ');
             
@@ -492,11 +568,12 @@ export const generateInitBindingsFunction = (
             if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
             if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
             const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
-            for (const km of keyMods) {
-              bodyParts.push(`if (e.key !== '${km.charAt(0).toUpperCase() + km.slice(1)}') return`);
+            if (keyMods.length > 0) {
+              const guard = compileKeyGuard(keyMods);
+              if (guard) bodyParts.push(`if (${guard}) return`);
             }
             bodyParts.push(handlerExpr);
-            eventAddStatements.push(`${elVar}.addEventListener('${evt.eventName}', (e) => { ${bodyParts.join('; ')}; })`);
+            eventAddStatements.push(`${elVar}.addEventListener('${evt.eventName}', (e) => { ${bodyParts.join('; ')}; })`)
           }
         }
         
@@ -568,7 +645,7 @@ export const generateInitBindingsFunction = (
     const templateFn = `(${itemSignalVar}, ${indexVar}) => \`${escapedItemTemplate}\``;
     let initItemBindingsFn: string;
 
-    if (!hasItemBindings && !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals) {
+    if (!hasItemBindings && !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals && rep.itemEvents.length === 0) {
       initItemBindingsFn = `(els, ${itemSignalVar}, ${indexVar}) => []`;
     } else {
       const subscriptionLines: string[] = [];
@@ -828,7 +905,38 @@ export const generateInitBindingsFunction = (
           }
         }
       }
-      const allCleanupLines = [...subscriptionLines, ...nestedRepeatLines, ...nestedConditionalLines];
+      const itemEventCleanupLines: string[] = [];
+      if (rep.itemEvents.length > 0) {
+        for (const evt of rep.itemEvents) {
+          let handlerExpr = evt.handlerExpression;
+          handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, `${itemSignalVar}()`);
+          if (rep.indexVar) {
+            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
+          }
+          const arrowParsed = parseArrowFunction(handlerExpr);
+          if (arrowParsed) {
+            handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
+          } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
+            handlerExpr = `${handlerExpr}(e)`;
+          }
+
+          const bodyParts: string[] = [];
+          if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
+          const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+          if (keyMods.length > 0) {
+            const guard = compileKeyGuard(keyMods);
+            if (guard) bodyParts.push(`if (${guard}) return`);
+          }
+          if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
+          if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
+          bodyParts.push(handlerExpr);
+
+          itemEventCleanupLines.push(
+            `((el) => { if (!el) return () => {}; const _h = (e) => { ${bodyParts.join('; ')}; }; el.addEventListener('${evt.eventName}', _h); return () => el.removeEventListener('${evt.eventName}', _h); })($('${evt.elementId}'))`
+          );
+        }
+      }
+      const allCleanupLines = [...subscriptionLines, ...nestedRepeatLines, ...nestedConditionalLines, ...itemEventCleanupLines];
 
       const needsTextNodeHelper = rep.itemBindings.some(b => b.type === 'text' && b.textBindingMode === 'commentMarker');
       const helperCode = needsTextNodeHelper 
@@ -857,55 +965,11 @@ export const generateInitBindingsFunction = (
     lines.push(`    ${bindRepeatCall};`);
   }
   if (eventBindings.length > 0) {
-    // Generate direct addEventListener calls instead of runtime delegation
-    for (const evt of eventBindings) {
-      let handlerCode = evt.handlerExpression;
-      if (ap.classStyle && isThisMethodReference(handlerCode)) {
-        handlerCode = `(e) => ${handlerCode}.call(${ap.callContext}, e)`;
-      }
-
-      // Build the handler with compiled modifiers
-      const hasModifiers = evt.modifiers.length > 0;
-      const hasPrevent = evt.modifiers.includes('prevent');
-      const hasStop = evt.modifiers.includes('stop');
-      const hasSelf = evt.modifiers.includes('self');
-      const keyModifiers = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
-
-      if (hasModifiers && (hasPrevent || hasStop || hasSelf || keyModifiers.length > 0)) {
-        // Wrap handler with compiled modifier logic
-        const bodyParts: string[] = [];
-        if (hasSelf) bodyParts.push('if (e.target !== e.currentTarget) return;');
-        if (keyModifiers.length > 0) {
-          // Key filter modifiers
-          const keyChecks = keyModifiers.map(mod => {
-            // Map modifier names to key values
-            const keyMap: Record<string, string[]> = {
-              enter: ['Enter'], tab: ['Tab'], delete: ['Backspace', 'Delete'],
-              esc: ['Escape'], escape: ['Escape'], space: [' '],
-              up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
-            };
-            const keys = keyMap[mod];
-            if (keys) {
-              return keys.length === 1 ? `e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(e.key)`;
-            }
-            return null;
-          }).filter(Boolean);
-          if (keyChecks.length > 0) {
-            bodyParts.push(`if (${keyChecks.join(' || ')}) return;`);
-          }
-        }
-        if (hasPrevent) bodyParts.push('e.preventDefault();');
-        if (hasStop) bodyParts.push('e.stopPropagation();');
-        bodyParts.push(`(${handlerCode})(e);`);
-        const wrappedHandler = `(e) => { ${bodyParts.join(' ')} }`;
-
-        // Use element's existing id or the injected id
-        const elId = evt.elementId;
-        lines.push(`    r.getElementById('${elId}').addEventListener('${evt.eventName}', ${wrappedHandler});`);
-      } else {
-        const elId = evt.elementId;
-        lines.push(`    r.getElementById('${elId}').addEventListener('${evt.eventName}', ${handlerCode});`);
-      }
+    // Generate direct addEventListener calls (skip conditional-bound events here)
+    const topLevelEvents = eventBindings.filter((evt) => !conditionalEventIds.has(evt.id));
+    const eventLines = buildEventListenerStatements(topLevelEvents, 'r');
+    for (const line of eventLines) {
+      lines.push(`    ${line}`);
     }
   }
 
