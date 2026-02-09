@@ -2,13 +2,63 @@
  * Type definitions for the reactive binding compiler
  */
 
+/**
+ * Access pattern abstraction for code generation.
+ *
+ * Codegen and template-processing use this to emit the correct
+ * member-access syntax for each component model:
+ *
+ *  - **class-based**: `this.signal`, `this.shadowRoot`, `this.constructor.X`, `.call(this, e)`
+ *  - **defineComponent (closure)**: bare `signal`, `ctx.root`, plain `X`, `.call(null, e)`
+ */
+export interface AccessPattern {
+  /** Wrap a signal name for read access, e.g. `"this." + name` or bare `name` */
+  signal: (name: string) => string;
+  /** Wrap a signal call expression, e.g. `"this.foo()"` or `"foo()"` */
+  signalCall: (name: string) => string;
+  /** Root element expression used by initializeBindings, e.g. `"this.shadowRoot"` or `"ctx.root"` */
+  root: string;
+  /** Alias variable for root inside initializeBindings, e.g. `"const r = this.shadowRoot;"` or `"const r = ctx.root;"` */
+  rootAlias: string;
+  /** Prefix for static template class properties, e.g. `"this.constructor."` or `""` */
+  staticPrefix: string;
+  /** Call context for event handlers, e.g. `"this"` or `"null"` */
+  callContext: string;
+  /** Whether to emit class-style `initializeBindings = () => {` or plain arrow syntax */
+  classStyle: boolean;
+  /** Static template declaration format: class property or standalone const */
+  staticTemplatePrefix: string;
+}
 
+/** Access pattern for class-based components (extends ShadowDom) */
+export const CLASS_ACCESS: AccessPattern = {
+  signal: (name) => `this.${name}`,
+  signalCall: (name) => `this.${name}()`,
+  root: 'this.shadowRoot',
+  rootAlias: 'const r = this.shadowRoot;',
+  staticPrefix: 'this.constructor.',
+  callContext: 'this',
+  classStyle: true,
+  staticTemplatePrefix: 'static template',
+};
+
+/** Access pattern for defineComponent (closure-based) */
+export const CLOSURE_ACCESS: AccessPattern = {
+  signal: (name) => name,
+  signalCall: (name) => `${name}()`,
+  root: 'ctx.root',
+  rootAlias: 'const r = ctx.root;',
+  staticPrefix: '',
+  callContext: 'null',
+  classStyle: false,
+  staticTemplatePrefix: 'const __tpl',
+};
 
 export interface ConditionalBlock {
   id: string;
   signalName: string; // Primary signal (for simple cases)
   signalNames: string[]; // All signals in the expression
-  jsExpression: string; // The full JS expression e.g. "!this._loading()" or "this._a() && this._b()"
+  jsExpression: string; // The full JS expression e.g. "!_loading()" or "_a() && _b()"
   initialValue: boolean;
   templateContent: string; // HTML to insert when true
   startIndex: number; // Position in HTML where the element/block starts
@@ -40,7 +90,7 @@ export interface RepeatBlock {
   id: string; // ID for the anchor element
   signalName: string; // Primary signal (the array signal)
   signalNames: string[]; // All signals in the expression
-  itemsExpression: string; // e.g., "this._countries()"
+  itemsExpression: string; // e.g., "_countries()"
   itemVar: string; // e.g., "country"
   indexVar?: string | undefined; // e.g., "index" (optional)
   itemTemplate: string; // HTML template for each item (processed)
@@ -50,7 +100,7 @@ export interface RepeatBlock {
   endIndex: number; // Position after }
   itemBindings: ItemBinding[]; // Bindings inside item template that reference item/index
   itemEvents: ItemEventBinding[]; // Event handlers inside item template
-  signalBindings: BindingInfo[]; // Signal bindings like ${this._class()}
+  signalBindings: BindingInfo[]; // Component-level signal bindings inside repeat items
   eventBindings: EventBinding[]; // Event bindings not involving item
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
@@ -121,10 +171,10 @@ export interface StaticTemplateInfo {
 /** Reasons why a repeat block cannot use the optimized template-based rendering */
 export type RepeatOptimizationSkipReason = 
   | 'no-bindings'           // No item bindings at all
-  | 'signal-bindings'       // Has this._signal() bindings inside
+  | 'signal-bindings'       // Has component signal bindings inside
   | 'nested-repeat'         // Has repeat() inside repeat()
   | 'nested-conditional'    // Has when() or whenElse() inside
   | 'item-events'           // Has @click etc. inside items
-  | 'mixed-bindings'        // Item binding expressions contain this._
+  | 'mixed-bindings'        // Item binding expressions contain component signal refs
   | 'multi-root'            // Template has multiple root elements
   | 'path-not-found';       // Element path couldn't be computed

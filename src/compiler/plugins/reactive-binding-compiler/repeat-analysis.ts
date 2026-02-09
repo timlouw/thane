@@ -37,7 +37,7 @@ export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason)
     case 'no-bindings':
       return 'no item bindings found';
     case 'signal-bindings':
-      return 'contains component signal bindings (this._signalName()) inside items - move to data model';
+      return 'contains component signal bindings inside items - move to data model';
     case 'nested-repeat':
       return 'contains nested repeat() - not yet supported for optimization';
     case 'nested-conditional':
@@ -45,7 +45,7 @@ export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason)
     case 'item-events':
       return 'contains @event handlers inside items - use event delegation on container instead';
     case 'mixed-bindings':
-      return 'item bindings reference component signals (this._) - use pure item data instead';
+      return 'item bindings reference component signals - use pure item data instead';
     case 'multi-root':
       return 'template has multiple root elements - wrap in a single container element';
     case 'path-not-found':

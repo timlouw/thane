@@ -14,7 +14,9 @@ import type {
   ItemBinding,
   ItemEventBinding,
   RepeatOptimizationSkipReason,
+  AccessPattern,
 } from './types.js';
+import { CLASS_ACCESS } from './types.js';
 import { generateStaticRepeatTemplate, getOptimizationSkipMessage } from './repeat-analysis.js';
 import { toCamelCase, BIND_FN, logger, PLUGIN_NAME } from '../../utils/index.js';
 import { injectIdIntoFirstElement } from '../../utils/html-parser.js';
@@ -41,9 +43,9 @@ export const generateBindingUpdateCode = (binding: BindingInfo): string => {
 /**
  * Generate initial value assignment code for a binding
  */
-export const generateInitialValueCode = (binding: BindingInfo): string => {
+export const generateInitialValueCode = (binding: BindingInfo, ap: AccessPattern = CLASS_ACCESS): string => {
   const elRef = binding.id;
-  const signalCall = `this.${binding.signalName}()`;
+  const signalCall = ap.signalCall(binding.signalName);
 
   if (binding.type === 'style') {
     const prop = toCamelCase(binding.property!);
@@ -71,13 +73,13 @@ export const groupBindingsBySignal = (bindings: BindingInfo[]): Map<string, Bind
 /**
  * Generate a consolidated subscription for multiple bindings of the same signal
  */
-export const generateConsolidatedSubscription = (signalName: string, bindings: BindingInfo[]): string => {
+export const generateConsolidatedSubscription = (signalName: string, bindings: BindingInfo[], ap: AccessPattern = CLASS_ACCESS): string => {
   if (bindings.length === 1) {
     const update = generateBindingUpdateCode(bindings[0]!);
-    return `this.${signalName}.subscribe(v => { ${update}; }, true)`;
+    return `${ap.signal(signalName)}.subscribe(v => { ${update}; }, true)`;
   }
   const updates = bindings.map((b) => `      ${generateBindingUpdateCode(b)};`).join('\n');
-  return `this.${signalName}.subscribe(v => {\n${updates}\n    }, true)`;
+  return `${ap.signal(signalName)}.subscribe(v => {\n${updates}\n    }, true)`;
 };
 
 /**
@@ -90,11 +92,12 @@ export const generateInitBindingsFunction = (
   repeatBlocks: RepeatBlock[] = [],
   eventBindings: EventBinding[] = [],
   filePath: string = '',
+  ap: AccessPattern = CLASS_ACCESS,
 ): { code: string; staticTemplates: string[] } => {
   const lines: string[] = [];
   const staticTemplates: string[] = []; // Collect static templates for repeat optimizations
   lines.push('  initializeBindings = () => {');
-  lines.push('    const r = this.shadowRoot;');
+  lines.push(`    ${ap.rootAlias}`);
   const topLevelBindings = bindings.filter((b) => !b.isInsideConditional);
   const topLevelIds = [...new Set(topLevelBindings.map((b) => b.id))];
   if (topLevelIds.length > 0) {
@@ -103,11 +106,11 @@ export const generateInitBindingsFunction = (
     }
   }
   for (const binding of topLevelBindings) {
-    lines.push(`    ${generateInitialValueCode(binding)};`);
+    lines.push(`    ${generateInitialValueCode(binding, ap)};`);
   }
   const signalGroups = groupBindingsBySignal(topLevelBindings);
   for (const [signalName, signalBindings] of signalGroups) {
-    lines.push(`    ${generateConsolidatedSubscription(signalName, signalBindings)};`);
+    lines.push(`    ${generateConsolidatedSubscription(signalName, signalBindings, ap)};`);
   }
   for (const cond of conditionals) {
     const nestedBindings = cond.nestedBindings;
@@ -122,12 +125,12 @@ export const generateInitBindingsFunction = (
         nestedLines.push(`      const ${id} = r.getElementById('${id}');`);
       }
       for (const binding of nestedBindings) {
-        nestedLines.push(`      ${generateInitialValueCode(binding)};`);
+        nestedLines.push(`      ${generateInitialValueCode(binding, ap)};`);
       }
       const nestedSignalGroups = groupBindingsBySignal(nestedBindings);
       nestedLines.push('      return [');
       for (const [signalName, signalBindings] of nestedSignalGroups) {
-        nestedLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings)},`);
+        nestedLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
       }
       for (const nestedCond of nestedConds) {
         const nestedCondEscaped = nestedCond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
@@ -140,23 +143,23 @@ export const generateInitBindingsFunction = (
             innerBindingLines.push(`        const ${id} = r.getElementById('${id}');`);
           }
           for (const binding of nestedCond.nestedBindings) {
-            innerBindingLines.push(`        ${generateInitialValueCode(binding)};`);
+            innerBindingLines.push(`        ${generateInitialValueCode(binding, ap)};`);
           }
           const innerGroups = groupBindingsBySignal(nestedCond.nestedBindings);
           innerBindingLines.push('        return [');
           for (const [signalName, signalBindings] of innerGroups) {
-            innerBindingLines.push(`          ${generateConsolidatedSubscription(signalName, signalBindings)},`);
+            innerBindingLines.push(`          ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
           }
           innerBindingLines.push('        ];');
           innerBindingLines.push('      }');
           innerNestedCode = innerBindingLines.join('\n');
         }
 
-        const isNestedSimple = nestedCond.signalNames.length === 1 && nestedCond.jsExpression === `this.${nestedCond.signalName}()`;
+        const isNestedSimple = nestedCond.signalNames.length === 1 && nestedCond.jsExpression === ap.signalCall(nestedCond.signalName);
         if (isNestedSimple) {
-          nestedLines.push(`        ${BIND_FN.IF}(r, this.${nestedCond.signalName}, '${nestedCond.id}', \`${nestedCondEscaped}\`, ${innerNestedCode}),`);
+          nestedLines.push(`        ${BIND_FN.IF}(r, ${ap.signal(nestedCond.signalName)}, '${nestedCond.id}', \`${nestedCondEscaped}\`, ${innerNestedCode}),`);
         } else {
-          const nestedSignalsArray = nestedCond.signalNames.map((s) => `this.${s}`).join(', ');
+          const nestedSignalsArray = nestedCond.signalNames.map((s) => ap.signal(s)).join(', ');
           nestedLines.push(
             `        ${BIND_FN.IF_EXPR}(r, [${nestedSignalsArray}], () => ${nestedCond.jsExpression}, '${nestedCond.id}', \`${nestedCondEscaped}\`, ${innerNestedCode}),`,
           );
@@ -167,12 +170,12 @@ export const generateInitBindingsFunction = (
       nestedLines.push('    }');
       nestedCode = nestedLines.join('\n');
     }
-    const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === `this.${cond.signalName}()`;
+    const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
 
     if (isSimpleExpr) {
-      lines.push(`    ${BIND_FN.IF}(r, this.${cond.signalName}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`);
+      lines.push(`    ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`);
     } else {
-      const signalsArray = cond.signalNames.map((s) => `this.${s}`).join(', ');
+      const signalsArray = cond.signalNames.map((s) => ap.signal(s)).join(', ');
       lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`);
     }
   }
@@ -193,22 +196,22 @@ export const generateInitBindingsFunction = (
         initLines.push(`      const ${id} = r.getElementById('${id}');`);
       }
       for (const binding of bindings) {
-        initLines.push(`      ${generateInitialValueCode(binding)};`);
+        initLines.push(`      ${generateInitialValueCode(binding, ap)};`);
       }
 
       initLines.push('      return [');
       const signalGroups = groupBindingsBySignal(bindings);
       for (const [signalName, signalBindings] of signalGroups) {
-        initLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings)},`);
+        initLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
       }
       for (const cond of nestedConds) {
         const nestedEscapedTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
         const nestedBindingsCode = generateNestedInitializer(cond.nestedBindings, [], []);
-        const isSimple = cond.signalNames.length === 1 && cond.jsExpression === `this.${cond.signalName}()`;
+        const isSimple = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
         if (isSimple) {
-          initLines.push(`        ${BIND_FN.IF}(r, this.${cond.signalName}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`);
+          initLines.push(`        ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`);
         } else {
-          const signalsArray = cond.signalNames.map((s) => `this.${s}`).join(', ');
+          const signalsArray = cond.signalNames.map((s) => ap.signal(s)).join(', ');
           initLines.push(`        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`);
         }
       }
@@ -223,7 +226,7 @@ export const generateInitBindingsFunction = (
           nestedWe.nestedWhenElse,
         );
         const elseInitCode = generateNestedInitializer(nestedWe.elseBindings, [], []);
-        const signalsArray = nestedWe.signalNames.map((s) => `this.${s}`).join(', ');
+        const signalsArray = nestedWe.signalNames.map((s) => ap.signal(s)).join(', ');
         initLines.push(`        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${nestedWe.jsExpression}, '${nestedWe.thenId}', \`${nestedThenTemplate}\`, ${thenInitCode}),`);
         initLines.push(`        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${nestedWe.jsExpression}), '${nestedWe.elseId}', \`${nestedElseTemplate}\`, ${elseInitCode}),`);
       }
@@ -235,7 +238,7 @@ export const generateInitBindingsFunction = (
     const thenCode = generateNestedInitializer(we.thenBindings, we.nestedConditionals, we.nestedWhenElse);
     const elseCode = generateNestedInitializer(we.elseBindings, [], []);
 
-    const signalsArray = we.signalNames.map((s) => `this.${s}`).join(', ');
+    const signalsArray = we.signalNames.map((s) => ap.signal(s)).join(', ');
     lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThenTemplate}\`, ${thenCode});`);
     lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElseTemplate}\`, ${elseCode});`);
   }
@@ -251,7 +254,12 @@ export const generateInitBindingsFunction = (
     // Determine optimization skip reason (if any)
     let optimizationSkipReason: RepeatOptimizationSkipReason | null = null;
     
-    const hasMixedBindings = rep.itemBindings.some(b => b.expression.includes('this.'));
+    // Detect item bindings that reference component-level signals (mixed bindings).
+    // In class mode, these have `this.` prefix. In closure mode, component signals 
+    // are detected upstream via signalBindings, so this is primarily a class-mode heuristic.
+    const hasMixedBindings = ap.classStyle
+      ? rep.itemBindings.some(b => b.expression.includes('this.'))
+      : false;
     
     if (!hasItemBindings) {
       optimizationSkipReason = 'no-bindings';
@@ -284,7 +292,7 @@ export const generateInitBindingsFunction = (
           .replace(/\n/g, '\\n')
           .replace(/\r/g, '\\r');
         
-        staticTemplates.push(`  static ${templateId} = (() => { const t = document.createElement('template'); t.innerHTML = \`${escapedStaticHtml}\`; return t; })();`);
+        staticTemplates.push(`  ${ap.classStyle ? 'static' : 'const'} ${templateId} = (() => { const t = document.createElement('template'); t.innerHTML = \`${escapedStaticHtml}\`; return t; })();`);
         
         // Generate element bindings array
         const bindingsArrayStr = staticInfo.elementBindings.map(eb => 
@@ -322,7 +330,7 @@ export const generateInitBindingsFunction = (
         const initFn = `(els, ${itemSignalVar}, ${indexVar}) => [${itemSignalVar}.subscribe(v => { ${updateStatements.join('; ')} }, true)]`;
         
         // Build the optimized call
-        let bindRepeatCall = `${BIND_FN.REPEAT_TPL}(r, this.${rep.signalName}, '${rep.id}', this.constructor.${templateId}, [${bindingsArrayStr}], ${fillFn}, ${initFn}`;
+        let bindRepeatCall = `${BIND_FN.REPEAT_TPL}(r, ${ap.signal(rep.signalName)}, '${rep.id}', ${ap.staticPrefix}${templateId}, [${bindingsArrayStr}], ${fillFn}, ${initFn}`;
         
         if (rep.emptyTemplate) {
           const escapedEmptyTemplate = rep.emptyTemplate.replace(/`/g, '\\`');
@@ -374,7 +382,11 @@ export const generateInitBindingsFunction = (
         const mixedBindings: { binding: ItemBinding; componentSignals: Set<string> }[] = [];
         
         for (const binding of rep.itemBindings) {
-          const componentSignalRegex = /this\.(_\w+)\(\)/g;
+          // Detect component-level signal references in item binding expressions.
+          // Class mode: `this._signal()`, Closure mode: `_signal()` (bare call, no dot prefix)
+          const componentSignalRegex = ap.classStyle
+            ? /this\.(_\w+)\(\)/g
+            : /(?<!\.)(_\w+)\(\)/g;
           const componentSignals = new Set<string>();
           let signalMatch: RegExpExecArray | null;
           while ((signalMatch = componentSignalRegex.exec(binding.expression)) !== null) {
@@ -446,7 +458,7 @@ export const generateInitBindingsFunction = (
           }
           subscriptionLines.push(`${itemSignalVar}.subscribe(() => { let e; ${updateStmt} }, true)`);
           for (const componentSignal of componentSignals) {
-            subscriptionLines.push(`this.${componentSignal}.subscribe(() => { let e; ${updateStmt} }, true)`);
+            subscriptionLines.push(`${ap.signal(componentSignal)}.subscribe(() => { let e; ${updateStmt} }, true)`);
           }
         }
       }
@@ -468,7 +480,7 @@ export const generateInitBindingsFunction = (
           }
 
           if (updateStatements.length > 0) {
-            subscriptionLines.push(`this.${signalName}.subscribe(v => { let e; ${updateStatements.join(' ')} }, true)`);
+            subscriptionLines.push(`${ap.signal(signalName)}.subscribe(v => { let e; ${updateStatements.join(' ')} }, true)`);
           }
         }
       }
@@ -491,7 +503,9 @@ export const generateInitBindingsFunction = (
               const mixedNestedBindings: { binding: (typeof nestedRep.itemBindings)[0]; componentSignals: Set<string> }[] = [];
 
               for (const binding of nestedRep.itemBindings) {
-                const componentSignalRegex = /this\.(_\w+)\(\)/g;
+                const componentSignalRegex = ap.classStyle
+                  ? /this\.(_\w+)\(\)/g
+                  : /(?<!\.)(_\w+)\(\)/g;
                 const componentSignals = new Set<string>();
                 let signalMatch: RegExpExecArray | null;
                 while ((signalMatch = componentSignalRegex.exec(binding.expression)) !== null) {
@@ -532,7 +546,7 @@ export const generateInitBindingsFunction = (
 
                 nestedUpdates.push(`${nestedItemSignalVar}.subscribe(() => { let e; ${updateStmt} }, true)`);
                 for (const componentSignal of componentSignals) {
-                  nestedUpdates.push(`this.${componentSignal}.subscribe(() => { let e; ${updateStmt} }, true)`);
+                  nestedUpdates.push(`${ap.signal(componentSignal)}.subscribe(() => { let e; ${updateStmt} }, true)`);
                 }
               }
             }
@@ -547,14 +561,14 @@ export const generateInitBindingsFunction = (
               const condBindingUpdates: string[] = [];
               for (const binding of nestedCond.nestedBindings) {
                 if (binding.type === 'text') {
-                  condBindingUpdates.push(`this.${binding.signalName}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.textContent = v; }, true)`);
+                  condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.textContent = v; }, true)`);
                 } else if (binding.type === 'attr' && binding.property) {
                   condBindingUpdates.push(
-                    `this.${binding.signalName}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.setAttribute('${binding.property}', v); }, true)`,
+                    `${ap.signal(binding.signalName)}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.setAttribute('${binding.property}', v); }, true)`,
                   );
                 } else if (binding.type === 'style' && binding.property) {
                   const prop = toCamelCase(binding.property);
-                  condBindingUpdates.push(`this.${binding.signalName}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.style.${prop} = v; }, true)`);
+                  condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.style.${prop} = v; }, true)`);
                 }
               }
               for (const binding of nestedCond.nestedItemBindings) {
@@ -573,12 +587,12 @@ export const generateInitBindingsFunction = (
               if (condBindingUpdates.length > 0) {
                 condNestedCode = `() => [${condBindingUpdates.join(', ')}]`;
               }
-              const isSimple = nestedCond.signalNames.length === 1 && nestedCond.jsExpression === `this.${nestedCond.signalName}()`;
+              const isSimple = nestedCond.signalNames.length === 1 && nestedCond.jsExpression === ap.signalCall(nestedCond.signalName);
 
               if (isSimple) {
-                nestedUpdates.push(`${BIND_FN.IF}({ getElementById: $n }, this.${nestedCond.signalName}, '${nestedCond.id}', \`${condEscapedTemplate}\`, ${condNestedCode})`);
+                nestedUpdates.push(`${BIND_FN.IF}({ getElementById: $n }, ${ap.signal(nestedCond.signalName)}, '${nestedCond.id}', \`${condEscapedTemplate}\`, ${condNestedCode})`);
               } else {
-                const signalsArray = nestedCond.signalNames.map((s) => `this.${s}`).join(', ');
+                const signalsArray = nestedCond.signalNames.map((s) => ap.signal(s)).join(', ');
                 nestedUpdates.push(
                   `${BIND_FN.IF_EXPR}({ getElementById: $n }, [${signalsArray}], () => ${nestedCond.jsExpression}, '${nestedCond.id}', \`${condEscapedTemplate}\`, ${condNestedCode})`,
                 );
@@ -608,24 +622,24 @@ export const generateInitBindingsFunction = (
             const condBindingUpdates: string[] = [];
             for (const binding of nestedCond.nestedBindings) {
               if (binding.type === 'text') {
-                condBindingUpdates.push(`this.${binding.signalName}.subscribe(v => { const el = $('${binding.id}'); if (el) el.textContent = v; }, true)`);
+                condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $('${binding.id}'); if (el) el.textContent = v; }, true)`);
               } else if (binding.type === 'attr' && binding.property) {
-                condBindingUpdates.push(`this.${binding.signalName}.subscribe(v => { const el = $('${binding.id}'); if (el) el.setAttribute('${binding.property}', v); }, true)`);
+                condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $('${binding.id}'); if (el) el.setAttribute('${binding.property}', v); }, true)`);
               } else if (binding.type === 'style' && binding.property) {
                 const prop = toCamelCase(binding.property);
-                condBindingUpdates.push(`this.${binding.signalName}.subscribe(v => { const el = $('${binding.id}'); if (el) el.style.${prop} = v; }, true)`);
+                condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $('${binding.id}'); if (el) el.style.${prop} = v; }, true)`);
               }
             }
             if (condBindingUpdates.length > 0) {
               condNestedCode = `() => [${condBindingUpdates.join(', ')}]`;
             }
           }
-          const isSimple = nestedCond.signalNames.length === 1 && nestedCond.jsExpression === `this.${nestedCond.signalName}()`;
+          const isSimple = nestedCond.signalNames.length === 1 && nestedCond.jsExpression === ap.signalCall(nestedCond.signalName);
 
           if (isSimple) {
-            nestedConditionalLines.push(`${BIND_FN.IF}({ getElementById: $ }, this.${nestedCond.signalName}, '${nestedCond.id}', \`${condEscapedTemplate}\`, ${condNestedCode})`);
+            nestedConditionalLines.push(`${BIND_FN.IF}({ getElementById: $ }, ${ap.signal(nestedCond.signalName)}, '${nestedCond.id}', \`${condEscapedTemplate}\`, ${condNestedCode})`);
           } else {
-            const signalsArray = nestedCond.signalNames.map((s) => `this.${s}`).join(', ');
+            const signalsArray = nestedCond.signalNames.map((s) => ap.signal(s)).join(', ');
             nestedConditionalLines.push(
               `${BIND_FN.IF_EXPR}({ getElementById: $ }, [${signalsArray}], () => ${nestedCond.jsExpression}, '${nestedCond.id}', \`${condEscapedTemplate}\`, ${condNestedCode})`,
             );
@@ -670,7 +684,7 @@ export const generateInitBindingsFunction = (
             } else {
               handlerExpr = body.slice(1, -1).trim();
             }
-          } else if (/^this\._?\w+$/.test(handlerExpr)) {
+          } else if (ap.classStyle && /^this\._?\w+$/.test(handlerExpr)) {
             handlerExpr = `${handlerExpr}(e)`;
           }
 
@@ -681,7 +695,7 @@ export const generateInitBindingsFunction = (
 
       itemEventHandlersArg = `, { ${eventTypeLines.join(', ')} }`;
     }
-    let bindRepeatCall = `${BIND_FN.REPEAT}(r, this.${rep.signalName}, '${rep.id}', ${templateFn}, ${initItemBindingsFn}`;
+    let bindRepeatCall = `${BIND_FN.REPEAT}(r, ${ap.signal(rep.signalName)}, '${rep.id}', ${templateFn}, ${initItemBindingsFn}`;
     if (rep.emptyTemplate) {
       const escapedEmptyTemplate = rep.emptyTemplate.replace(/`/g, '\\`');
       bindRepeatCall += `, \`${escapedEmptyTemplate}\``;
@@ -713,10 +727,8 @@ export const generateInitBindingsFunction = (
     for (const [eventType, handlers] of eventsByType) {
       const handlerEntries = handlers.map((h) => {
         let handlerCode = h.handlerExpression;
-        if (/^this\.\w+$/.test(handlerCode)) {
-          handlerCode = `(e) => ${handlerCode}.call(this, e)`;
-        } else if (/^this\._?\w+$/.test(handlerCode)) {
-          handlerCode = `(e) => ${handlerCode}.call(this, e)`;
+        if (ap.classStyle && /^this\._?\w+$/.test(handlerCode)) {
+          handlerCode = `(e) => ${handlerCode}.call(${ap.callContext}, e)`;
         }
         return `'${h.id}': ${handlerCode}`;
       });
@@ -736,10 +748,10 @@ export const generateInitBindingsFunction = (
 /**
  * Generate a static template property for pre-compiled HTML
  */
-export const generateStaticTemplate = (content: string): string => {
+export const generateStaticTemplate = (content: string, ap: AccessPattern = CLASS_ACCESS): string => {
   const escapedContent = content.replace(/`/g, '\\`');
   return `
-  static template = (() => {
+  ${ap.staticTemplatePrefix} = (() => {
     const t = document.createElement('template');
     t.innerHTML = \`${escapedContent}\`;
     return t;

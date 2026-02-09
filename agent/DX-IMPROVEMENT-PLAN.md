@@ -1,534 +1,263 @@
-# Thane Component DX — Analysis & Improvement Plan
+# Thane — Feature Evaluation & Roadmap
 
-## Current State Analysis
+## Current Architecture Summary
 
-### How a developer defines a component today
+Thane is a compile-time optimized web framework built on esbuild. Components are defined with `defineComponent()`, reactivity is driven by callable signal functions (`signal()` to get, `signal(value)` to set), and the compiler transforms `html` tagged templates into static `<template>` elements with generated binding code. There is no Shadow DOM — components render as regular DOM elements with scoped styles.
 
-```typescript
-import { Component, registerComponent, signal } from 'thane';
-
-export const MyCounter = registerComponent(
-  { selector: 'my-counter', type: 'component' },
-  class extends Component {
-    private _count = signal(0);
-
-    render = () => html`
-      <button @click=${() => this._count(this._count() + 1)}>
-        Count: ${this._count()}
-      </button>
-    `;
-
-    static styles = css`
-      button { color: red; }
-    `;
-  },
-);
-```
-
-### Pain points identified
-
-| #  | Issue | Severity | Category |
-|----|-------|----------|----------|
-| 1  | `class extends Component` is mandatory boilerplate that every component must repeat | High | Verbosity |
-| 2  | `registerComponent()` wrapper adds an extra indent level and mental overhead | High | Verbosity |
-| 3  | The `{ selector: '...', type: '...' }` config object is disconnected from the class itself | Medium | Cohesion |
-| 4  | `type: 'component'` vs `type: 'page'` is a framework concern leaking into authoring — most components are `'component'` | Medium | Leaky abstraction |
-| 5  | The selector must be manually written and kept in sync with the export name | Medium | Redundancy |
-| 6  | `render` must be an arrow property (`render = () =>`) not a method (`render()`) due to how the compiler binds `this` — but nothing enforces or explains this | High | Footgun |
-| 7  | `static styles` must be declared on the class but it's easy to forget the `static` keyword | Low | Footgun |
-| 8  | Importing three symbols (`Component`, `registerComponent`, `signal`) for a single component file | Low | Verbosity |
-| 9  | The return value of `registerComponent` has an opaque, overloaded type — it's either a string or a function depending on `type` | Medium | Discoverability |
-| 10 | `this.root` / `this.shadowRoot` are the only useful inherited members — the class inheritance exists just to carry those | Medium | Over-engineering |
-| 11 | Anonymous class expression (`class extends Component { ... }`) means stack traces show no class name | Low | Debuggability |
+**Runtime:** ~1,200 lines — signal, component, dom-binding
+**Compiler:** ~5,000+ lines — esbuild plugin pipeline (reactive bindings, CTFE, routes, linter, minification, HTML parser)
+**Tests:** ~40 signal tests (single-component scope only)
 
 ---
 
-## How Props Currently Work
+## Feature Evaluation
 
-Props are currently static and limited to `string` and `number` types. When a parent uses a child component in its template, the compiler's CTFE (Compile-Time Function Evaluation) evaluates the props at build time and serializes them as HTML attributes on the child's element tag. The child component reads them via `this.root.getAttribute()`. This works for static values but has no type safety and no support for complex types. Cross-component reactivity and a proper `ctx.props` system are tracked separately as a future workstream.
+### 1. Tests for fine-grained reactivity across nested components
 
----
+**Status: ❌ Not done**
 
-## Proposed Improvements
+The current `signal.test.ts` has ~40 tests but they are all single-signal, single-component-scope — subscribe/unsubscribe, array operations, performance, etc. There are zero tests for cross-component reactivity or nested component trees. The benchmark app is a single flat component with no nesting.
 
-### 1. `defineComponent()` — function-based API, `template` as a static string
+**Verdict: Good idea, but blocked.** The runtime currently has no real runtime props mechanism (see #2). Until signals can be passed across component boundaries, there's nothing to test. Once props work reactively, this becomes critical.
 
-A single `defineComponent()` call replaces `registerComponent()` + `class extends Component`. There is no `type` distinction — pages and components are the same thing (see section 3).
-
-The default form uses **auto-derived selectors** from the export name. An explicit selector string can be provided as an optional override:
-
-```typescript
-import { defineComponent, signal } from 'thane';
-
-// Default: selector auto-derived as 'my-counter' from PascalCase export name
-export const MyCounter = defineComponent(() => {
-  const count = signal(0);
-
-  return {
-    template: html`
-      <button @click=${() => count(count() + 1)}>
-        Count: ${count()}
-      </button>
-    `,
-    styles: css`button { color: red; }`,
-  };
-});
-
-// Explicit override when you need a different selector
-export const MyCounter = defineComponent('custom-counter', () => {
-  // ...
-});
-```
-
-**What this solves:**
-- Eliminates `class extends Component` (pain #1)
-- Eliminates the config object (pain #3)
-- Removes the `registerComponent` wrapper concept (pain #2)
-- No `this` needed for signals — they're just closures (pain #6 goes away entirely)
-- Only one import: `defineComponent` (+ `signal` which is universal) (pain #8)
-- `type` concept is gone entirely (pain #4)
-- Selector is auto-derived by default — zero config (pain #5)
-
-**Key design decisions:**
-
-#### `template` instead of `render`
-
-The returned `template` is a tagged template literal string — not an arrow function. This is both a DX and a performance win:
-
-- **DX:** Less to type. No `() =>` wrapper, no ambiguity about arrow-property vs method.
-- **Performance / compiler alignment:** This is exactly how the compiler already works internally. Today, the compiler:
-  1. Takes the `render = () => html\`...\`` arrow function
-  2. Extracts the `html\`...\`` template content as a string
-  3. Processes it (assigns IDs, replaces `${this._signal()}` with initial values, extracts binding metadata)
-  4. Generates a `static template` property containing the processed HTML string as a `<template>` element
-  5. Replaces the original `html\`...\`` with empty backticks `\`\`` — so `render()` returns `""` at runtime
-  6. The actual DOM content comes from cloning the static template, not from calling `render()`
-
-  **The `render` arrow function was always a fiction** — the compiler strips it and replaces it with a static template. Making `template` a direct string just makes the source code match what the compiler actually does. The compiler no longer needs to unwrap an arrow function to get to the template content.
-
-#### No `this` — closures replace class properties
-
-Signals are plain `const` variables captured by the closure. No `this._count`, just `count`. The arrow-vs-method footgun disappears entirely because there is no class and no `this`.
-
-#### `ctx` parameter for framework APIs
-
-The setup function receives a context object for web component–like functionality:
-
-```typescript
-export const MyWidget = defineComponent((ctx) => {
-  // ctx.root — the host element (same as this.root today)
-  // ctx.root.getElementById('bar')
-  // ctx.emit('custom-event', detail)  — optional sugar
-
-  return { template: html`<div>...</div>` };
-});
-```
-
-#### How it works internally (runtime)
-
-```typescript
-export function defineComponent<T>(selectorOrSetup, maybeSetup?) {
-  // 1. Resolve selector (string arg or auto-derived at compile time)
-  // 2. Create the host element (div) with getElementById support
-  // 3. Build the ctx object: { root, props, emit }
-  // 4. Call setup(ctx) — get back { template, styles, onMount, onDestroy }
-  // 5. Register styles (same as registerComponent does today)
-  // 6. Create factory: clone static template into root, call initializeBindings
-  // 7. Store factory in componentFactories map
-  // 8. Return the HTML selector function (typed via generic T)
-}
-```
-
-#### How it works internally (compiler)
-
-The compiler transformation is simpler than today because there's no class to inject into:
-
-1. **Detection:** `source.includes('defineComponent')` (replaces `extendsComponentQuick`)
-2. **AST extraction:** Find `defineComponent(...)` — if the first arg is a string literal, use it as the selector; if it's a function, auto-derive the selector from the `export const X =` variable name by converting PascalCase → kebab-case
-3. **Selector injection:** When auto-deriving, the compiler rewrites `defineComponent(() => {` to `defineComponent('my-counter', () => {` in the compiled output so the runtime always receives an explicit selector string
-4. **Template processing:** Identical to today — parse `html\`...\``, identify bindings, assign IDs, extract event bindings, conditionals, repeats
-5. **Code injection:** Instead of injecting `static template` and `initializeBindings` into a class body, the compiler transforms the returned object to include the pre-compiled template and a generated `__bindings` function
-6. **Tag stripping:** `html\`...\`` → `\`...\`` and `css\`...\`` → `\`...\`` — same as today
+**Priority: 🟡 P2** — depends on #2 and #10.
 
 ---
 
-### 2. Auto-derived selector as the default
+### 2. Typed reactive props + signals across component boundaries
 
-The default is **no selector argument** — the compiler derives it automatically from the export name:
+**Status: ❌ Not done — significant gap**
 
-```typescript
-// Default (recommended) — 'MyCounter' → 'my-counter'
-export const MyCounter = defineComponent(() => { ... });
+Current reality:
+- `ctx.props` in `component.ts` is typed as `Readonly<P>` but is **always initialized as an empty object `{}`** — never populated at runtime.
+- The only "props" that work today are **CTFE (compile-time function evaluation)** in the component precompiler. It evaluates props at build time and serializes them as HTML attributes (`key="value"`). This only supports strings/numbers/booleans — no objects, no arrays, no signals.
+- `createComponentHTMLSelector()` stringifies props with `JSON.stringify` into HTML attributes, confirming they're static-only.
+- The DX-IMPROVEMENT-PLAN explicitly acknowledged this: *"Cross-component reactivity and a proper ctx.props system are tracked separately as a future workstream."*
 
-// Explicit override — only when you specifically need a different selector
-export const MyCounter = defineComponent('custom-counter', () => { ... });
-```
+**Verdict: Essential for the framework to be usable.** Passing a signal as a prop should "just work" — the child subscribes to it, and reactivity flows naturally. The challenge is the current CTFE + HTML-attribute serialization path can't carry function objects (signals). This is what #10 (global props map) aims to solve.
 
-The compiler has full AST access to the `VariableDeclaration` name. When the first argument to `defineComponent` is a function (not a string), it:
-1. Reads the identifier from `export const MyCounter = ...`
-2. Converts PascalCase → kebab-case: `MyCounter` → `my-counter`
-3. Injects the derived selector string as the first argument in the compiled output
-
-The explicit form exists for edge cases only (e.g. a selector that doesn't map cleanly from PascalCase, or when working with third-party naming conventions). In normal usage, developers never think about selectors at all.
-
-#### Compile-time validation: no `export default` for components
-
-A compile-time lint rule ensures `defineComponent()` is always a named export:
-
-```typescript
-// ✅ Allowed
-export const MyCounter = defineComponent(() => { ... });
-
-// ❌ Build error: "THANE400: defineComponent must use a named export (export const X = defineComponent(...))"
-export default defineComponent(() => { ... });
-```
-
-**Implementation:** This runs inside the existing `ComponentPrecompilerPlugin`'s `onLoad` handler. After parsing the source file, walk top-level statements looking for `ExportAssignment` (i.e. `export default`) nodes where the expression is a `defineComponent()` call. If found, emit a diagnostic error via the existing `createError()` / `logger.diagnostic()` infrastructure. No external TypeScript plugin or separate tool needed — it's a ~15 line check inside a plugin that already parses every `.ts` file.
-
-**Why this rule matters more with auto-derived selectors:** Since the selector is derived from the `export const X = ...` name, `export default` would have no variable name to derive from. The rule isn't just style — it's structurally necessary for the auto-derivation to work.
+**Priority: 🔴 P0** — depends on #10.
 
 ---
 
-### 3. Eliminating `type: 'page'` vs `type: 'component'` — compiler already knows
+### 3. Compiler error rules for HTML directives with file/line numbers
 
-The `type` property is completely eliminated. Pages and components are the same thing.
+**Status: ⚠️ Infrastructure exists, rules don't**
 
-**The compiler already distinguishes pages from components by export pattern, not by `type`:**
+What exists:
+- The `errors.ts` system has error codes including `THANE005 — INVALID_DIRECTIVE`, with `SourceLocation` (file, line, column) support.
+- The `thane-linter` plugin infrastructure is solid — runs on every `.ts` file, supports custom rules, has severity levels.
+- The HTML parser in `parser-core.ts` tracks line/column positions for all elements.
+- BUT: There are only **2 lint rules** today (`THANE400` no default export, `THANE401` property order), and **neither validates directive usage in HTML templates**.
 
-| Compiler function | What it looks for | Where |
-|---|---|---|
-| `extractComponentDefinitions()` | `export const X = registerComponent(...)` with `type: 'component'` | `ast-utils.ts:310–340` |
-| `extractPageSelector()` | `export default registerComponent(...)` — **does not check `type` at all** | `ast-utils.ts:348–368` |
+What's missing — potential rules to add:
+- `when()` receives a boolean/signal expression
+- `repeat()` has the right argument count/types
+- `whenElse()` has both branches present
+- Directives aren't nested illegally
+- Event handler syntax (`@click`) is correct
+- `trackBy` returns string/number
+- Signal calls in templates match declared signals
+- Component calls in templates reference known components
 
-The routes precompiler (`routes-precompiler.ts`) calls `extractPageSelector()`, which identifies pages by `export default` — not by `type: 'page'`. The CTFE component precompiler calls `extractComponentDefinitions()`, which looks for named exports.
+**Verdict: Great idea, and the infrastructure is already there.** The linter plugin + error code system + HTML parser with positions = everything needed. It's just a matter of writing the rules.
 
-**With `defineComponent()`, the rule becomes:**
-- `export const X = defineComponent(...)` → **component** (eligible for CTFE inlining in other templates, HTML selector function returned)
-- The entry `mount()` call identifies the root — no `export default` of the component itself is needed
-
-**What about the runtime?** The only runtime difference between `type: 'page'` and `type: 'component'` is the return type of `registerComponent()`:
-- `'page'` → returns a static string `"<my-page></my-page>"`  
-- `'component'` → returns a function `(props) => "<my-comp ...></my-comp>"`
-
-With `defineComponent()`, the return type is **always** the function form `(props: T) => string`. Pages are just components with no props — `defineComponent(() => { ... })` returns `(props: {}) => string`, and `mount()` can accept either the function or the selector string directly. The `RegisterComponentStripperPlugin` that strips the else-branch becomes unnecessary.
-
-**No `definePage()` needed.** A "page" is just a component that happens to be passed to `mount()` or loaded by the router. The router's `componentModule` lazy-import pattern continues to work — the routes precompiler just needs to extract the selector from `defineComponent(...)` (reading either the explicit string or the auto-derived name from the export).
-
----
-
-### 4. Lifecycle hooks with enforced ordering
-
-Lifecycle hooks are returned as properties of the setup function's return object. The execution order at runtime is:
-
-1. `template` — compiled to static HTML, cloned into DOM
-2. `styles` — registered globally with scoped selectors
-3. `onMount()` — called after the template is in the DOM and bindings are initialized
-4. `onDestroy()` — called when the component is removed from the DOM
-
-```typescript
-export const MyTimer = defineComponent(() => {
-  const elapsed = signal(0);
-  let intervalId: number;
-
-  return {
-    template: html`<span>${elapsed()}</span>`,
-    styles: css`span { font-weight: bold; }`,
-
-    onMount() {
-      intervalId = setInterval(() => elapsed(elapsed() + 1), 1000);
-    },
-
-    onDestroy() {
-      clearInterval(intervalId);
-    },
-  };
-});
-```
-
-`onMount` maps directly to the existing `initializeBindings()` call site — the compiler generates the reactive binding setup code and the runtime calls `onMount` immediately after. `onDestroy` is new and hooks into either a `MutationObserver` on the host element's removal or an explicit `destroy()` method on the component instance.
-
-#### Enforcing declaration order — Thane Linter
-
-The return object must declare properties in the canonical lifecycle order: `template → styles → onMount → onDestroy`. If a developer puts them out of order, the build emits a warning with a clear message.
-
-**Implementation — a built-in Thane linter, shipped as part of the compiler:**
-
-Rather than depending on ESLint or a TypeScript language service plugin, the linter is a **standalone esbuild plugin** in the existing compiler pipeline. It runs on every `.ts` file during `thane dev` and `thane build`, using the same TypeScript AST parsing the rest of the compiler uses.
-
-```
-src/compiler/plugins/
-  thane-linter/
-    thane-linter.ts        ← esbuild plugin, runs onLoad for all .ts files
-    rules/
-      no-default-export-component.ts   ← THANE400
-      component-property-order.ts      ← THANE401
-```
-
-**How it works:**
-
-1. The `ThaneLinterPlugin` is an esbuild `onLoad` plugin registered in `build.ts` alongside the other plugins. It runs **before** the component precompiler so that lint errors appear before transformation errors.
-
-2. Each rule is a pure function: `(sourceFile: ts.SourceFile, filePath: string) => Diagnostic[]`. It receives the parsed AST and returns diagnostics.
-
-3. The plugin collects all diagnostics from all rules and emits them via `logger.diagnostic()` — the same infrastructure used by the rest of the compiler. Warnings don't fail the build; errors do.
-
-**Rule: `THANE401` — component property order**
-
-The rule walks the AST to find `defineComponent(...)` calls, locates the returned object literal, and checks that properties appear in order:
-
-```typescript
-const CANONICAL_ORDER = ['template', 'styles', 'onMount', 'onDestroy'];
-
-// Walk object literal properties, record each one's index in CANONICAL_ORDER
-// If any property's index is less than the previous property's index → warning
-```
-
-Example diagnostic output:
-```
-[warning] THANE401: src/components/timer.ts:14:5
-  'onMount' should be declared after 'template' and before 'onDestroy' (expected order: template → styles → onMount → onDestroy)
-```
-
-**Rule: `THANE400` — no default export for defineComponent**
-
-```typescript
-// Walk top-level statements, find ExportAssignment where expression is defineComponent()
-// If found → error
-```
-
-Example diagnostic output:
-```
-[error] THANE400: src/components/timer.ts:3:1
-  defineComponent must use a named export: export const MyTimer = defineComponent(...)
-```
-
-**Why a built-in linter instead of ESLint:**
-
-- **Zero external dependencies.** No `eslint`, no `@typescript-eslint/parser`, no plugin configuration. Thane apps don't need an `.eslintrc`.
-- **Uses the same AST.** The compiler already parses every `.ts` file with the TypeScript compiler API. The linter reuses those parsed source files — no double-parsing.
-- **Integrated diagnostics.** Errors and warnings use the same `Diagnostic` type, `ErrorCode` enum, `formatDiagnostic()`, and `logger` infrastructure as the rest of the compiler. They show up in the same terminal output with the same formatting.
-- **Ships with the framework.** When a developer installs `thane` and runs `thane dev`, the linter just works. No setup, no config files.
-- **Extensible.** New rules are just functions in the `rules/` directory. The pattern is trivial: parse AST → return diagnostics.
+**Priority: 🟠 P1** — no blockers.
 
 ---
 
-### 5. Styles — both inline and file imports
+### 4. Routes as components with router params as typed props
 
-Both approaches work and are supported:
+**Status: ❌ Not done**
 
-**Option A: Inline in the return object**
+Current reality:
+- The routes precompiler only processes files under a `router/` directory matching `routes.ts$`.
+- It extracts selectors from lazy-import pages and injects a `selector` property into route objects.
+- `getRouteParam(paramName)` exists as a global runtime function, but it returns a raw `string` — no typing, no integration with component props.
+- There's no mechanism for the router to pass params as props to the mounted component.
 
-```typescript
-return {
-  template: html`<button>Click</button>`,
-  styles: css`button { color: red; }`,
-};
-```
+**Verdict: Good idea.** Having routes be components where router params are automatically typed props (e.g., `defineComponent<{ id: string }>((ctx) => { ... })`) is a clean pattern. It aligns with #2 — once props work, router params become a special case of props.
 
-The compiler already strips `css\`...\`` tags and registers the CSS string globally with `:host` → `.selector` scoping. No changes needed.
-
-**Option B: CSS file import**
-
-```typescript
-import styles from './my-counter.css';
-
-export const MyCounter = defineComponent(() => ({
-  template: html`<button>Click</button>`,
-  styles,
-}));
-```
-
-Already supported via `client.d.ts` (`declare module '*.css'`) and the `css-file-inliner` compiler plugin. No changes needed.
+**Priority: 🟠 P1** — depends on #2 and #9.
 
 ---
 
-### 6. Type-safe props via `ctx.props` and generic parameter
+### 5. `render()` never async — force loading states
 
-```typescript
-interface CounterProps {
-  initial: number;
-  label?: string;
-}
+**Status: ✅ Already the case**
 
-export const MyCounter = defineComponent<CounterProps>((ctx) => {
-  const count = signal(ctx.props.initial);
+Current reality:
+- The `setup` function in `defineComponent` is synchronous. It returns `ComponentReturnType` — not a `Promise<ComponentReturnType>`.
+- There is no `async` anywhere in `component.ts` for the component creation flow.
+- The template is a static string evaluated at setup time (actually at compile time via CTFE), so it can never await anything.
+- `when()`/`whenElse()` already provide the mechanism for "loading → loaded" UI transitions.
 
-  return {
-    template: html`
-      <button @click=${() => count(count() + 1)}>
-        ${ctx.props.label ?? 'Count'}: ${count()}
-      </button>
-    `,
-  };
-});
+What's missing:
+- No explicit pattern or documentation for async data loading (e.g., fetch on mount, update signal, `when()` reveals content).
+- No `Suspense`-like boundary or `setImmediate`-style deferred resolution.
 
-// Usage in another component — fully typed:
-// ${MyCounter({ initial: 5, label: 'Clicks' })}
-```
+**Verdict: Already enforced by architecture.** The current design naturally forces sync rendering + signal updates later. A few options to strengthen this:
 
-**How this replaces `getAttribute()`:**
+1. **Documentation only** — Document the pattern: fetch in `onMount`, signal updates trigger `when()` reveals. Cheapest, most practical.
+2. **`defer()` utility** — A small helper that wraps a `Promise` into a signal: `const data = defer(fetchItems())` → starts as `undefined`, becomes the resolved value. Sugar on top of the existing model.
+3. **Next.js-inspired `setImmediate` pattern** — Would require the compiler to detect async code inside `onMount` and defer it. Adds complexity for marginal gain since the render is already sync.
 
-Today, props are serialized as HTML attributes and the developer manually reads them with `this.root.getAttribute('text')`. With `ctx.props`:
-
-- Props are passed as a typed object, not serialized to/from strings
-- The generic parameter `CounterProps` flows through to the return type — `MyCounter` becomes `(props: CounterProps) => string`
-- Complex types (objects, arrays, numbers, booleans) work without JSON serialization/parsing
-- The compiler's CTFE still evaluates props at compile time, but instead of emitting them as HTML attributes, it can emit them as a data attribute containing the serialized props object, or (with future child instantiation) pass them directly to the child's factory
+**Priority: 🟢 P3** — document the existing pattern, optionally add `defer()` utility.
 
 ---
 
-### 7. Compiler changes required
+### 6. Lit-style signal syntax (`test = ''` instead of `test('')`)
 
-| Change | Complexity | Description |
-|--------|-----------|-------------|
-| Recognize `defineComponent()` calls | Low | Add `DEFINE_COMPONENT: 'defineComponent'` to `FN` constants, add `isDefineComponentCall()` to `ast-utils.ts` |
-| Auto-derive selector from export name (default) | Medium | Read `VariableDeclaration.name`, convert PascalCase → kebab-case, inject as first arg in compiled output |
-| Extract explicit selector from first string arg | Low | When first arg is a string literal, use it directly |
-| Extract `template` from returned object | Medium | Walk the setup function body to find the return statement's `template` property. Simpler than today's approach of finding `render = () => html\`...\`` inside a class body |
-| Quick-detection update | Trivial | `extendsComponentQuick` → also match `source.includes('defineComponent')` |
-| Thane Linter plugin | Low | New esbuild plugin with two rules: `THANE400` (no default export), `THANE401` (property order). ~100 lines total |
-| Template processing | None | `html\`...\`` processing is identical — the reactive-binding-compiler processes all `html` tagged templates regardless of their surrounding context |
-| `extractComponentDefinitions` update | Low | Also match `export const X = defineComponent(...)` pattern |
-| Route selector extraction update | Low | Extract selector from `defineComponent` calls for the routes precompiler |
-| Strip old infrastructure | Low | Remove `registerComponent`, its overloads, `CreateComponentConfig`, `InputComponent`, `NativeComponent` class, `RegisterComponentStripperPlugin`, `type: 'page' | 'component'` |
+**Status: ❌ Not done**
 
----
+Current reality:
+- Signals are callable function objects: `signal()` to get, `signal(value)` to set.
+- The compiler transforms `this._signalName()` patterns in templates.
+- The entire reactive binding compiler (template-processing, codegen) relies on the function-call pattern for detection.
 
-### 8. Migration path
+**Verdict: ❌ Not recommended for Thane.** Here's why:
 
-This is a **breaking change** by design — `registerComponent` and `class extends Component` are removed entirely. There is one API: `defineComponent()`.
+- **Proxy approach** — Wrapping signals in a Proxy to intercept `=` assignment adds runtime cost on every read/write. This directly contradicts Thane's zero-overhead signal design where signals are bare function objects with properties.
+- **Compiler transform** — Rewriting `x = val` → `x(val)` is extremely fragile. How does the compiler distinguish signal assignment from regular variable assignment? It would need full type information at every usage site.
+- **Decorators + classes** — This is how Lit does it (property setters + `@property` decorators). But Thane moved away from classes to the function-based `defineComponent` API specifically to avoid this complexity.
 
-1. **Phase 1:** Implement `defineComponent()` runtime + compiler support. Update the benchmark to use it. Validate that the full compile pipeline works (CTFE, reactive bindings, style scoping, routes).
-2. **Phase 2:** Remove `registerComponent`, `Component` class export, `NativeComponent`, `RegisterComponentStripperPlugin`, and all `type: 'page' | 'component'` infrastructure.
-3. **Phase 3:** Add the Thane Linter plugin with `THANE400` and `THANE401` rules.
+The function-call syntax `count(count() + 1)` is the price of the zero-overhead signal design. It's explicit and unambiguous for both humans and the compiler.
+
+**Priority: ⛔ Skip.**
 
 ---
 
-### 9. Side-by-side comparison
+### 7. HTML syntax highlighting in `html` tagged templates
 
-#### Before (current)
-```typescript
-import { Component, registerComponent, signal } from 'thane';
-import styles from './todo-item.css';
+**Status: ❌ Not done**
 
-interface TodoItemProps {
-  text: string;
-  done: boolean;
-}
+There's no TextMate grammar, VS Code extension, or language server in the workspace. The `html` and `css` tagged templates are raw strings with no editor support.
 
-export const TodoItem = registerComponent<TodoItemProps>(
-  { selector: 'todo-item', type: 'component' },
-  class extends Component {
-    private _done = signal(false);
+**Verdict: Good idea, but it's a VS Code extension project, not a framework feature.** You'd need a VS Code extension that registers a TextMate grammar for `` html`...` `` and `` css`...` `` embedded languages.
 
-    render = () => html`
-      <label>
-        <input type="checkbox" 
-               .checked=${this._done()} 
-               @change=${() => this._done(!this._done())} />
-        <span>${this.root.getAttribute('text')}</span>
-      </label>
-    `;
+**Quick win:** The existing [`bierner.lit-html`](https://marketplace.visualstudio.com/items?itemName=bierner.lit-html) extension should work out of the box since Thane uses the same `html` tag name as Lit. Worth testing before building a custom one.
 
-    static styles = styles;
-  },
-);
-```
+If a custom extension is needed later, it could also provide:
+- Autocomplete for Thane directives (`when()`, `repeat()`, `@event`)
+- Go-to-definition for component references in templates
+- Inline error display from Thane linter rules
 
-#### After (proposed)
-```typescript
-import { defineComponent, signal } from 'thane';
-import styles from './todo-item.css';
-
-interface TodoItemProps {
-  text: string;
-  done: boolean;
-}
-
-export const TodoItem = defineComponent<TodoItemProps>((ctx) => {
-  const done = signal(false);
-
-  return {
-    template: html`
-      <label>
-        <input type="checkbox" 
-               .checked=${done()} 
-               @change=${() => done(!done())} />
-        <span>${ctx.props.text}</span>
-      </label>
-    `,
-    styles,
-  };
-});
-```
-
-**Delta:**
-- 3 imports → 2 (`Component` gone)
-- No `class extends Component` boilerplate
-- No selector string to write — auto-derived from `TodoItem` → `todo-item`
-- No `this._` prefix on signals — just `done`
-- No `static` keyword to forget
-- No arrow function wrapper on `template` (was `render = () => html\`...\``, now just `template: html\`...\``)
-- No `type: 'component'` config — the concept doesn't exist
-- Props accessed through typed `ctx.props` instead of `this.root.getAttribute()`
-- 2 fewer indent levels (no class body, no `registerComponent` wrapper)
-
-#### Benchmark — before (current)
-```typescript
-import { Component, registerComponent, signal } from "thane";
-
-export const Benchmark = registerComponent(
-  { selector: 'bench-mark', type: 'page' },
-  class extends Component {
-    private _rows = signal<RowData[]>([]);
-    private _selectedEl: HTMLElement | null = null;
-
-    render = () => { return html`...`; };
-
-    private _run = () => { ... };
-    static styles = css``;
-  },
-);
-
-// main.ts
-import { mount } from 'thane';
-import { Benchmark } from './benchmark.js';
-mount(Benchmark);
-```
-
-#### Benchmark — after (proposed)
-```typescript
-import { defineComponent, signal } from "thane";
-
-export const Benchmark = defineComponent(() => {
-  const rows = signal<RowData[]>([]);
-  let selectedEl: HTMLElement | null = null;
-
-  const run = () => { ... };
-
-  return {
-    template: html`...`,
-    styles: css``,
-  };
-});
-
-// main.ts
-import { mount } from 'thane';
-import { Benchmark } from './benchmark.js';
-mount(Benchmark);
-```
+**Priority: 🟢 P3** — try `bierner.lit-html` first, build custom later if needed.
 
 ---
 
-## Summary — Prioritized Roadmap
+### 8. Watch mode watches `index.html`
 
-| Priority | Item | Effort | Impact |
-|----------|------|--------|--------|
-| **P0** | Implement `defineComponent()` runtime function | Medium | Eliminates all major DX pain points |
-| **P0** | Add `defineComponent` pattern detection to the compiler | Medium | Required for P0 runtime to work with reactive bindings |
-| **P0** | `template` as static string (not `render` arrow function) | Low | Simpler DX, aligns with what compiler already does internally |
-| **P0** | Auto-derived selector from export name as the default | Medium | Zero-config component naming |
-| **P0** | Remove `registerComponent`, `Component` class, `type: 'page'/'component'` | Medium | Clean single-API surface |
-| **P1** | Type-safe props via `ctx.props` + generic parameter | Low | Major DX win, foundation for future cross-component reactivity |
-| **P1** | Lifecycle hooks (`onMount`, `onDestroy`) | Low | Enables real-world components |
-| **P1** | Thane Linter plugin (`THANE400`, `THANE401`) | Low | Built-in lint rules — no external deps, ships with the framework |
+**Status: ❌ Not done**
+
+Current reality in `build.ts`:
+```typescript
+const ctx = await context(buildConfig);
+await ctx.watch({});
+```
+This uses esbuild's built-in watch, which only watches the **dependency graph** (`.ts`, `.css` files imported by the entry point). The `index.html` file is not part of esbuild's module graph — it's processed by `PostBuildPlugin` as a separate file copy step.
+
+**Verdict: Good idea, straightforward to implement.** Options:
+- Use `fs.watch()` or `chokidar` on `index.html` alongside esbuild's watch, trigger a rebuild on change.
+- Or use esbuild's `onResolve`/`onLoad` to pull `index.html` into the dependency graph so it's auto-watched.
+
+Small but impactful DX improvement.
+
+**Priority: 🟡 P2** — no blockers, quick win.
+
+---
+
+### 9. Framework without router + flexible router outlet placement
+
+**Status: ⚠️ Partially done**
+
+Current reality:
+- `mount(Component)` works without a router — the benchmark app proves this (`mount(Benchmark)` with no routing).
+- The `navigate`, `navigateBack`, `getRouteParam` are declared as globals but their implementations aren't in the core runtime source files — they appear to be provided by user-land router code or a separate module.
+- The routes precompiler plugin is hardcoded to look for files under a `router/` directory.
+
+Sub-items:
+
+| Sub-item | Status |
+|----------|--------|
+| Main component without router | ✅ Works (`mount(Component)`) |
+| Router placed anywhere (not just top-level) | ❓ Can't confirm — router runtime code not in core |
+| Both together (main comp + router) | ❓ Depends on router implementation |
+| Nested/sub-routers | ❌ Not implemented — routes precompiler doesn't support nesting |
+| Login → authenticated sub-router pattern | ❌ Not implemented |
+
+**Verdict: Good idea, and the architecture supports it.** The `mount()` API already works standalone. The missing piece is making the router a composable component rather than a top-level concern. Nested routers (login screen → app shell → nested routes) is a common, valuable pattern.
+
+**Implementation direction:**
+- Router outlet as a component that can be placed anywhere in any template
+- Router config supports children routes for nesting
+- Main `mount()` remains independent of routing
+- A component can contain a router outlet, enabling patterns like: top-level login route → app shell component with sidebar + nested router outlet
+
+**Priority: 🟠 P1** — no blockers for the basic restructuring.
+
+---
+
+### 10. Global props map — pass keys instead of serialized values
+
+**Status: ❌ Not done — this is the right solution for #2**
+
+Current reality:
+- Props are serialized as HTML attributes in `createComponentHTMLSelector()`: `<div data-thane-component="selector" key="value"></div>`.
+- This fundamentally cannot carry objects, arrays, functions, or signals.
+
+**Verdict: Excellent idea — this solves the props problem at its root.**
+
+A global `Map<string, Record<string, any>>` keyed by component instance ID would:
+1. Eliminate HTML attribute serialization entirely
+2. Allow passing signals, objects, functions — anything
+3. Enable cross-component reactivity (pass a signal as a prop, child subscribes)
+4. Work at both compile-time (CTFE generates the ID) and runtime
+
+**Proposed flow:**
+- Parent: `MyChild({ items: this._items })` → compiler generates a unique ID, stores props in the global map, renders `<div data-thane-component="my-child" data-thane-pid="abc123"></div>`
+- Child: on instantiation, runtime reads `data-thane-pid`, looks up props from the global map, populates `ctx.props`
+- Cleanup: When child is destroyed, its entry is removed from the map
+
+This avoids all serialization issues and makes signal-passing "just work" — the signal function reference is stored directly in the map, not stringified.
+
+**Priority: 🔴 P0** — foundational for #2, #1, and #4.
+
+---
+
+## Summary Priority Matrix
+
+| # | Idea | Status | Recommended? | Priority | Depends On |
+|---|------|--------|--------------|----------|------------|
+| 10 | Global props map | ❌ | ✅ Essential | 🔴 P0 | — |
+| 2 | Typed reactive props + signals across boundaries | ❌ | ✅ Essential | 🔴 P0 | #10 |
+| 9 | Framework without/with router, flexible outlet | ⚠️ Partial | ✅ Yes | 🟠 P1 | — |
+| 3 | Directive validation rules in compiler | ⚠️ Infra only | ✅ Yes | 🟠 P1 | — |
+| 4 | Routes as components + typed params | ❌ | ✅ Yes | 🟠 P1 | #2, #9 |
+| 1 | Nested reactivity tests | ❌ | ✅ Yes | 🟡 P2 | #2, #10 |
+| 8 | Watch index.html in dev mode | ❌ | ✅ Yes | 🟡 P2 | — |
+| 5 | Sync render + async patterns | ✅ Exists | ⚠️ Document it | 🟢 P3 | — |
+| 7 | HTML syntax highlighting | ❌ | ✅ Yes | 🟢 P3 | Separate project |
+| 6 | Lit-style assignment syntax for signals | ❌ | ❌ Not recommended | ⛔ Skip | — |
+
+---
+
+## Suggested Execution Order
+
+### Phase 1 — Foundation (P0)
+1. Implement global props map (`Map<instanceId, props>`) in the runtime
+2. Wire `ctx.props` population from the global map on component instantiation
+3. Update `createComponentHTMLSelector` to store props in the map instead of HTML attributes
+4. Update CTFE in the component precompiler to work with the new props model
+
+### Phase 2 — Architecture (P1)
+5. Refactor router to be a composable component with flexible outlet placement
+6. Add support for nested/sub-routers
+7. Make router params flow as typed `ctx.props` to page components
+8. Write directive validation lint rules (when/whenElse/repeat argument validation, event handler syntax, etc.)
+
+### Phase 3 — Polish (P2-P3)
+9. Write cross-component reactivity tests (signal passed as prop, nested component trees)
+10. Add `index.html` to watch mode
+11. Document async patterns (fetch in onMount, `when()` loading states)
+12. Test `bierner.lit-html` extension for HTML syntax highlighting, build custom if needed

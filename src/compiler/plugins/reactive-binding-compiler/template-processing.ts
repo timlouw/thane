@@ -51,11 +51,11 @@ const _evalSandbox = vm.createContext(Object.freeze({
 /**
  * Safely evaluate a conditional expression at compile time.
  * 
- * Replaces all `this._signalName()` references with their initial values,
+ * Replaces all `signalName()` references with their initial values,
  * transpiles the expression from TypeScript to JavaScript, then evaluates
  * it in a constrained VM sandbox with no access to Node.js APIs.
  *
- * @param jsExpression - The raw JS expression, e.g. "!this._loading()" or "this._a() && this._b()"
+ * @param jsExpression - The raw JS expression, e.g. "!_loading()" or "_a() && _b()"
  * @param signalNames - All signal names referenced in the expression
  * @param signalInitializers - Map of signal name → initial value
  * @returns The boolean result, defaulting to false on any failure
@@ -68,7 +68,7 @@ export const safeEvaluateCondition = (
   let evalExpr = jsExpression;
   for (const sigName of signalNames) {
     const initialVal = signalInitializers.get(sigName);
-    evalExpr = evalExpr.replaceAll(`this.${sigName}()`, JSON.stringify(initialVal ?? false));
+    evalExpr = evalExpr.replaceAll(`${sigName}()`, JSON.stringify(initialVal ?? false));
   }
 
   try {
@@ -84,10 +84,10 @@ export const safeEvaluateCondition = (
 };
 
 /**
- * Replace ${this._signalName()} expressions with their initial values
+ * Replace ${signalName()} expressions with their initial values
  */
 export const replaceExpressionsWithValues = (html: string, signalInitializers: Map<string, string | number | boolean>): string => {
-  return html.replace(/\$\{this\.(\w+)\(\)\}/g, (_match, signalName) => {
+  return html.replace(/\$\{(\w+)\(\)\}/g, (_match, signalName) => {
     const value = signalInitializers.get(signalName);
     return value !== undefined ? String(value) : '';
   });
@@ -673,7 +673,7 @@ export const processSubTemplateWithNesting = (
   const whenElseRanges = whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex }));
   const allRanges = [...conditionalRanges, ...whenElseRanges];
 
-  const exprRegex = /\$\{this\.(\w+)\(\)\}/g;
+  const exprRegex = /\$\{(\w+)\(\)\}/g;
   let match: RegExpExecArray | null;
   while ((match = exprRegex.exec(templateContent)) !== null) {
     const exprStart = match.index;
@@ -767,7 +767,7 @@ export const generateProcessedHtml = (
   const repeatRanges = repeatBlocks.map((r) => ({ start: r.startIndex, end: r.endIndex }));
   const allRanges = [...conditionalRanges, ...whenElseRanges, ...repeatRanges];
 
-  const exprRegex = /\$\{this\.(\w+)\(\)\}/g;
+  const exprRegex = /\$\{(\w+)\(\)\}/g;
   let match: RegExpExecArray | null;
 
   while ((match = exprRegex.exec(originalHtml)) !== null) {

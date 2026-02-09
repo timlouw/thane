@@ -181,9 +181,11 @@ export function decodeHtmlEntities(text: string): string {
 }
 
 // Pre-compiled regex factories — return fresh instances to avoid stale lastIndex bugs with /g
+// These match BARE signal calls: signalName() — NOT this.signalName()
+// The compiler pipeline natively supports closure-based (defineComponent) access patterns.
 export const WHEN_ELSE_REGEX = () => /\$\{whenElse\(/g;
 export const REPEAT_REGEX = () => /\$\{repeat\(/g;
-export const SIGNAL_EXPR_REGEX = () => /\$\{this\.(\w+)\(\)\}/g;
-export const SIGNAL_CALL_REGEX = () => /this\.(\w+)\(\)/g;
-export const STYLE_EXPR_REGEX = () => /([\w-]+)\s*:\s*(\$\{this\.(\w+)\(\)\})/g;
-export const ATTR_EXPR_REGEX = () => /\$\{this\.(\w+)\(\)\}/g;
+export const SIGNAL_EXPR_REGEX = () => /\$\{(\w+)\(\)\}/g;
+export const SIGNAL_CALL_REGEX = () => /(?<!\.)(\w+)\(\)/g;
+export const STYLE_EXPR_REGEX = () => /([\w-]+)\s*:\s*(\$\{(\w+)\(\)\})/g;
+export const ATTR_EXPR_REGEX = () => /\$\{(\w+)\(\)\}/g;

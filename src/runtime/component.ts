@@ -34,9 +34,9 @@ export interface ComponentReturnType {
   /** Scoped styles (css tagged template literal) */
   styles?: string;
   /** Called after template is in the DOM and bindings are initialized */
-  onMount?(): void;
+  onMount?: () => void;
   /** Called when the component is removed from the DOM */
-  onDestroy?(): void;
+  onDestroy?: () => void;
 }
 
 /**

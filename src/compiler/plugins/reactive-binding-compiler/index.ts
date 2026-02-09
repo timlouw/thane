@@ -26,6 +26,7 @@ import {
   BIND_FN,
 } from '../../utils/index.js';
 import type { BindingInfo, ConditionalBlock, WhenElseBlock, RepeatBlock, EventBinding } from './types.js';
+import { CLOSURE_ACCESS } from './types.js';
 import { processHtmlTemplateWithConditionals } from './template-processing.js';
 import { generateInitBindingsFunction, generateStaticTemplate, generateUpdatedImport } from './codegen.js';
 import { ErrorCode, createError } from '../../errors.js';
@@ -118,145 +119,14 @@ const findHtmlTemplates = (sourceFile: ts.SourceFile): TemplateInfo[] => {
 };
 
 /**
- * Find signal variable names within a defineComponent setup function.
- * These are const/let declarations initialized with signal(...).
- */
-const findSetupSignalNames = (sourceFile: ts.SourceFile): Set<string> => {
-  const signalNames = new Set<string>();
-  
-  const visit = (node: ts.Node) => {
-    if (ts.isVariableDeclaration(node) && 
-        ts.isIdentifier(node.name) && 
-        node.initializer && 
-        ts.isCallExpression(node.initializer)) {
-      const callExpr = node.initializer;
-      if (ts.isIdentifier(callExpr.expression) && callExpr.expression.text === 'signal') {
-        signalNames.add(node.name.text);
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  
-  visit(sourceFile);
-  return signalNames;
-};
-
-/**
- * Normalize bare signal calls ONLY inside html`...` template literals.
- * Transforms signalName() → this.signalName() within template expressions
- * so the existing template processing pipeline can handle them.
- * 
- * IMPORTANT: This must NOT touch signal calls in the setup function body
- * (e.g. rows(buildData(1000))) — those are real closure calls and must
- * stay as bare names.  Only template content needs the this. prefix for
- * the downstream regex-based pipeline.
- */
-const normalizeSignalCallsInTemplates = (source: string, signalNames: Set<string>): string => {
-  if (signalNames.size === 0) return source;
-  
-  // Find html`...` template literals and normalize only within them.
-  // We match the tag + backtick-delimited content.
-  // Template literals can contain nested ${} expressions with their own backticks,
-  // so we use a simple depth-tracking approach.
-  const result: string[] = [];
-  let i = 0;
-  
-  while (i < source.length) {
-    // Look for html`
-    const htmlTagIdx = source.indexOf('html`', i);
-    if (htmlTagIdx === -1) {
-      result.push(source.substring(i));
-      break;
-    }
-    
-    // Push everything before this template literal
-    result.push(source.substring(i, htmlTagIdx));
-    
-    // Find the end of this template literal (handling nested ${...} with depth tracking)
-    const backtickStart = htmlTagIdx + 4; // index of the opening `
-    let depth = 1;
-    let j = backtickStart + 1; // start after the opening `
-    
-    while (j < source.length && depth > 0) {
-      if (source[j] === '\\') {
-        j += 2; // skip escaped char
-        continue;
-      }
-      if (source[j] === '`') {
-        depth--;
-        if (depth === 0) break;
-      }
-      if (source[j] === '$' && j + 1 < source.length && source[j + 1] === '{') {
-        // Entering a template expression — need to track braces and nested backticks
-        j += 2;
-        let braceDepth = 1;
-        while (j < source.length && braceDepth > 0) {
-          if (source[j] === '\\') {
-            j += 2;
-            continue;
-          }
-          if (source[j] === '{') braceDepth++;
-          else if (source[j] === '}') braceDepth--;
-          else if (source[j] === '`') {
-            // Nested template literal inside expression
-            j++;
-            while (j < source.length && source[j] !== '`') {
-              if (source[j] === '\\') j++;
-              j++;
-            }
-          }
-          if (braceDepth > 0) j++;
-        }
-        // j is now at the closing }
-        j++;
-        continue;
-      }
-      j++;
-    }
-    
-    // source[backtickStart..j] is the entire template literal content including backticks
-    let templateContent = source.substring(htmlTagIdx, j + 1); // html`...`
-    
-    // Normalize signal calls within this template
-    for (const name of signalNames) {
-      const regex = new RegExp(`(?<!this\\.)(?<![\\w.])\\b(${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\(`, 'g');
-      templateContent = templateContent.replace(regex, `this.${name}(`);
-    }
-    
-    result.push(templateContent);
-    i = j + 1;
-  }
-  
-  return result.join('');
-};
-
-/**
- * Strip this. prefix from generated binding code for defineComponent.
- * In defineComponent, signals are closure variables, not class properties.
- */
-const stripThisFromBindings = (code: string): string => {
-  // Replace this.signalName patterns in binding code
-  // this.shadowRoot → ctx.root (handled separately)
-  // this.constructor.X → X (for static template refs)
-  // this.signalName → signalName
-  // .call(this, e) → .call(null, e) (event handler context)
-  return code
-    .replace(/this\.shadowRoot/g, 'ctx.root')
-    .replace(/this\.constructor\./g, '')
-    .replace(/\.call\(this,/g, '.call(null,')
-    .replace(/this\.(\w+)/g, '$1');
-};
-
-/**
  * Transform a defineComponent source file by processing HTML templates,
  * generating binding code, and injecting static templates.
  * 
- * Uses source normalization to reuse the existing template processing pipeline:
- * 1. Find signal names in the setup function
- * 2. Normalize ${signal()} → ${this.signal()} in templates
- * 3. Run the standard template processing pipeline
- * 4. Strip this. from generated code (signals are closures, not class properties)
- * 5. Inject __template and __bindings as properties on the setup function
+ * The pipeline natively supports defineComponent's closure-based access pattern:
+ * 1. Parse templates directly — bare signal() calls are detected by the regex pipeline
+ * 2. Run template processing and codegen with CLOSURE_ACCESS pattern
+ * 3. Generated code uses bare signal references, ctx.root, etc.
+ * 4. Inject __template and __bindings as properties on the setup function
  */
 export const transformDefineComponentSource = (source: string, filePath: string): string | null => {
   const sourceFile = sourceCache.parse(filePath, source);
@@ -298,19 +168,12 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   
   if (!selector) return null;
   
-  // Find signal names in the source
-  const signalNames = findSetupSignalNames(sourceFile);
   const signalInitializers = findSignalInitializers(sourceFile);
   
-  // Normalize signal calls in templates: ${signal()} → ${this.signal()}
-  let normalizedSource = normalizeSignalCallsInTemplates(source, signalNames);
-  
-  // Re-parse after normalization
-  const normalizedSourceFile = sourceCache.parse(filePath + '.normalized', normalizedSource);
-  
-  // Find html templates in the normalized source
-  const servicesImport = findServicesImport(normalizedSourceFile);
-  const htmlTemplates = findHtmlTemplates(normalizedSourceFile);
+  // Find html templates directly — no normalization needed.
+  // The regex pipeline natively matches bare signal() calls.
+  const servicesImport = findServicesImport(sourceFile);
+  const htmlTemplates = findHtmlTemplates(sourceFile);
   
   const edits: Array<{ start: number; end: number; replacement: string }> = [];
   let allBindings: BindingInfo[] = [];
@@ -323,7 +186,7 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   let hasConditionals = false;
   
   for (const templateInfo of htmlTemplates) {
-    let templateContent = extractTemplateContent(templateInfo.node.template, normalizedSourceFile);
+    let templateContent = extractTemplateContent(templateInfo.node.template, sourceFile);
     
     const result = processHtmlTemplateWithConditionals(templateContent, signalInitializers, idCounter);
     templateContent = result.processedContent;
@@ -347,25 +210,27 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   // Strip css tags
   const visitCss = (node: ts.Node) => {
     if (ts.isTaggedTemplateExpression(node) && isCssTemplate(node)) {
-      const cssContent = extractTemplateContent(node.template, normalizedSourceFile);
+      const cssContent = extractTemplateContent(node.template, sourceFile);
       edits.push({
-        start: node.getStart(normalizedSourceFile),
+        start: node.getStart(sourceFile),
         end: node.getEnd(),
         replacement: '`' + cssContent + '`',
       });
     }
     ts.forEachChild(node, visitCss);
   };
-  visitCss(normalizedSourceFile);
+  visitCss(sourceFile);
   
-  // Generate bindings code
+  // Generate bindings code with CLOSURE_ACCESS — natively emits bare signal refs,
+  // ctx.root, and closure-compatible code. No post-hoc stripping needed.
+  const ap = CLOSURE_ACCESS;
   const { code: initBindingsFunction, staticTemplates: repeatStaticTemplates } = generateInitBindingsFunction(
-    allBindings, allConditionals, allWhenElseBlocks, allRepeatBlocks, allEventBindings, filePath,
+    allBindings, allConditionals, allWhenElseBlocks, allRepeatBlocks, allEventBindings, filePath, ap,
   );
   
   let staticTemplateCode = '';
   if (lastProcessedTemplateContent) {
-    staticTemplateCode = generateStaticTemplate(lastProcessedTemplateContent);
+    staticTemplateCode = generateStaticTemplate(lastProcessedTemplateContent, ap);
   }
   
   if (repeatStaticTemplates.length > 0) {
@@ -382,8 +247,8 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
     if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
     
-    const hasSimpleConditionals = allConditionals.some((c) => c.signalNames.length === 1 && c.jsExpression === `this.${c.signalName}()`);
-    const hasComplexConditionals = allConditionals.some((c) => c.signalNames.length > 1 || c.jsExpression !== `this.${c.signalName}()`);
+    const hasSimpleConditionals = allConditionals.some((c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`);
+    const hasComplexConditionals = allConditionals.some((c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`);
     if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
     if (hasComplexConditionals || allWhenElseBlocks.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
     
@@ -397,8 +262,7 @@ export const transformDefineComponentSource = (source: string, filePath: string)
         const hasNestedConditionals = rep.nestedConditionals.length > 0;
         const hasItemEvents = rep.itemEvents.length > 0;
         const canUseOptimized = hasItemBindings && 
-          !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals && !hasItemEvents &&
-          rep.itemBindings.every(b => !b.expression.includes('this.'));
+          !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals && !hasItemEvents;
         return !canUseOptimized;
       });
       if (hasNonOptimized) requiredFunctions.push(BIND_FN.REPEAT);
@@ -414,8 +278,7 @@ export const transformDefineComponentSource = (source: string, filePath: string)
       const hasNestedConditionals = rep.nestedConditionals.length > 0;
       const hasItemEvents = rep.itemEvents.length > 0;
       const canUseOptimized = hasItemBindings && 
-        !hasSignalBindings && !hasNestedRepeatSubs && !hasNestedConditionals && !hasItemEvents &&
-        rep.itemBindings.every(b => !b.expression.includes('this.'));
+        !hasSignalBindings && !hasNestedRepeatSubs && !hasNestedConditionals && !hasItemEvents;
       return (!canUseOptimized && hasItemBindings) || rep.nestedRepeats.some((nr) => nr.itemBindings.length > 0);
     });
     if (hasNonOptimizedWithBindings) requiredFunctions.push(BIND_FN.FIND_EL);
@@ -431,8 +294,8 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     }
   }
   
-  // Apply all edits to the normalized source
-  let result = applyEdits(normalizedSource, edits);
+  // Apply all edits to the source (no normalization pass — edits are against the original)
+  let result = applyEdits(source, edits);
   
   // ──────────────────────────────────────────────────────────────────────
   // Injection strategy for defineComponent:
@@ -449,38 +312,18 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   //   so the runtime can clone it before bindings run.
   // ──────────────────────────────────────────────────────────────────────
 
-  // Strip `this.` from generated code — signals are closures, not class props
-  let processedStaticTemplate = stripThisFromBindings(staticTemplateCode);
-  let processedBindings = stripThisFromBindings(initBindingsFunction);
-  
-  // Transform static template from class property to standalone const
-  processedStaticTemplate = processedStaticTemplate
-    .replace(/^\s*static template =/, 'const __tpl =')
-    .replace(/^\s*static (__tpl_\w+) =/gm, 'const $1 =');
-  
-  // Transform initializeBindings from class method to a function body
-  // that receives the component context (for root element access).
-  // We strip the wrapper — the body will be placed inside a __bindings arrow fn.
-  processedBindings = processedBindings
+  // Transform initializeBindings from class-style wrapper to a plain function body.
+  // The codegen emits `initializeBindings = () => { const r = ctx.root; ... };`
+  // We extract the body and wrap it as a `__bindings: (ctx) => { ... }` arrow function.
+  let processedBindings = initBindingsFunction
     .replace(/\s*initializeBindings = \(\) => \{\s*/, '')
-    .replace(/\s*const r = this\.shadowRoot;\s*/, '')
     .replace(/\};\s*$/, '');
-  // Replace remaining `r.` (was `this.shadowRoot.`) with `ctx.root.`
-  // Note: stripThisFromBindings already turned `this.shadowRoot` → `ctx.root`,
-  // but the codegen creates a local `const r = this.shadowRoot` alias.
-  // After stripping that line, all `r.getElementById` should use `ctx.root.`
-  processedBindings = processedBindings.replace(/\br\.getElementById/g, 'ctx.root.getElementById');
-  // Also replace bare `r.` used as parentNode etc — but only standalone `r.`
-  processedBindings = processedBindings.replace(/\br\.querySelector/g, 'ctx.root.querySelector');
-  // The `r` variable was `this.shadowRoot` — any remaining standalone `r.` or `r,` 
-  // in generated code should map to `ctx.root`
-  processedBindings = processedBindings.replace(/\br\.parentNode/g, 'ctx.root.parentNode');
   
   // Collect repeat static template names
   const repeatTemplateNames: string[] = [];
   const repeatTplRegex = /const (__tpl_\w+) =/g;
   let tplMatch: RegExpExecArray | null;
-  while ((tplMatch = repeatTplRegex.exec(processedStaticTemplate)) !== null) {
+  while ((tplMatch = repeatTplRegex.exec(staticTemplateCode)) !== null) {
     if (tplMatch[1]) repeatTemplateNames.push(tplMatch[1]);
   }
   
@@ -497,8 +340,8 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   
   if (exportMatch && exportMatch.index !== undefined) {
     let declarations = '';
-    if (processedStaticTemplate.trim()) {
-      declarations += processedStaticTemplate.trim() + '\n';
+    if (staticTemplateCode.trim()) {
+      declarations += staticTemplateCode.trim() + '\n';
     }
     
     if (declarations) {
