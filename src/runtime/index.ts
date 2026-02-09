@@ -63,6 +63,7 @@ export {
   registerGlobalStyles, 
   mountComponent,
   mount,
+  destroyComponent,
   type ComponentContext,
   type ComponentReturnType,
 } from './component.js';

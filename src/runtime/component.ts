@@ -102,6 +102,9 @@ export function registerGlobalStyles(...styles: string[]): void {
 // Map of component selectors to factory functions
 const componentFactories = new Map<string, () => ComponentInstance>();
 
+// Track mounted instances for cleanup via destroyComponent
+const mountedInstances = new WeakMap<ComponentRoot, ComponentInstance>();
+
 /**
  * Create the host element with getElementById support
  */
@@ -275,6 +278,7 @@ export function mountComponent(
   }
   
   const instance = factory();
+  mountedInstances.set(instance.root, instance);
   target.appendChild(instance.root);
   
   return instance.root;
@@ -282,6 +286,19 @@ export function mountComponent(
 
 // Alias for mountComponent
 export { mountComponent as mount };
+
+/**
+ * Destroy a mounted component, calling its onDestroy lifecycle hook
+ * and removing it from the DOM.
+ * 
+ * @param root - The component root element returned by mountComponent
+ */
+export function destroyComponent(root: ComponentRoot): void {
+  const instance = mountedInstances.get(root);
+  if (instance?.__onDestroy) instance.__onDestroy();
+  root.remove();
+  mountedInstances.delete(root);
+}
 
 /**
  * Generate HTML selector function for a component.

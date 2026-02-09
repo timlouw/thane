@@ -57,7 +57,11 @@ export const signal = <T>(initialValue: T): Signal<T> => {
       if (fn._s) {
         const subs = fn._s;
         for (let i = 0, len = subs.length; i < len; i++) {
-          subs[i]!(fn._v);
+          try {
+            subs[i]!(fn._v);
+          } catch (e) {
+            console.error(e);
+          }
         }
       }
     }

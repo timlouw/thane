@@ -104,6 +104,9 @@ const getTempEl = (): HTMLTemplateElement => {
   return tempEl;
 };
 
+// Reusable Set for keyed reconciliation (avoids allocation per reconcile pass)
+const _keySet = new Set<string | number>();
+
 /**
  * Find an element by ID within a set of elements
  */
@@ -537,9 +540,9 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
       }
       
       // General keyed reconciliation
-      const newKeys = new Set<string | number>();
+      _keySet.clear();
       for (let i = 0; i < newLength; i++) {
-        newKeys.add(keyFn(newItems[i]!, i));
+        _keySet.add(keyFn(newItems[i]!, i));
       }
       
       // Remove items no longer present — array rebuild instead of splice
@@ -547,13 +550,14 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
       for (let i = 0; i < oldLength; i++) {
         const managed = managedItems[i]!;
         const key = keyFn(managed.itemSignal(), i);
-        if (newKeys.has(key)) {
+        if (_keySet.has(key)) {
           kept.push(managed);
         } else {
           removeItem(managed);
           keyMap.delete(key);
         }
       }
+      _keySet.clear(); // release references
       managedItems.length = 0;
       for (let i = 0; i < kept.length; i++) managedItems.push(kept[i]!);
       
