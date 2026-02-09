@@ -30,9 +30,8 @@ export const BIND_FN = {
   IF: '__bindIf',
   IF_EXPR: '__bindIfExpr',
   REPEAT: '__bindRepeat',
-  REPEAT_TPL: '__bindRepeatTpl',
+  RECONCILER: 'createReconciler',
   NESTED_REPEAT: '__bindNestedRepeat',
-  EVENTS: '__setupEventDelegation',
   FIND_EL: '__findEl',
   FIND_TEXT_NODE: '__findTextNode',
 } as const;

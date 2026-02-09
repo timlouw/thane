@@ -254,15 +254,14 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     
     if (allRepeatBlocks.length > 0) {
       const usesOptimized = repeatStaticTemplates.length > 0;
-      if (usesOptimized) requiredFunctions.push(BIND_FN.REPEAT_TPL);
+      if (usesOptimized) requiredFunctions.push(BIND_FN.RECONCILER);
       const hasNonOptimized = allRepeatBlocks.some(rep => {
         const hasItemBindings = rep.itemBindings.length > 0;
         const hasSignalBindings = rep.signalBindings.length > 0;
         const hasNestedRepeats = rep.nestedRepeats.length > 0;
         const hasNestedConditionals = rep.nestedConditionals.length > 0;
-        const hasItemEvents = rep.itemEvents.length > 0;
         const canUseOptimized = hasItemBindings && 
-          !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals && !hasItemEvents;
+          !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals;
         return !canUseOptimized;
       });
       if (hasNonOptimized) requiredFunctions.push(BIND_FN.REPEAT);
@@ -276,13 +275,12 @@ export const transformDefineComponentSource = (source: string, filePath: string)
       const hasSignalBindings = rep.signalBindings.length > 0;
       const hasNestedRepeatSubs = rep.nestedRepeats.length > 0;
       const hasNestedConditionals = rep.nestedConditionals.length > 0;
-      const hasItemEvents = rep.itemEvents.length > 0;
       const canUseOptimized = hasItemBindings && 
-        !hasSignalBindings && !hasNestedRepeatSubs && !hasNestedConditionals && !hasItemEvents;
+        !hasSignalBindings && !hasNestedRepeatSubs && !hasNestedConditionals;
       return (!canUseOptimized && hasItemBindings) || rep.nestedRepeats.some((nr) => nr.itemBindings.length > 0);
     });
     if (hasNonOptimizedWithBindings) requiredFunctions.push(BIND_FN.FIND_EL);
-    if (allEventBindings.length > 0) requiredFunctions.push(BIND_FN.EVENTS);
+    // Events now use direct addEventListener — no runtime import needed
     
     if (requiredFunctions.length > 0) {
       const newImport = generateUpdatedImport(servicesImport, requiredFunctions);

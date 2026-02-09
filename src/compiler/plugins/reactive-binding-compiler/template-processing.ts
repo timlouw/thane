@@ -140,10 +140,9 @@ export const processConditionalElementHtml = (
     const modifiers = parts.slice(1);
 
     const eventId = `e${eventIdCounter.value++}`;
-    const attrValue = modifiers.length > 0 ? `${eventId}:${modifiers.join(':')}` : eventId;
     eventReplacements.push({
       original: fullMatch,
-      replacement: `data-evt-${eventName}="${attrValue}"`,
+      replacement: '', // Remove @event attribute — events use direct addEventListener
       eventBinding: {
         id: eventId,
         eventName,
@@ -404,10 +403,17 @@ export const processHtmlTemplateWithConditionals = (
     if (!binding.eventName || !binding.handlerExpression) continue;
 
     const eventId = `e${state.eventIdCounter.value++}`;
-    if (!elementIdMap.has(binding.element)) {
-      elementIdMap.set(binding.element, `b${state.idCounter++}`);
+    // Use existing HTML id attribute if available, otherwise generate one
+    let elementId: string;
+    const existingIdAttr = binding.element.attributes.get('id');
+    if (existingIdAttr) {
+      elementId = existingIdAttr.value;
+    } else {
+      if (!elementIdMap.has(binding.element)) {
+        elementIdMap.set(binding.element, `b${state.idCounter++}`);
+      }
+      elementId = elementIdMap.get(binding.element)!;
     }
-    const elementId = elementIdMap.get(binding.element)!;
 
     eventBindings.push({
       id: eventId,
@@ -549,23 +555,17 @@ export const generateProcessedHtml = (
     ...buildSignalReplacementEdits(originalHtml, signalInitializers, allRanges, textBindingSpans),
   ];
 
-  // Event binding edits — remove @event attributes and build data-evt- attributes
-  const elementDataAttrs = new Map<HtmlElement, string[]>();
+  // Event binding edits — remove @event attributes (no more data-evt- attributes)
   for (const binding of parsed.bindings) {
     if (binding.type === 'event' && binding.eventName) {
       const eventBinding = eventBindings.find((eb) => eb.eventName === binding.eventName && eb.startIndex === binding.expressionStart);
       if (eventBinding) {
         edits.push({ start: binding.expressionStart, end: binding.expressionEnd, replacement: '' });
-        const attrValue = eventBinding.modifiers.length > 0 ? `${eventBinding.id}:${eventBinding.modifiers.join(':')}` : eventBinding.id;
-        if (!elementDataAttrs.has(binding.element)) {
-          elementDataAttrs.set(binding.element, []);
-        }
-        elementDataAttrs.get(binding.element)!.push(`data-evt-${binding.eventName}="${attrValue}"`);
       }
     }
   }
 
-  // Element ID injection with event data attributes
+  // Element ID injection (no event data attributes — events use direct addEventListener)
   const isInsideRange = buildRangeOverlapChecker(allRanges);
   for (const [element, id] of elementIdMap) {
     if (isInsideRange(element.tagStart)) continue;
@@ -573,8 +573,6 @@ export const generateProcessedHtml = (
     if (!element.attributes.has('id')) {
       attrsToAdd.push(`id="${id}"`);
     }
-    const dataAttrs = elementDataAttrs.get(element);
-    if (dataAttrs) attrsToAdd.push(...dataAttrs);
     if (attrsToAdd.length > 0) {
       edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ' ' + attrsToAdd.join(' ') });
     }

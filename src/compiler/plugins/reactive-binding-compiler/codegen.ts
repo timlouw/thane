@@ -12,7 +12,6 @@ import type {
   BindingInfo,
   EventBinding,
   ItemBinding,
-  ItemEventBinding,
   RepeatOptimizationSkipReason,
   AccessPattern,
 } from './types.js';
@@ -36,7 +35,7 @@ export const generateBindingUpdateCode = (binding: BindingInfo): string => {
   } else if (binding.type === 'attr') {
     return `${elRef}.setAttribute('${binding.property}', v)`;
   } else {
-    return `${elRef}.textContent = v`;
+    return `${elRef}.firstChild.nodeValue = v`;
   }
 };
 
@@ -53,7 +52,7 @@ export const generateInitialValueCode = (binding: BindingInfo, ap: AccessPattern
   } else if (binding.type === 'attr') {
     return `${elRef}.setAttribute('${binding.property}', ${signalCall})`;
   } else {
-    return `${elRef}.textContent = ${signalCall}`;
+    return `${elRef}.firstChild.nodeValue = ${signalCall}`;
   }
 };
 
@@ -269,8 +268,6 @@ export const generateInitBindingsFunction = (
       optimizationSkipReason = 'nested-repeat';
     } else if (hasNestedConditionals) {
       optimizationSkipReason = 'nested-conditional';
-    } else if (hasItemEvents) {
-      optimizationSkipReason = 'item-events';
     } else if (hasMixedBindings) {
       optimizationSkipReason = 'mixed-bindings';
     }
@@ -279,7 +276,7 @@ export const generateInitBindingsFunction = (
     
     if (canUseOptimized) {
       // Use optimized template-based approach
-      const staticInfo = generateStaticRepeatTemplate(rep.itemTemplate, rep.itemBindings, rep.itemVar);
+      const staticInfo = generateStaticRepeatTemplate(rep.itemTemplate, rep.itemBindings, rep.itemVar, rep.itemEvents);
       
       if (staticInfo.canUseOptimized && staticInfo.elementBindings.length > 0) {
         // Generate static template identifier
@@ -294,57 +291,259 @@ export const generateInitBindingsFunction = (
         
         staticTemplates.push(`  ${ap.classStyle ? 'static' : 'const'} ${templateId} = (() => { const t = document.createElement('template'); t.innerHTML = \`${escapedStaticHtml}\`; return t; })();`);
         
-        // Generate element bindings array
-        const bindingsArrayStr = staticInfo.elementBindings.map(eb => 
-          `{ path: [${eb.path.join(', ')}], id: '${eb.id}' }`
-        ).join(', ');
-        
-        // Generate fill function that sets initial values
-        const fillStatements: string[] = [];
+        // Fully inlined repeat — inline navigation code, no runtime navigatePath
+        // Generate inlined navigation code for each bound element
+        const navVarNames: string[] = [];
+        const navStatements: string[] = [];
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
-          for (const binding of eb.bindings) {
-            const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
-            if (binding.type === 'text') {
-              fillStatements.push(`els[${i}].textContent = ${expr}`);
-            } else if (binding.type === 'attr' && binding.property) {
-              fillStatements.push(`els[${i}].setAttribute('${binding.property}', ${expr})`);
+          const varName = `_e${i}`;
+          navVarNames.push(varName);
+          if (eb.path.length === 0) {
+            navStatements.push(`const ${varName} = _el`);
+          } else {
+            // Generate inlined navigation: .children[0].children[1] etc.
+            let navExpr = '_el';
+            for (const childIdx of eb.path) {
+              navExpr += `.children[${childIdx}]`;
             }
+            navStatements.push(`const ${varName} = ${navExpr}`);
           }
         }
-        const fillFn = `(els, item, ${indexVar}) => { ${fillStatements.join('; ')}; }`;
         
-        // Generate init bindings function with subscriptions
+        // Generate fill statements using inlined var names
+        const fillStatements: string[] = [];
         const updateStatements: string[] = [];
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
+          const varName = navVarNames[i]!;
           for (const binding of eb.bindings) {
-            const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'v');
+            const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             if (binding.type === 'text') {
-              updateStatements.push(`els[${i}].textContent = ${expr}`);
+              fillStatements.push(`${varName}.firstChild.nodeValue = ${expr}`);
+              updateStatements.push(`${varName}.firstChild.nodeValue = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
-              updateStatements.push(`els[${i}].setAttribute('${binding.property}', ${expr})`);
+              fillStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
+              updateStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
             }
           }
         }
-        const initFn = `(els, ${itemSignalVar}, ${indexVar}) => [${itemSignalVar}.subscribe(v => { ${updateStatements.join('; ')} }, true)]`;
         
-        // Build the optimized call
-        let bindRepeatCall = `${BIND_FN.REPEAT_TPL}(r, ${ap.signal(rep.signalName)}, '${rep.id}', ${ap.staticPrefix}${templateId}, [${bindingsArrayStr}], ${fillFn}, ${initFn}`;
-        
+        // Generate empty template arg
+        let emptyTemplateArg = 'undefined';
         if (rep.emptyTemplate) {
           const escapedEmptyTemplate = rep.emptyTemplate.replace(/`/g, '\\`');
-          bindRepeatCall += `, \`${escapedEmptyTemplate}\``;
-        } else if (rep.trackByFn) {
-          bindRepeatCall += `, undefined`;
+          emptyTemplateArg = `\`${escapedEmptyTemplate}\``;
         }
         
+        // Generate key function arg
+        let keyFnArg = 'undefined';
         if (rep.trackByFn) {
-          bindRepeatCall += `, ${rep.trackByFn}`;
+          keyFnArg = rep.trackByFn;
         }
         
-        bindRepeatCall += ')';
-        lines.push(`    ${bindRepeatCall};`);
+        // Generate the inlined repeat setup
+        const tplContentVar = `_tc_${rep.id}`;
+        const anchorVar = `_a_${rep.id}`;
+        const containerVar = `_ct_${rep.id}`;
+        const reconcilerVar = `_rc_${rep.id}`;
+        
+        lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content;`);
+        lines.push(`    const ${anchorVar} = r.getElementById('${rep.id}');`);
+        lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
+        // Generate event delegation or per-item addEventListener for item events
+        // Strategy: group events by type. If all events of a type can be delegated,
+        // emit a single listener on the container instead of per-item listeners.
+        interface DelegatedEvent {
+          path: number[];
+          handlerExpr: string;
+          modifiers: string[];
+        }
+        const delegatedEventsByType = new Map<string, DelegatedEvent[]>();
+        const nonDelegatableEvents: typeof rep.itemEvents = [];
+        
+        if (hasItemEvents && staticInfo.eventElementPaths) {
+          for (const evt of rep.itemEvents) {
+            const evtPath = staticInfo.eventElementPaths.get(evt.elementId);
+            if (!evtPath) {
+              nonDelegatableEvents.push(evt);
+              continue;
+            }
+            
+            let handlerExpr = evt.handlerExpression;
+            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, 'item');
+            if (rep.indexVar) {
+              handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
+            }
+            const arrowParsed = parseArrowFunction(handlerExpr);
+            if (arrowParsed) {
+              handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
+            } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
+              handlerExpr = `${handlerExpr}(e)`;
+            }
+            
+            // Check for .self modifier — cannot delegate (.self requires currentTarget === target)
+            if (evt.modifiers.includes('self')) {
+              nonDelegatableEvents.push(evt);
+              continue;
+            }
+            
+            if (!delegatedEventsByType.has(evt.eventName)) {
+              delegatedEventsByType.set(evt.eventName, []);
+            }
+            delegatedEventsByType.get(evt.eventName)!.push({
+              path: evtPath,
+              handlerExpr,
+              modifiers: evt.modifiers,
+            });
+          }
+        }
+        
+        // Build delegated listener code (emitted AFTER reconciler creation)
+        const delegatedListenerStatements: string[] = [];
+        for (const [eventName, events] of delegatedEventsByType) {
+          // Build the delegated listener
+          // Walk from e.target up to find the item root element (direct child of container)
+          const finalBody = [
+            `let _row = e.target;`,
+            `while (_row && _row.parentNode !== ${containerVar}) _row = _row.parentNode;`,
+            `if (!_row || !_row.__d) return;`,
+            `const item = _row.__d;`,
+          ];
+          // Re-generate branches without per-branch item resolution
+          const simplifiedBranches: string[] = [];
+          for (const evt of events) {
+            let navExpr = '_row';
+            for (const childIdx of evt.path) {
+              navExpr += `.children[${childIdx}]`;
+            }
+            const modParts: string[] = [];
+            if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
+            if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
+            const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+            for (const km of keyMods) {
+              modParts.push(`if (e.key !== '${km.charAt(0).toUpperCase() + km.slice(1)}') return`);
+            }
+            const handlerBody = [...modParts, evt.handlerExpr].join('; ');
+            
+            if (evt.path.length === 0) {
+              simplifiedBranches.push(`${handlerBody};`);
+            } else {
+              simplifiedBranches.push(`if (${navExpr}?.contains(e.target)) { ${handlerBody}; return; }`);
+            }
+          }
+          finalBody.push(...simplifiedBranches);
+          
+          delegatedListenerStatements.push(
+            `${containerVar}.addEventListener('${eventName}', (e) => { ${finalBody.join(' ')} });`
+          );
+        }
+        
+        // Handle non-delegatable events (e.g., .self modifier) with per-item listeners
+        const eventNavStatements: string[] = [];
+        const eventAddStatements: string[] = [];
+        if (nonDelegatableEvents.length > 0 && staticInfo.eventElementPaths) {
+          const pathToBindingVar = new Map<string, string>();
+          for (let i = 0; i < staticInfo.elementBindings.length; i++) {
+            const eb = staticInfo.elementBindings[i]!;
+            pathToBindingVar.set(JSON.stringify(eb.path), navVarNames[i]!);
+          }
+          const eventElVarMap = new Map<string, string>();
+          let eventElIdx = 0;
+          for (const evt of nonDelegatableEvents) {
+            if (!eventElVarMap.has(evt.elementId)) {
+              const evtPath = staticInfo.eventElementPaths.get(evt.elementId);
+              if (evtPath) {
+                const existingVar = pathToBindingVar.get(JSON.stringify(evtPath));
+                if (existingVar) {
+                  eventElVarMap.set(evt.elementId, existingVar);
+                } else {
+                  const varName = `_ev${eventElIdx++}`;
+                  eventElVarMap.set(evt.elementId, varName);
+                  if (evtPath.length === 0) {
+                    eventNavStatements.push(`const ${varName} = _el`);
+                  } else {
+                    let navExpr = '_el';
+                    for (const childIdx of evtPath) {
+                      navExpr += `.children[${childIdx}]`;
+                    }
+                    eventNavStatements.push(`const ${varName} = ${navExpr}`);
+                  }
+                }
+              }
+            }
+          }
+          for (const evt of nonDelegatableEvents) {
+            const elVar = eventElVarMap.get(evt.elementId);
+            if (!elVar) continue;
+            let handlerExpr = evt.handlerExpression;
+            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, 'item');
+            if (rep.indexVar) {
+              handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
+            }
+            const arrowParsed = parseArrowFunction(handlerExpr);
+            if (arrowParsed) {
+              handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
+            } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
+              handlerExpr = `${handlerExpr}(e)`;
+            }
+            const bodyParts: string[] = [];
+            if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
+            if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
+            if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
+            const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+            for (const km of keyMods) {
+              bodyParts.push(`if (e.key !== '${km.charAt(0).toUpperCase() + km.slice(1)}') return`);
+            }
+            bodyParts.push(handlerExpr);
+            eventAddStatements.push(`${elVar}.addEventListener('${evt.eventName}', (e) => { ${bodyParts.join('; ')}; })`);
+          }
+        }
+        
+        // Determine if we need to store item data on the element for delegation
+        const useDelegation = delegatedEventsByType.size > 0;
+        
+        lines.push(`    const ${reconcilerVar} = ${BIND_FN.RECONCILER}({`);
+        lines.push(`      container: ${containerVar}, anchor: ${anchorVar},`);
+        lines.push(`      containerParent: ${containerVar}.parentNode, containerNextSibling: ${containerVar}.nextSibling,`);
+        lines.push(`      createItem: (item, ${indexVar}, _ref) => {`);
+        lines.push(`        const _frag = ${tplContentVar}.cloneNode(true);`);
+        lines.push(`        const _el = _frag.firstElementChild;`);
+        if (useDelegation) {
+          lines.push(`        _el.__d = item;`);
+        }
+        for (const navStmt of navStatements) {
+          lines.push(`        ${navStmt};`);
+        }
+        for (const navStmt of eventNavStatements) {
+          lines.push(`        ${navStmt};`);
+        }
+        lines.push(`        ${fillStatements.join('; ')};`);
+        if (eventAddStatements.length > 0) {
+          lines.push(`        ${eventAddStatements.join('; ')};`);
+        }
+        lines.push(`        ${containerVar}.insertBefore(_frag, _ref);`);
+        const updateParts = [...updateStatements];
+        if (useDelegation) {
+          updateParts.push('_el.__d = item');
+        }
+        lines.push(`        return { itemSignal: null, el: _el, cleanups: [], value: item,`);
+        lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
+        lines.push(`      },`);
+        if (rep.trackByFn) {
+          lines.push(`      keyFn: ${keyFnArg},`);
+        }
+        if (rep.emptyTemplate) {
+          lines.push(`      emptyTemplate: ${emptyTemplateArg},`);
+        }
+        lines.push(`    });`);
+        lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
+        lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`);
+        // Emit delegated event listeners on the container (after reconciler is ready)
+        for (const stmt of delegatedListenerStatements) {
+          lines.push(`    ${stmt}`);
+        }
+        
         continue; // Skip the fallback path
       } else if (staticInfo.skipReason) {
         const fileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -417,7 +616,7 @@ export const generateInitBindingsFunction = (
             for (const binding of bindings) {
               const signalExpr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'v');
               if (binding.type === 'text') {
-                updateStatements.push(`${cachedVar}.textContent = ${signalExpr}`);
+                updateStatements.push(`${cachedVar}.firstChild.nodeValue = ${signalExpr}`);
               } else if (binding.type === 'attr' && binding.property) {
                 updateStatements.push(`${cachedVar}.setAttribute('${binding.property}', ${signalExpr})`);
               } else if (binding.type === 'style' && binding.property) {
@@ -436,9 +635,9 @@ export const generateInitBindingsFunction = (
           let updateStmt: string;
           if (binding.type === 'text') {
             if (binding.textBindingMode === 'commentMarker') {
-              updateStmt = `e = $t('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`;
+              updateStmt = `e = $t('${binding.elementId}'); if (e) e.nodeValue = ${signalExpr};`;
             } else {
-              updateStmt = `e = $('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`;
+              updateStmt = `e = $('${binding.elementId}'); if (e) e.firstChild.nodeValue = ${signalExpr};`;
             }
           } else if (binding.type === 'attr' && binding.property) {
             updateStmt = `e = $('${binding.elementId}'); if (e) e.setAttribute('${binding.property}', ${signalExpr});`;
@@ -461,7 +660,7 @@ export const generateInitBindingsFunction = (
 
           for (const binding of bindings) {
             if (binding.type === 'text') {
-              updateStatements.push(`e = $('${binding.id}'); if (e) e.textContent = v;`);
+              updateStatements.push(`e = $('${binding.id}'); if (e) e.firstChild.nodeValue = v;`);
             } else if (binding.type === 'attr' && binding.property) {
               updateStatements.push(`e = $('${binding.id}'); if (e) e.setAttribute('${binding.property}', v);`);
             } else if (binding.type === 'style' && binding.property) {
@@ -507,7 +706,7 @@ export const generateInitBindingsFunction = (
                 for (const binding of pureNestedBindings) {
                   const signalExpr = renameIdentifierInExpression(binding.expression, nestedRep.itemVar, 'v');
                   if (binding.type === 'text') {
-                    updateStatements.push(`e = $n('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`);
+                    updateStatements.push(`e = $n('${binding.elementId}'); if (e) e.firstChild.nodeValue = ${signalExpr};`);
                   } else if (binding.type === 'attr' && binding.property) {
                     updateStatements.push(`e = $n('${binding.elementId}'); if (e) e.setAttribute('${binding.property}', ${signalExpr});`);
                   }
@@ -520,7 +719,7 @@ export const generateInitBindingsFunction = (
                 const signalExpr = renameIdentifierInExpression(binding.expression, nestedRep.itemVar, `${nestedItemSignalVar}()`);
                 let updateStmt: string;
                 if (binding.type === 'text') {
-                  updateStmt = `e = $n('${binding.elementId}'); if (e) e.textContent = ${signalExpr};`;
+                  updateStmt = `e = $n('${binding.elementId}'); if (e) e.firstChild.nodeValue = ${signalExpr};`;
                 } else if (binding.type === 'attr' && binding.property) {
                   updateStmt = `e = $n('${binding.elementId}'); if (e) e.setAttribute('${binding.property}', ${signalExpr});`;
                 } else {
@@ -544,7 +743,7 @@ export const generateInitBindingsFunction = (
               const condBindingUpdates: string[] = [];
               for (const binding of nestedCond.nestedBindings) {
                 if (binding.type === 'text') {
-                  condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.textContent = v; }, true)`);
+                  condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.firstChild.nodeValue = v; }, true)`);
                 } else if (binding.type === 'attr' && binding.property) {
                   condBindingUpdates.push(
                     `${ap.signal(binding.signalName)}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.setAttribute('${binding.property}', v); }, true)`,
@@ -558,7 +757,7 @@ export const generateInitBindingsFunction = (
                 const signalExpr = renameIdentifierInExpression(binding.expression, nestedRep.itemVar, `${nestedItemSignalVar}()`);
 
                 if (binding.type === 'text') {
-                  condBindingUpdates.push(`${nestedItemSignalVar}.subscribe(() => { const el = $n('${binding.elementId}'); if (el) el.textContent = ${signalExpr}; }, true)`);
+                  condBindingUpdates.push(`${nestedItemSignalVar}.subscribe(() => { const el = $n('${binding.elementId}'); if (el) el.firstChild.nodeValue = ${signalExpr}; }, true)`);
                 } else if (binding.type === 'attr' && binding.property) {
                   condBindingUpdates.push(
                     `${nestedItemSignalVar}.subscribe(() => { const el = $n('${binding.elementId}'); if (el) el.setAttribute('${binding.property}', ${signalExpr}); }, true)`,
@@ -605,7 +804,7 @@ export const generateInitBindingsFunction = (
             const condBindingUpdates: string[] = [];
             for (const binding of nestedCond.nestedBindings) {
               if (binding.type === 'text') {
-                condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $('${binding.id}'); if (el) el.textContent = v; }, true)`);
+                condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $('${binding.id}'); if (el) el.firstChild.nodeValue = v; }, true)`);
               } else if (binding.type === 'attr' && binding.property) {
                 condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $('${binding.id}'); if (el) el.setAttribute('${binding.property}', v); }, true)`);
               } else if (binding.type === 'style' && binding.property) {
@@ -642,55 +841,15 @@ export const generateInitBindingsFunction = (
         initItemBindingsFn = `(els, ${itemSignalVar}, ${indexVar}) => []`;
       }
     }
-    let itemEventHandlersArg = '';
-    if (rep.itemEvents.length > 0) {
-      const eventsByType = new Map<string, ItemEventBinding[]>();
-      for (const evt of rep.itemEvents) {
-        if (!eventsByType.has(evt.eventName)) {
-          eventsByType.set(evt.eventName, []);
-        }
-        eventsByType.get(evt.eventName)!.push(evt);
-      }
-      const eventTypeLines: string[] = [];
-      for (const [eventType, handlers] of eventsByType) {
-        const handlerLines = handlers.map((h) => {
-          let handlerExpr = h.handlerExpression;
-          handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, `${itemSignalVar}()`);
-          if (rep.indexVar) {
-            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
-          }
-          const arrowParsed = parseArrowFunction(handlerExpr);
-          if (arrowParsed) {
-            if (!arrowParsed.isBlockBody) {
-              handlerExpr = arrowParsed.body;
-            } else {
-              handlerExpr = arrowParsed.body.slice(1, -1).trim();
-            }
-          } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
-            handlerExpr = `${handlerExpr}(e)`;
-          }
-
-          return `'${h.eventId}': (${itemSignalVar}, ${indexVar}, e) => { ${handlerExpr}; }`;
-        });
-        eventTypeLines.push(`${eventType}: { ${handlerLines.join(', ')} }`);
-      }
-
-      itemEventHandlersArg = `, { ${eventTypeLines.join(', ')} }`;
-    }
     let bindRepeatCall = `${BIND_FN.REPEAT}(r, ${ap.signal(rep.signalName)}, '${rep.id}', ${templateFn}, ${initItemBindingsFn}`;
     if (rep.emptyTemplate) {
       const escapedEmptyTemplate = rep.emptyTemplate.replace(/`/g, '\\`');
       bindRepeatCall += `, \`${escapedEmptyTemplate}\``;
-    } else if (itemEventHandlersArg || rep.trackByFn) {
-      bindRepeatCall += `, undefined`;
-    }
-    if (itemEventHandlersArg) {
-      bindRepeatCall += itemEventHandlersArg;
     } else if (rep.trackByFn) {
       bindRepeatCall += `, undefined`;
     }
     if (rep.trackByFn) {
-      bindRepeatCall += `, ${rep.trackByFn}`;
+      bindRepeatCall += `, undefined, ${rep.trackByFn}`;
     }
 
     bindRepeatCall += ')';
@@ -698,28 +857,56 @@ export const generateInitBindingsFunction = (
     lines.push(`    ${bindRepeatCall};`);
   }
   if (eventBindings.length > 0) {
-    const eventsByType = new Map<string, EventBinding[]>();
+    // Generate direct addEventListener calls instead of runtime delegation
     for (const evt of eventBindings) {
-      if (!eventsByType.has(evt.eventName)) {
-        eventsByType.set(evt.eventName, []);
+      let handlerCode = evt.handlerExpression;
+      if (ap.classStyle && isThisMethodReference(handlerCode)) {
+        handlerCode = `(e) => ${handlerCode}.call(${ap.callContext}, e)`;
       }
-      eventsByType.get(evt.eventName)!.push(evt);
-    }
-    const eventMapLines: string[] = [];
-    for (const [eventType, handlers] of eventsByType) {
-      const handlerEntries = handlers.map((h) => {
-        let handlerCode = h.handlerExpression;
-        if (ap.classStyle && isThisMethodReference(handlerCode)) {
-          handlerCode = `(e) => ${handlerCode}.call(${ap.callContext}, e)`;
-        }
-        return `'${h.id}': ${handlerCode}`;
-      });
-      eventMapLines.push(`      ${eventType}: { ${handlerEntries.join(', ')} }`);
-    }
 
-    lines.push(`    ${BIND_FN.EVENTS}(r, {`);
-    lines.push(eventMapLines.join(',\n'));
-    lines.push('    });');
+      // Build the handler with compiled modifiers
+      const hasModifiers = evt.modifiers.length > 0;
+      const hasPrevent = evt.modifiers.includes('prevent');
+      const hasStop = evt.modifiers.includes('stop');
+      const hasSelf = evt.modifiers.includes('self');
+      const keyModifiers = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+
+      if (hasModifiers && (hasPrevent || hasStop || hasSelf || keyModifiers.length > 0)) {
+        // Wrap handler with compiled modifier logic
+        const bodyParts: string[] = [];
+        if (hasSelf) bodyParts.push('if (e.target !== e.currentTarget) return;');
+        if (keyModifiers.length > 0) {
+          // Key filter modifiers
+          const keyChecks = keyModifiers.map(mod => {
+            // Map modifier names to key values
+            const keyMap: Record<string, string[]> = {
+              enter: ['Enter'], tab: ['Tab'], delete: ['Backspace', 'Delete'],
+              esc: ['Escape'], escape: ['Escape'], space: [' '],
+              up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
+            };
+            const keys = keyMap[mod];
+            if (keys) {
+              return keys.length === 1 ? `e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(e.key)`;
+            }
+            return null;
+          }).filter(Boolean);
+          if (keyChecks.length > 0) {
+            bodyParts.push(`if (${keyChecks.join(' || ')}) return;`);
+          }
+        }
+        if (hasPrevent) bodyParts.push('e.preventDefault();');
+        if (hasStop) bodyParts.push('e.stopPropagation();');
+        bodyParts.push(`(${handlerCode})(e);`);
+        const wrappedHandler = `(e) => { ${bodyParts.join(' ')} }`;
+
+        // Use element's existing id or the injected id
+        const elId = evt.elementId;
+        lines.push(`    r.getElementById('${elId}').addEventListener('${evt.eventName}', ${wrappedHandler});`);
+      } else {
+        const elId = evt.elementId;
+        lines.push(`    r.getElementById('${elId}').addEventListener('${evt.eventName}', ${handlerCode});`);
+      }
+    }
   }
 
   lines.push('  };');

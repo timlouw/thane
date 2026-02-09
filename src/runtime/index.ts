@@ -74,8 +74,8 @@ export {
   __bindIfExpr, 
   __bindRepeat, 
   __bindRepeatTpl,
+  createReconciler,
   __bindNestedRepeat, 
-  __setupEventDelegation, 
   __findEl,
   __findTextNode 
 } from './dom-binding.js';

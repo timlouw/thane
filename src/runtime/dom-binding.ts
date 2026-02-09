@@ -1,99 +1,11 @@
 /**
  * DOM Binding utilities for Thane runtime
  * 
- * Handles event delegation, conditional rendering, and repeat directives.
+ * Handles conditional rendering and repeat directives.
  */
 
 import type { Signal, ComponentRoot } from './types.js';
 import { signal as createSignal } from './signal.js';
-
-/**
- * Keyboard key code mappings for event modifiers
- */
-const KEY_CODES: Record<string, string[]> = {
-  enter: ['Enter'],
-  tab: ['Tab'],
-  delete: ['Backspace', 'Delete'],
-  esc: ['Escape'],    // shorthand alias
-  escape: ['Escape'],
-  space: [' '],
-  up: ['ArrowUp'],
-  down: ['ArrowDown'],
-  left: ['ArrowLeft'],
-  right: ['ArrowRight'],
-};
-
-/**
- * Set up event delegation on a component root
- */
-export const __setupEventDelegation = (
-  root: ComponentRoot, 
-  eventMap: Record<string, Record<string, (event: Event) => void>>
-): (() => void) => {
-  const cleanups: (() => void)[] = [];
-
-  for (const eventType in eventMap) {
-    const handlers = eventMap[eventType];
-    const attrName = `data-evt-${eventType}`;
-
-    const delegatedHandler = (event: Event) => {
-      let target = event.target as Element | null;
-
-      while (target && target !== (root as unknown as Element)) {
-        if (target instanceof HTMLElement) {
-          const handlerIdWithModifiers = target.getAttribute(attrName);
-          if (handlerIdWithModifiers) {
-            const parts = handlerIdWithModifiers.split(':');
-            const handlerId = parts[0];
-            if (!handlerId) continue;
-
-            const handler = handlers?.[handlerId];
-            if (handler) {
-              if (parts.includes('self') && event.target !== target) {
-                target = target.parentElement;
-                continue;
-              }
-
-              if (event instanceof KeyboardEvent) {
-                let keyMatched = true;
-                for (let i = 1; i < parts.length; i++) {
-                  const mod = parts[i];
-                  const keyCodes = mod ? KEY_CODES[mod] : undefined;
-                  if (keyCodes) {
-                    keyMatched = keyCodes.includes(event.key);
-                    if (!keyMatched) break;
-                  }
-                }
-                if (!keyMatched) {
-                  target = target.parentElement;
-                  continue;
-                }
-              }
-
-              if (parts.includes('prevent')) event.preventDefault();
-              if (parts.includes('stop')) event.stopPropagation();
-
-              handler.call(null, event);
-              return;
-            }
-          }
-        }
-        target = target.parentElement;
-      }
-    };
-
-    root.addEventListener(eventType, delegatedHandler, true);
-    cleanups.push(() => {
-      root.removeEventListener(eventType, delegatedHandler, true);
-    });
-  }
-
-  return () => {
-    for (const cleanup of cleanups) {
-      cleanup();
-    }
-  };
-};
 
 // Temporary element for parsing HTML (lazy initialization)
 let tempEl: HTMLTemplateElement | null = null;
@@ -269,9 +181,13 @@ export const __bindIfExpr = (
  * Managed item in a repeat directive
  */
 interface ManagedItem<T> {
-  itemSignal: Signal<T>;
+  itemSignal: Signal<T> | null;
   el: Element;
   cleanups: (() => void)[];
+  /** Direct update function — bypasses signal when set (A7 optimization) */
+  update?: ((newValue: T) => void) | undefined;
+  /** Cached value for direct update path (no signal) */
+  value?: T | undefined;
 }
 
 /**
@@ -312,7 +228,7 @@ interface ReconcilerConfig<T> {
  * This is the single shared implementation used by all three repeat binding
  * variants (__bindRepeat, __bindRepeatTpl, __bindNestedRepeat).
  */
-function createReconciler<T>(config: ReconcilerConfig<T>) {
+export function createReconciler<T>(config: ReconcilerConfig<T>) {
   const {
     container, anchor, containerParent, containerNextSibling,
     createItem: createItemFn, keyFn, emptyTemplate,
@@ -321,6 +237,19 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
 
   const managedItems: ManagedItem<T>[] = [];
   const keyMap: Map<string | number, ManagedItem<T>> | null = keyFn ? new Map() : null;
+
+  /** Get current value from a managed item (direct or signal path) */
+  const getValue = (m: ManagedItem<T>): T => m.itemSignal ? m.itemSignal() : m.value!;
+  
+  /** Set value on a managed item (direct update or signal path) */
+  const setValue = (m: ManagedItem<T>, v: T): void => {
+    if (m.update) {
+      m.value = v;
+      m.update(v);
+    } else if (m.itemSignal) {
+      m.itemSignal(v);
+    }
+  };
 
   let emptyElement: Element | null = null;
   let emptyShowing = false;
@@ -353,10 +282,14 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
     const len = managedItems.length;
     if (len === 0) return;
     
-    for (let i = 0; i < len; i++) {
-      const cleanups = managedItems[i]!.cleanups;
-      for (let j = 0, clen = cleanups.length; j < clen; j++) {
-        cleanups[j]!();
+    // B3: Only iterate cleanups if items have subscriptions to unsubscribe.
+    // Direct-update items have empty cleanups arrays.
+    if (managedItems[0]!.cleanups.length > 0) {
+      for (let i = 0; i < len; i++) {
+        const cleanups = managedItems[i]!.cleanups;
+        for (let j = 0, clen = cleanups.length; j < clen; j++) {
+          cleanups[j]!();
+        }
       }
     }
     
@@ -379,11 +312,21 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
       container.remove();
     }
     
-    for (let i = 0; i < count; i++) {
-      const managed = createItemFn(items[i]!, startIndex + i, anchor);
-      managedItems.push(managed);
-      if (keyMap && keyFn) {
-        keyMap.set(keyFn(items[i]!, startIndex + i), managed);
+    // Pre-size array to avoid repeated push/grow
+    const base = managedItems.length;
+    managedItems.length = base + count;
+    
+    if (keyMap && keyFn) {
+      for (let i = 0; i < count; i++) {
+        const item = items[i]!;
+        const idx = startIndex + i;
+        const managed = createItemFn(item, idx, anchor);
+        managedItems[base + i] = managed;
+        keyMap.set(keyFn(item, idx), managed);
+      }
+    } else {
+      for (let i = 0; i < count; i++) {
+        managedItems[base + i] = createItemFn(items[i]!, startIndex + i, anchor);
       }
     }
     
@@ -417,7 +360,7 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
         
         for (let i = 0; i < newLength; i++) {
           const newKey = keyFn(newItems[i]!, i);
-          const oldKey = keyFn(managedItems[i]!.itemSignal(), i);
+          const oldKey = keyFn(getValue(managedItems[i]!), i);
           if (newKey !== oldKey) {
             removedIdx = i;
             break;
@@ -427,7 +370,7 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
         if (removedIdx === -1) removedIdx = oldLength - 1;
         
         const removedManaged = managedItems[removedIdx]!;
-        const removedKey = keyFn(removedManaged.itemSignal(), removedIdx);
+        const removedKey = keyFn(getValue(removedManaged), removedIdx);
         
         let isActualRemoval = true;
         for (let i = removedIdx; i < newLength; i++) {
@@ -440,14 +383,7 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
         if (isActualRemoval) {
           removeItem(removedManaged);
           keyMap.delete(removedKey);
-          
-          // Array rebuild instead of splice — O(n) total instead of O(n) per splice shift
-          const rebuilt: ManagedItem<T>[] = new Array(oldLength - 1);
-          for (let i = 0; i < removedIdx; i++) rebuilt[i] = managedItems[i]!;
-          for (let i = removedIdx; i < oldLength - 1; i++) rebuilt[i] = managedItems[i + 1]!;
-          managedItems.length = 0;
-          for (let i = 0; i < rebuilt.length; i++) managedItems.push(rebuilt[i]!);
-          
+          managedItems.splice(removedIdx, 1);
           return;
         }
       }
@@ -461,7 +397,7 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
         }
         
         if (allKeysExist) {
-          const newManagedItems: ManagedItem<T>[] = [];
+          // First pass: detect swap without allocating array
           let mismatchCount = 0;
           let mismatch1 = -1, mismatch2 = -1;
           
@@ -470,46 +406,56 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
             const key = keyFn(newItem, i);
             const existing = keyMap.get(key)!;
             
-            if (existing.itemSignal() !== newItem) {
-              existing.itemSignal(newItem);
+            if (getValue(existing) !== newItem) {
+              setValue(existing, newItem);
             }
             
             if (managedItems[i] !== existing) {
               mismatchCount++;
               if (mismatchCount === 1) mismatch1 = i;
               else if (mismatchCount === 2) mismatch2 = i;
+              if (mismatchCount > 2) break;
             }
-            
-            newManagedItems.push(existing);
           }
           
           if (mismatchCount === 0) return;
           
-          // Fast path: two items swapped
-          if (mismatchCount === 2 &&
-              managedItems[mismatch1] === newManagedItems[mismatch2] &&
-              managedItems[mismatch2] === newManagedItems[mismatch1]) {
-            const el1 = newManagedItems[mismatch1]!.el;
-            const el2 = newManagedItems[mismatch2]!.el;
+          // Fast path: two items swapped — no array allocation
+          if (mismatchCount === 2) {
+            const m1 = managedItems[mismatch1]!;
+            const m2 = managedItems[mismatch2]!;
+            const k1 = keyFn(newItems[mismatch1]!, mismatch1);
+            const k2 = keyFn(newItems[mismatch2]!, mismatch2);
             
-            const next1 = el1.nextSibling;
-            const next2 = el2.nextSibling;
-            
-            if (next1 === el2) {
-              container.insertBefore(el2, el1);
-            } else if (next2 === el1) {
-              container.insertBefore(el1, el2);
-            } else {
-              container.insertBefore(el1, next2);
-              container.insertBefore(el2, next1);
+            if (keyMap.get(k1) === m2 && keyMap.get(k2) === m1) {
+              const el1 = m1.el;
+              const el2 = m2.el;
+              
+              const next1 = el1.nextSibling;
+              const next2 = el2.nextSibling;
+              
+              if (next1 === el2) {
+                container.insertBefore(el2, el1);
+              } else if (next2 === el1) {
+                container.insertBefore(el1, el2);
+              } else {
+                container.insertBefore(el2, next1);
+                container.insertBefore(el1, next2);
+              }
+              
+              managedItems[mismatch1] = m2;
+              managedItems[mismatch2] = m1;
+              return;
             }
-            
-            managedItems[mismatch1] = newManagedItems[mismatch1]!;
-            managedItems[mismatch2] = newManagedItems[mismatch2]!;
-            return;
           }
           
-          // General reorder
+          // General reorder — need full array
+          const newManagedItems: ManagedItem<T>[] = new Array(newLength);
+          for (let i = 0; i < newLength; i++) {
+            const key = keyFn(newItems[i]!, i);
+            newManagedItems[i] = keyMap.get(key)!;
+          }
+          
           let currentEl: Element | null = managedItems[0]?.el || null;
           for (let i = 0; i < newLength; i++) {
             const wanted = newManagedItems[i]!.el;
@@ -549,7 +495,7 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
       const kept: ManagedItem<T>[] = [];
       for (let i = 0; i < oldLength; i++) {
         const managed = managedItems[i]!;
-        const key = keyFn(managed.itemSignal(), i);
+        const key = keyFn(getValue(managed), i);
         if (_keySet.has(key)) {
           kept.push(managed);
         } else {
@@ -570,8 +516,8 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
         const existing = keyMap.get(key);
         
         if (existing) {
-          if (existing.itemSignal() !== newItem) {
-            existing.itemSignal(newItem);
+          if (getValue(existing) !== newItem) {
+            setValue(existing, newItem);
           }
           newManagedItems.push(existing);
         } else {
@@ -602,14 +548,14 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
     
     // Fast path: same length, first and last both changed = replace all
     if (oldLength > 0 && newLength > 0 && oldLength === newLength) {
-      const firstChanged = managedItems[0]!.itemSignal() !== newItems[0];
-      const lastChanged = managedItems[oldLength - 1]!.itemSignal() !== newItems[newLength - 1];
+      const firstChanged = getValue(managedItems[0]!) !== newItems[0];
+      const lastChanged = getValue(managedItems[oldLength - 1]!) !== newItems[newLength - 1];
       
       if (firstChanged && lastChanged) {
         for (let i = 0; i < newLength; i++) {
           const managed = managedItems[i]!;
-          if (managed.itemSignal() !== newItems[i]) {
-            managed.itemSignal(newItems[i]!);
+          if (getValue(managed) !== newItems[i]) {
+            setValue(managed, newItems[i]!);
           }
         }
         return;
@@ -620,8 +566,8 @@ function createReconciler<T>(config: ReconcilerConfig<T>) {
     const minLength = Math.min(oldLength, newLength);
     for (let i = 0; i < minLength; i++) {
       const managed = managedItems[i]!;
-      if (managed.itemSignal() !== newItems[i]) {
-        managed.itemSignal(newItems[i]!);
+      if (getValue(managed) !== newItems[i]) {
+        setValue(managed, newItems[i]!);
       }
     }
 
@@ -659,7 +605,7 @@ export const __bindRepeat = <T>(
   templateFn: (itemSignal: Signal<T>, index: number) => string,
   initItemBindings: (elements: Element[], itemSignal: Signal<T>, index: number) => (() => void)[],
   emptyTemplate?: string,
-  itemEventHandlers?: Record<string, Record<string, (itemSignal: Signal<T>, index: number, e: Event) => void>>,
+  _reserved?: unknown,
   keyFn?: KeyFn<T>,
 ): (() => void) => {
   const anchor = root.getElementById(anchorId);
@@ -683,41 +629,6 @@ export const __bindRepeat = <T>(
     container.insertBefore(fragment, refNode);
 
     const cleanups = initItemBindings([el], itemSignal, index);
-
-    if (itemEventHandlers) {
-      for (const eventType in itemEventHandlers) {
-        const handlers = itemEventHandlers[eventType];
-        if (!handlers) continue;
-        
-        const attrName = `data-evt-${eventType}`;
-        const nested = el.querySelectorAll(`[${attrName}]`);
-        
-        if (el.hasAttribute(attrName)) {
-          const handlerId = el.getAttribute(attrName)?.split(':')[0];
-          if (handlerId) {
-            const handler = handlers[handlerId];
-            if (handler) {
-              const listener = (e: Event) => handler(itemSignal, index, e);
-              el.addEventListener(eventType, listener);
-              cleanups.push(() => el.removeEventListener(eventType, listener));
-            }
-          }
-        }
-        
-        for (let i = 0, len = nested.length; i < len; i++) {
-          const target = nested[i]!;
-          const handlerId = target.getAttribute(attrName)?.split(':')[0];
-          if (handlerId) {
-            const handler = handlers[handlerId];
-            if (handler) {
-              const listener = (e: Event) => handler(itemSignal, index, e);
-              target.addEventListener(eventType, listener);
-              cleanups.push(() => target.removeEventListener(eventType, listener));
-            }
-          }
-        }
-      }
-    }
 
     return { itemSignal, el, cleanups };
   };

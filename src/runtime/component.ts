@@ -78,7 +78,7 @@ const registeredStyles = new Set<string>();
 const appendStyle = (cssText: string): void => {
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(cssText);
-  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
 };
 
 /**
@@ -100,15 +100,26 @@ export function registerGlobalStyles(...styles: string[]): void {
 // ============================================================================
 
 // Map of component selectors to factory functions
-const componentFactories = new Map<string, () => ComponentInstance>();
+const componentFactories = new Map<string, (target?: HTMLElement) => ComponentInstance>();
 
 // Track mounted instances for cleanup via destroyComponent
 const mountedInstances = new WeakMap<ComponentRoot, ComponentInstance>();
 
 /**
- * Create the host element with getElementById support
+ * Create the host element with getElementById support.
+ * If a target is provided, renders directly into it (no wrapper div).
+ * Falls back to a wrapper div for child components.
  */
-const createHostElement = (selector: string): ComponentRoot => {
+const createHostElement = (selector: string, target?: HTMLElement): ComponentRoot => {
+  if (target) {
+    // Render directly into target — no wrapper div
+    target.className = target.className ? `${target.className} ${selector}` : selector;
+    // Use document.getElementById for native speed
+    const root = target as any;
+    root.getElementById = (id: string): HTMLElement | null => document.getElementById(id);
+    return root as ComponentRoot;
+  }
+  // Fallback: create wrapper div for child components
   const el = document.createElement('div') as any;
   el.className = selector;
   el.getElementById = (id: string): HTMLElement | null =>
@@ -188,8 +199,8 @@ export function defineComponent<P extends ComponentProps = {}>(
   let stylesRegistered = false;
 
   // Create factory function for component instantiation
-  const factory = (): ComponentInstance => {
-    const root = createHostElement(selector);
+  const factory = (target?: HTMLElement): ComponentInstance => {
+    const root = createHostElement(selector, target);
     const ctx: ComponentContext<P> = {
       root,
       props: {} as Readonly<P>,
@@ -277,9 +288,13 @@ export function mountComponent(
     return null;
   }
   
-  const instance = factory();
+  const instance = factory(target);
   mountedInstances.set(instance.root, instance);
-  target.appendChild(instance.root);
+  // When rendering directly into target, content is already there
+  // Only append if root is a separate element (child components)
+  if (instance.root !== target) {
+    target.appendChild(instance.root);
+  }
   
   return instance.root;
 }

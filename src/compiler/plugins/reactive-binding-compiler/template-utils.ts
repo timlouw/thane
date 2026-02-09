@@ -365,7 +365,7 @@ export const buildWhenElseEdits = (
 export const buildElementIdEdits = (
   elementIdMap: Map<HtmlElement, string>,
   allRanges: Range[],
-  opts?: {
+  _opts?: {
     eventBindings?: EventBinding[];
     itemEvents?: Array<{ eventId: string; eventName: string; modifiers: string[] }>;
   },
@@ -378,20 +378,7 @@ export const buildElementIdEdits = (
     if (element.attributes.has('id')) continue;
 
     const attrsToAdd: string[] = [`id="${id}"`];
-    if (opts?.eventBindings) {
-      for (const evt of opts.eventBindings) {
-        if (evt.elementId === id) {
-          const attrValue = evt.modifiers.length > 0 ? `${evt.id}:${evt.modifiers.join(':')}` : evt.id;
-          attrsToAdd.push(`data-evt-${evt.eventName}="${attrValue}"`);
-        }
-      }
-    }
-    if (opts?.itemEvents) {
-      for (const evt of opts.itemEvents) {
-        const attrValue = evt.modifiers.length > 0 ? `${evt.eventId}:${evt.modifiers.join(':')}` : evt.eventId;
-        attrsToAdd.push(`data-evt-${evt.eventName}="${attrValue}"`);
-      }
-    }
+    // No more data-evt-* attributes — events use direct addEventListener
 
     edits.push({
       start: element.tagNameEnd,
@@ -431,7 +418,9 @@ export const buildSignalReplacementEdits = (
     edits.push({
       start: exprStart,
       end: exprEnd,
-      replacement: spanId ? `<span id="${spanId}">${valueStr}</span>` : valueStr,
+      // Ensure text node child always exists for firstChild.nodeValue access.
+      // Use a space as placeholder when value is empty — overwritten by initializeBindings.
+      replacement: spanId ? `<span id="${spanId}">${valueStr || ' '}</span>` : (valueStr || ' '),
     });
   }
 

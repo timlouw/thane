@@ -54,8 +54,6 @@ export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason)
       return 'contains nested repeat() - not yet supported for optimization';
     case 'nested-conditional':
       return 'contains when()/whenElse() inside items - not yet supported for optimization';
-    case 'item-events':
-      return 'contains @event handlers inside items - use event delegation on container instead';
     case 'mixed-bindings':
       return 'item bindings reference component signals - use pure item data instead';
     case 'multi-root':
@@ -78,6 +76,7 @@ export const generateStaticRepeatTemplate = (
   itemTemplate: string,
   itemBindings: ItemBinding[],
   _itemVar: string,
+  itemEvents?: ItemEventBinding[],
 ): StaticTemplateInfo => {
   // Parse the template to get element structure
   const parsed = parseHtmlTemplate(itemTemplate);
@@ -154,8 +153,27 @@ export const generateStaticRepeatTemplate = (
   staticHtml = staticHtml.replace(/\s*data-bind-id="[^"]*"/g, '');
   
   // Remove inline id attributes that were only added for bindings
-  // These follow the pattern id="i0", id="i1", etc.
-  staticHtml = staticHtml.replace(/\s*id="i\d+"/g, '');
+  // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
+  staticHtml = staticHtml.replace(/\s*id="[ib]\d+"/g, '');
+  
+  // Ensure elements with text bindings have a text node child.
+  // After stripping ${...}, elements like <td></td> or <a></a> become empty.
+  // We need a text node so that .firstChild.nodeValue works at runtime.
+  // Insert a single space as a placeholder text node.
+  for (const elementId of bindingsByElement.keys()) {
+    const bindings = bindingsByElement.get(elementId)!;
+    const hasTextBinding = bindings.some(b => b.type === 'text');
+    if (hasTextBinding) {
+      // Find elements that are now empty after stripping expressions
+      // Match patterns like <tag>  </tag> or <tag></tag> (empty or whitespace-only content)
+      // We insert a space to ensure .firstChild is a text node
+      staticHtml = staticHtml.replace(
+        /(<(?:td|th|span|a|p|div|h[1-6]|li|label|button|em|strong|b|i|small|code|pre|dd|dt|figcaption|summary|time|abbr|cite|q|s|u|mark|sub|sup|var|samp|kbd)(?:\s[^>]*)?>)\s*(<\/(?:td|th|span|a|p|div|h[1-6]|li|label|button|em|strong|b|i|small|code|pre|dd|dt|figcaption|summary|time|abbr|cite|q|s|u|mark|sub|sup|var|samp|kbd)>)/gi,
+        '$1 $2'
+      );
+      break; // Only need to run this once
+    }
+  }
   
   // Clean up whitespace
   staticHtml = staticHtml.replace(/\s+/g, ' ').trim();
@@ -188,9 +206,28 @@ export const generateStaticRepeatTemplate = (
     });
   }
   
+  // Compute event element paths (if any)
+  let eventElementPaths: Map<string, number[]> | undefined;
+  if (itemEvents && itemEvents.length > 0) {
+    eventElementPaths = new Map();
+    for (const evt of itemEvents) {
+      if (eventElementPaths.has(evt.elementId)) continue; // Already computed
+      const rootId = rootEl.attributes.get('id')?.value || rootEl.attributes.get('data-bind-id')?.value;
+      if (rootId === evt.elementId) {
+        eventElementPaths.set(evt.elementId, []);
+      } else {
+        const path = findElementPath(rootEl, evt.elementId, []);
+        if (path) {
+          eventElementPaths.set(evt.elementId, path);
+        }
+      }
+    }
+  }
+  
   return {
     staticHtml,
     elementBindings: elementBindingsArray,
+    eventElementPaths,
     canUseOptimized: true,
   };
 };
@@ -221,7 +258,24 @@ export const analyzeTextBindingContext = (
   let i = bindingStart - 1;
   
   // Scan backwards to find the parent element's opening tag
+  // Skip over ${...} expressions to avoid confusion with > inside handlers
   while (i >= 0) {
+    // Skip backwards over ${...} expressions
+    if (templateContent[i] === '}') {
+      let depth = 1;
+      i--;
+      while (i >= 0 && depth > 0) {
+        if (templateContent[i] === '}') depth++;
+        else if (templateContent[i] === '{') {
+          depth--;
+          if (depth === 0 && i > 0 && templateContent[i - 1] === '$') {
+            i--; // skip the '$'
+          }
+        }
+        i--;
+      }
+      continue;
+    }
     if (templateContent[i] === '>') {
       // Check if this is an opening tag end (not a closing tag)
       let j = i - 1;
@@ -293,7 +347,26 @@ export const analyzeTextBindingContext = (
   
   // Now check if the binding is the sole content
   // Get content between parent open tag end and binding start
-  const parentOpenTagEnd = templateContent.indexOf('>', parentTagStart) + 1;
+  // Must skip > inside ${...} expressions within attributes
+  let parentOpenTagEnd = parentTagStart;
+  {
+    let inExpr = 0;
+    while (parentOpenTagEnd < templateContent.length) {
+      const ch = templateContent[parentOpenTagEnd];
+      if (ch === '$' && templateContent[parentOpenTagEnd + 1] === '{') {
+        inExpr++;
+        parentOpenTagEnd += 2;
+        continue;
+      }
+      if (ch === '{' && inExpr > 0) { inExpr++; }
+      if (ch === '}' && inExpr > 0) { inExpr--; }
+      if (ch === '>' && inExpr === 0) {
+        parentOpenTagEnd++;
+        break;
+      }
+      parentOpenTagEnd++;
+    }
+  }
   const contentBefore = templateContent.substring(parentOpenTagEnd, bindingStart);
   const contentAfter = templateContent.substring(bindingEnd, parentCloseTagStart);
   
@@ -451,8 +524,10 @@ export const processItemTemplateRecursively = (
         if (!elementIdMap.has(binding.element)) {
           elementIdMap.set(binding.element, `b${state.idCounter++}`);
         }
+        const eventElementId = elementIdMap.get(binding.element)!;
         itemEvents.push({
           eventId,
+          elementId: eventElementId,
           eventName: binding.eventName,
           modifiers: binding.eventModifiers || [],
           handlerExpression: binding.handlerExpression,
@@ -652,7 +727,26 @@ export const processItemTemplateRecursively = (
   }
   
   // Add IDs to parent elements for sole-content text bindings
+  // First, build a map of tagStart -> existing elementId from the element ID map
+  const tagStartToExistingId = new Map<number, string>();
+  for (const [element, existingId] of elementIdMap) {
+    tagStartToExistingId.set(element.tagStart, existingId);
+  }
+  
   for (const [tagStart, id] of parentElementIds) {
+    // Check if this element already has an ID assigned (e.g., from event processing)
+    const existingId = tagStartToExistingId.get(tagStart);
+    if (existingId) {
+      // Reuse the existing ID — update the binding to reference it
+      for (const binding of itemBindings) {
+        if (binding.elementId === id) {
+          binding.elementId = existingId;
+        }
+      }
+      // No need to inject an ID — buildElementIdEdits will handle it
+      continue;
+    }
+    
     // Find the end of the tag name to inject the ID attribute
     let tagNameEnd = tagStart + 1;
     while (tagNameEnd < templateContent.length && /[\w-]/.test(templateContent[tagNameEnd]!)) {

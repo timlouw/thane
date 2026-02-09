@@ -122,6 +122,7 @@ export interface ItemBinding {
 
 export interface ItemEventBinding {
   eventId: string; // Unique ID for this event handler (e.g., 'ie0', 'ie1')
+  elementId: string; // ID of the element with the event binding (e.g., 'b0')
   eventName: string; // Event type (e.g., 'click', 'mouseenter')
   modifiers: string[]; // Event modifiers (e.g., ['stop', 'prevent'])
   handlerExpression: string; // The handler code with item/index references
@@ -162,6 +163,8 @@ export interface StaticTemplateInfo {
       expression: string;
     }>;
   }>;
+  /** Navigation paths for event-bound elements (elementId -> path) */
+  eventElementPaths?: Map<string, number[]> | undefined;
   /** Whether this template can use the optimized path */
   canUseOptimized: boolean;
   /** Reason optimization was skipped (for warnings) */
@@ -174,7 +177,6 @@ export type RepeatOptimizationSkipReason =
   | 'signal-bindings'       // Has component signal bindings inside
   | 'nested-repeat'         // Has repeat() inside repeat()
   | 'nested-conditional'    // Has when() or whenElse() inside
-  | 'item-events'           // Has @click etc. inside items
   | 'mixed-bindings'        // Item binding expressions contain component signal refs
   | 'multi-root'            // Template has multiple root elements
   | 'path-not-found';       // Element path couldn't be computed

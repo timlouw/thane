@@ -26,24 +26,10 @@ export const Benchmark = defineComponent('bench-mark', () => {
   const rows = signal<RowData[]>([]);
   let selectedEl: HTMLElement | null = null;
 
-  const handleTableClick = (e: Event) => {
-    e.stopPropagation();
-    const target = e.target as HTMLElement;
-    const row = target.closest('tr') as HTMLElement | null;
-
-    if (!row) return;
-
-    const actionEl = target.closest('[data-action]') as HTMLElement | null;
-    const action = actionEl?.getAttribute('data-action');
-
-    if (action === 'remove') {
-      const id = parseInt(row.getAttribute('data-id') || '0', 10);
-      if (id) remove(id);
-    } else if (action === 'select') {
-      if (selectedEl) selectedEl.className = '';
-      selectedEl = row;
-      row.className = 'danger';
-    }
+  const select = (row: RowData, e: Event) => {
+    if (selectedEl) selectedEl.className = '';
+    selectedEl = (e.target as HTMLElement).closest('tr') as HTMLElement;
+    selectedEl.className = 'danger';
   };
 
   const run = () => {
@@ -127,17 +113,17 @@ export const Benchmark = defineComponent('bench-mark', () => {
           </div>
         </div>
         <table class="table table-hover table-striped test-data">
-          <tbody id="tbody" @click=${handleTableClick}>
+          <tbody id="tbody">
             ${repeat(
               rows(),
               (row) => html`
-                <tr data-id="${row.id}">
+                <tr>
                   <td class="col-md-1">${row.id}</td>
                   <td class="col-md-4">
-                    <a data-action="select">${row.label}</a>
+                    <a @click=${(e: Event) => select(row, e)}>${row.label}</a>
                   </td>
                   <td class="col-md-1">
-                    <a data-action="remove">
+                    <a @click=${() => remove(row.id)}>
                       <span class="glyphicon glyphicon-remove" aria-hidden="true"></span>
                     </a>
                   </td>
