@@ -10,18 +10,226 @@ import type {
   WhenElseBlock,
   RepeatBlock,
   BindingInfo,
+  SimpleBinding,
   EventBinding,
   ItemBinding,
+  ItemEventBinding,
   RepeatOptimizationSkipReason,
   AccessPattern,
 } from './types.js';
-import { CLASS_ACCESS } from './types.js';
+import { CLASS_ACCESS, isExpressionBinding, isSimpleBinding } from './types.js';
 import { generateStaticRepeatTemplate, getOptimizationSkipMessage } from './repeat-analysis.js';
 import { toCamelCase, BIND_FN, logger, PLUGIN_NAME, renameIdentifierInExpression, expressionReferencesIdentifier, findComponentSignalCalls, parseArrowFunction, isThisMethodReference } from '../../utils/index.js';
 import { injectIdIntoFirstElement } from '../../utils/html-parser/index.js';
 import type { ImportInfo } from '../../types.js';
 
 const NAME = PLUGIN_NAME.REACTIVE;
+
+// ============================================================================
+// Event Delegation Types & Helpers
+// ============================================================================
+
+/** A single event binding that can be dispatched via container-level delegation */
+interface DelegatedEvent {
+  path: number[];
+  handlerExpr: string;
+  modifiers: string[];
+}
+
+/** Result of partitioning item events into delegatable vs non-delegatable */
+interface PartitionedEvents {
+  delegatedByType: Map<string, DelegatedEvent[]>;
+  nonDelegatable: ItemEventBinding[];
+}
+
+/**
+ * Partition item events into delegatable (container-level listener) and
+ * non-delegatable (.self modifier or missing path) groups.
+ */
+const partitionItemEvents = (
+  itemEvents: ItemEventBinding[],
+  eventElementPaths: Map<string, number[]> | undefined,
+  rep: RepeatBlock,
+  indexVar: string,
+  ap: AccessPattern,
+): PartitionedEvents => {
+  const delegatedByType = new Map<string, DelegatedEvent[]>();
+  const nonDelegatable: ItemEventBinding[] = [];
+
+  if (!eventElementPaths) return { delegatedByType, nonDelegatable };
+
+  for (const evt of itemEvents) {
+    const evtPath = eventElementPaths.get(evt.elementId);
+    if (!evtPath) {
+      nonDelegatable.push(evt);
+      continue;
+    }
+
+    let handlerExpr = evt.handlerExpression;
+    handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, 'item');
+    if (rep.indexVar) {
+      handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
+    }
+    const arrowParsed = parseArrowFunction(handlerExpr);
+    if (arrowParsed) {
+      handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
+    } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
+      handlerExpr = `${handlerExpr}(e)`;
+    }
+
+    // .self requires currentTarget === target — cannot delegate
+    if (evt.modifiers.includes('self')) {
+      nonDelegatable.push(evt);
+      continue;
+    }
+
+    if (!delegatedByType.has(evt.eventName)) {
+      delegatedByType.set(evt.eventName, []);
+    }
+    delegatedByType.get(evt.eventName)!.push({
+      path: evtPath,
+      handlerExpr,
+      modifiers: evt.modifiers,
+    });
+  }
+
+  return { delegatedByType, nonDelegatable };
+};
+
+/**
+ * Build delegated listener statements — one addEventListener per event type on the container.
+ * Each listener walks from e.target up to the item root, reads __d, and dispatches.
+ */
+const buildDelegatedListenerStatements = (
+  delegatedByType: Map<string, DelegatedEvent[]>,
+  containerVar: string,
+): string[] => {
+  const statements: string[] = [];
+
+  for (const [eventName, events] of delegatedByType) {
+    const finalBody = [
+      `let _row = e.target;`,
+      `while (_row && _row.parentNode !== ${containerVar}) _row = _row.parentNode;`,
+      `if (!_row || !_row.__d) return;`,
+      `const item = _row.__d;`,
+    ];
+
+    for (const evt of events) {
+      let navExpr = '_row';
+      for (const childIdx of evt.path) {
+        navExpr += `.children[${childIdx}]`;
+      }
+      const modParts: string[] = [];
+      if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
+      if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
+      const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+      if (keyMods.length > 0) {
+        const guard = compileKeyGuard(keyMods);
+        if (guard) modParts.push(`if (${guard}) return`);
+      }
+      const handlerBody = [...modParts, evt.handlerExpr].join('; ');
+
+      if (evt.path.length === 0) {
+        finalBody.push(`${handlerBody};`);
+      } else {
+        finalBody.push(`if (${navExpr}?.contains(e.target)) { ${handlerBody}; return; }`);
+      }
+    }
+
+    statements.push(
+      `${containerVar}.addEventListener('${eventName}', (e) => { ${finalBody.join(' ')} });`
+    );
+  }
+
+  return statements;
+};
+
+/**
+ * Build per-item addEventListener statements for non-delegatable events.
+ * Returns { navStatements, addStatements } for insertion into createItem.
+ */
+const buildNonDelegatableEventStatements = (
+  nonDelegatableEvents: ItemEventBinding[],
+  eventElementPaths: Map<string, number[]> | undefined,
+  elementBindings: { path: number[] }[],
+  navVarNames: string[],
+  rep: RepeatBlock,
+  indexVar: string,
+  ap: AccessPattern,
+): { navStatements: string[]; addStatements: string[] } => {
+  const navStatements: string[] = [];
+  const addStatements: string[] = [];
+
+  if (nonDelegatableEvents.length === 0 || !eventElementPaths) {
+    return { navStatements, addStatements };
+  }
+
+  const pathToBindingVar = new Map<string, string>();
+  for (let i = 0; i < elementBindings.length; i++) {
+    const eb = elementBindings[i]!;
+    pathToBindingVar.set(JSON.stringify(eb.path), navVarNames[i]!);
+  }
+
+  const eventElVarMap = new Map<string, string>();
+  let eventElIdx = 0;
+
+  for (const evt of nonDelegatableEvents) {
+    if (!eventElVarMap.has(evt.elementId)) {
+      const evtPath = eventElementPaths.get(evt.elementId);
+      if (evtPath) {
+        const existingVar = pathToBindingVar.get(JSON.stringify(evtPath));
+        if (existingVar) {
+          eventElVarMap.set(evt.elementId, existingVar);
+        } else {
+          const varName = `_ev${eventElIdx++}`;
+          eventElVarMap.set(evt.elementId, varName);
+          if (evtPath.length === 0) {
+            navStatements.push(`const ${varName} = _el`);
+          } else {
+            let navExpr = '_el';
+            for (const childIdx of evtPath) {
+              navExpr += `.children[${childIdx}]`;
+            }
+            navStatements.push(`const ${varName} = ${navExpr}`);
+          }
+        }
+      }
+    }
+  }
+
+  for (const evt of nonDelegatableEvents) {
+    const elVar = eventElVarMap.get(evt.elementId);
+    if (!elVar) continue;
+    let handlerExpr = evt.handlerExpression;
+    handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, 'item');
+    if (rep.indexVar) {
+      handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
+    }
+    const arrowParsed = parseArrowFunction(handlerExpr);
+    if (arrowParsed) {
+      handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
+    } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
+      handlerExpr = `${handlerExpr}(e)`;
+    }
+    const bodyParts: string[] = [];
+    if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
+    if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
+    if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
+    const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+    if (keyMods.length > 0) {
+      const guard = compileKeyGuard(keyMods);
+      if (guard) bodyParts.push(`if (${guard}) return`);
+    }
+    bodyParts.push(handlerExpr);
+    addStatements.push(`${elVar}.addEventListener('${evt.eventName}', (e) => { ${bodyParts.join('; ')}; })`);
+  }
+
+  return { navStatements, addStatements };
+};
+
+// ============================================================================
+// Key Map & Code Generation
+// ============================================================================
 
 /** Map of event modifier names to their corresponding KeyboardEvent.key values */
 const KEY_MAP: Record<string, string[]> = {
@@ -47,9 +255,9 @@ const compileKeyGuard = (modifiers: string[]): string | null => {
 };
 
 /**
- * Generate binding update code for a single binding
+ * Generate binding update code for a single simple binding
  */
-export const generateBindingUpdateCode = (binding: BindingInfo): string => {
+export const generateBindingUpdateCode = (binding: SimpleBinding): string => {
   const elRef = binding.id;
 
   if (binding.type === 'style') {
@@ -63,9 +271,9 @@ export const generateBindingUpdateCode = (binding: BindingInfo): string => {
 };
 
 /**
- * Generate initial value assignment code for a binding
+ * Generate initial value assignment code for a simple binding
  */
-export const generateInitialValueCode = (binding: BindingInfo, ap: AccessPattern = CLASS_ACCESS): string => {
+export const generateInitialValueCode = (binding: SimpleBinding, ap: AccessPattern = CLASS_ACCESS): string => {
   const elRef = binding.id;
   const signalCall = ap.signalCall(binding.signalName);
 
@@ -80,10 +288,10 @@ export const generateInitialValueCode = (binding: BindingInfo, ap: AccessPattern
 };
 
 /**
- * Group bindings by their signal name for consolidated subscriptions
+ * Group simple bindings by their signal name for consolidated subscriptions
  */
-export const groupBindingsBySignal = (bindings: BindingInfo[]): Map<string, BindingInfo[]> => {
-  const groups = new Map<string, BindingInfo[]>();
+export const groupBindingsBySignal = (bindings: SimpleBinding[]): Map<string, SimpleBinding[]> => {
+  const groups = new Map<string, SimpleBinding[]>();
   for (const binding of bindings) {
     const existing = groups.get(binding.signalName) || [];
     existing.push(binding);
@@ -95,7 +303,7 @@ export const groupBindingsBySignal = (bindings: BindingInfo[]): Map<string, Bind
 /**
  * Generate a consolidated subscription for multiple bindings of the same signal
  */
-export const generateConsolidatedSubscription = (signalName: string, bindings: BindingInfo[], ap: AccessPattern = CLASS_ACCESS): string => {
+export const generateConsolidatedSubscription = (signalName: string, bindings: SimpleBinding[], ap: AccessPattern = CLASS_ACCESS): string => {
   if (bindings.length === 1) {
     const update = generateBindingUpdateCode(bindings[0]!);
     return `${ap.signal(signalName)}.subscribe(v => { ${update}; }, true)`;
@@ -167,18 +375,37 @@ export const generateInitBindingsFunction = (
   lines.push('  initializeBindings = () => {');
   lines.push(`    ${ap.rootAlias}`);
   const topLevelBindings = bindings.filter((b) => !b.isInsideConditional);
+  // Separate expression bindings (multi-signal) from simple bindings
+  const simpleBindings = topLevelBindings.filter(isSimpleBinding);
+  const expressionBindings = topLevelBindings.filter(isExpressionBinding);
+  const dataBindIdSet = new Set(topLevelBindings.filter((b) => b.usesDataBindId).map((b) => b.id));
   const topLevelIds = [...new Set(topLevelBindings.map((b) => b.id))];
   if (topLevelIds.length > 0) {
     for (const id of topLevelIds) {
-      lines.push(`    const ${id} = r.getElementById('${id}');`);
+      lines.push(dataBindIdSet.has(id)
+        ? `    const ${id} = r.querySelector('[data-bind-id="${id}"]');`
+        : `    const ${id} = r.getElementById('${id}');`);
     }
   }
-  for (const binding of topLevelBindings) {
+  // Simple bindings: initial value assignment + consolidated subscription
+  for (const binding of simpleBindings) {
     lines.push(`    ${generateInitialValueCode(binding, ap)};`);
   }
-  const signalGroups = groupBindingsBySignal(topLevelBindings);
+  const signalGroups = groupBindingsBySignal(simpleBindings);
   for (const [signalName, signalBindings] of signalGroups) {
     lines.push(`    ${generateConsolidatedSubscription(signalName, signalBindings, ap)};`);
+  }
+  // Expression bindings: multi-subscribe pattern
+  // e.g. const _upd_b2 = () => { b2.firstChild.nodeValue = count() + 1; };
+  //      count.subscribe(_upd_b2, true);
+  for (const binding of expressionBindings) {
+    const updFn = `_upd_${binding.id}`;
+    const expr = binding.expression;
+    const signals = binding.signalNames;
+    lines.push(`    const ${updFn} = () => { ${binding.id}.firstChild.nodeValue = ${expr}; };`);
+    for (const sig of signals) {
+      lines.push(`    ${ap.signal(sig)}.subscribe(${updFn}, true);`);
+    }
   }
   for (const cond of conditionals) {
     const nestedBindings = cond.nestedBindings;
@@ -187,15 +414,24 @@ export const generateInitBindingsFunction = (
     let nestedCode = '() => []';
     if (nestedBindings.length > 0 || nestedConds.length > 0) {
       const nestedIds = [...new Set(nestedBindings.map((b) => b.id))];
+      const nestedDataBindIds = new Set(nestedBindings.filter((b) => b.usesDataBindId).map((b) => b.id));
       const nestedLines: string[] = [];
       nestedLines.push('() => {');
       for (const id of nestedIds) {
-        nestedLines.push(`      const ${id} = r.getElementById('${id}');`);
+        nestedLines.push(nestedDataBindIds.has(id)
+          ? `      const ${id} = r.querySelector('[data-bind-id="${id}"]');`
+          : `      const ${id} = r.getElementById('${id}');`);
       }
-      for (const binding of nestedBindings) {
+      const nestedSimpleBindings = nestedBindings.filter(isSimpleBinding);
+      const nestedExpressionBindings = nestedBindings.filter(isExpressionBinding);
+      for (const binding of nestedSimpleBindings) {
         nestedLines.push(`      ${generateInitialValueCode(binding, ap)};`);
       }
-      const nestedSignalGroups = groupBindingsBySignal(nestedBindings);
+      for (const binding of nestedExpressionBindings) {
+        const updFn = `_upd_${binding.id}`;
+        nestedLines.push(`      const ${updFn} = () => { ${binding.id}.firstChild.nodeValue = ${binding.expression}; };`);
+      }
+      const nestedSignalGroups = groupBindingsBySignal(nestedSimpleBindings);
       if (cond.nestedEventBindings.length > 0) {
         const nestedEventLines = buildEventListenerStatements(cond.nestedEventBindings, 'r');
         for (const line of nestedEventLines) {
@@ -206,23 +442,45 @@ export const generateInitBindingsFunction = (
       for (const [signalName, signalBindings] of nestedSignalGroups) {
         nestedLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
       }
+      for (const binding of nestedExpressionBindings) {
+        const updFn = `_upd_${binding.id}`;
+        const signals = binding.signalNames;
+        for (const sig of signals) {
+          nestedLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);
+        }
+      }
       for (const nestedCond of nestedConds) {
         const nestedCondEscaped = nestedCond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
         let innerNestedCode = '() => []';
         if (nestedCond.nestedBindings.length > 0) {
+          const innerSimple = nestedCond.nestedBindings.filter(isSimpleBinding);
+          const innerExpr = nestedCond.nestedBindings.filter(isExpressionBinding);
           const innerBindingLines: string[] = [];
           const innerIds = [...new Set(nestedCond.nestedBindings.map((b) => b.id))];
+          const innerDataBindIds = new Set(nestedCond.nestedBindings.filter((b) => b.usesDataBindId).map((b) => b.id));
           innerBindingLines.push('() => {');
           for (const id of innerIds) {
-            innerBindingLines.push(`        const ${id} = r.getElementById('${id}');`);
+            innerBindingLines.push(innerDataBindIds.has(id)
+              ? `        const ${id} = r.querySelector('[data-bind-id="${id}"]');`
+              : `        const ${id} = r.getElementById('${id}');`);
           }
-          for (const binding of nestedCond.nestedBindings) {
+          for (const binding of innerSimple) {
             innerBindingLines.push(`        ${generateInitialValueCode(binding, ap)};`);
           }
-          const innerGroups = groupBindingsBySignal(nestedCond.nestedBindings);
+          for (const binding of innerExpr) {
+            const updFn = `_upd_${binding.id}`;
+            innerBindingLines.push(`        const ${updFn} = () => { ${binding.id}.firstChild.nodeValue = ${binding.expression}; };`);
+          }
+          const innerGroups = groupBindingsBySignal(innerSimple);
           innerBindingLines.push('        return [');
           for (const [signalName, signalBindings] of innerGroups) {
             innerBindingLines.push(`          ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
+          }
+          for (const binding of innerExpr) {
+            const updFn = `_upd_${binding.id}`;
+            for (const sig of binding.signalNames) {
+              innerBindingLines.push(`          ${ap.signal(sig)}.subscribe(${updFn}, true),`);
+            }
           }
           innerBindingLines.push('        ];');
           innerBindingLines.push('      }');
@@ -266,17 +524,33 @@ export const generateInitBindingsFunction = (
       const initLines: string[] = [];
       initLines.push('() => {');
       const ids = [...new Set(bindings.map((b) => b.id))];
+      const weDataBindIds = new Set(bindings.filter((b) => b.usesDataBindId).map((b) => b.id));
       for (const id of ids) {
-        initLines.push(`      const ${id} = r.getElementById('${id}');`);
+        initLines.push(weDataBindIds.has(id)
+          ? `      const ${id} = r.querySelector('[data-bind-id="${id}"]');`
+          : `      const ${id} = r.getElementById('${id}');`);
       }
-      for (const binding of bindings) {
+      const simpleNestedBindings = bindings.filter(isSimpleBinding);
+      const exprNestedBindings = bindings.filter(isExpressionBinding);
+      for (const binding of simpleNestedBindings) {
         initLines.push(`      ${generateInitialValueCode(binding, ap)};`);
+      }
+      for (const binding of exprNestedBindings) {
+        const updFn = `_upd_${binding.id}`;
+        initLines.push(`      const ${updFn} = () => { ${binding.id}.firstChild.nodeValue = ${binding.expression}; };`);
       }
 
       initLines.push('      return [');
-      const signalGroups = groupBindingsBySignal(bindings);
+      const signalGroups = groupBindingsBySignal(simpleNestedBindings);
       for (const [signalName, signalBindings] of signalGroups) {
         initLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
+      }
+      for (const binding of exprNestedBindings) {
+        const updFn = `_upd_${binding.id}`;
+        const signals = binding.signalNames;
+        for (const sig of signals) {
+          initLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);
+        }
       }
       for (const cond of nestedConds) {
         const nestedEscapedTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
@@ -426,156 +700,21 @@ export const generateInitBindingsFunction = (
         lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content;`);
         lines.push(`    const ${anchorVar} = r.getElementById('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
-        // Generate event delegation or per-item addEventListener for item events
-        // Strategy: group events by type. If all events of a type can be delegated,
-        // emit a single listener on the container instead of per-item listeners.
-        interface DelegatedEvent {
-          path: number[];
-          handlerExpr: string;
-          modifiers: string[];
-        }
-        const delegatedEventsByType = new Map<string, DelegatedEvent[]>();
-        const nonDelegatableEvents: typeof rep.itemEvents = [];
-        
-        if (hasItemEvents && staticInfo.eventElementPaths) {
-          for (const evt of rep.itemEvents) {
-            const evtPath = staticInfo.eventElementPaths.get(evt.elementId);
-            if (!evtPath) {
-              nonDelegatableEvents.push(evt);
-              continue;
-            }
-            
-            let handlerExpr = evt.handlerExpression;
-            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, 'item');
-            if (rep.indexVar) {
-              handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
-            }
-            const arrowParsed = parseArrowFunction(handlerExpr);
-            if (arrowParsed) {
-              handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
-            } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
-              handlerExpr = `${handlerExpr}(e)`;
-            }
-            
-            // Check for .self modifier — cannot delegate (.self requires currentTarget === target)
-            if (evt.modifiers.includes('self')) {
-              nonDelegatableEvents.push(evt);
-              continue;
-            }
-            
-            if (!delegatedEventsByType.has(evt.eventName)) {
-              delegatedEventsByType.set(evt.eventName, []);
-            }
-            delegatedEventsByType.get(evt.eventName)!.push({
-              path: evtPath,
-              handlerExpr,
-              modifiers: evt.modifiers,
-            });
-          }
-        }
-        
+        // Partition item events into delegated (container listener) vs non-delegatable (per-item)
+        const { delegatedByType: delegatedEventsByType, nonDelegatable: nonDelegatableEvents } =
+          hasItemEvents
+            ? partitionItemEvents(rep.itemEvents, staticInfo.eventElementPaths, rep, indexVar, ap)
+            : { delegatedByType: new Map<string, DelegatedEvent[]>(), nonDelegatable: [] as ItemEventBinding[] };
+
         // Build delegated listener code (emitted AFTER reconciler creation)
-        const delegatedListenerStatements: string[] = [];
-        for (const [eventName, events] of delegatedEventsByType) {
-          // Build the delegated listener
-          // Walk from e.target up to find the item root element (direct child of container)
-          const finalBody = [
-            `let _row = e.target;`,
-            `while (_row && _row.parentNode !== ${containerVar}) _row = _row.parentNode;`,
-            `if (!_row || !_row.__d) return;`,
-            `const item = _row.__d;`,
-          ];
-          // Re-generate branches without per-branch item resolution
-          const simplifiedBranches: string[] = [];
-          for (const evt of events) {
-            let navExpr = '_row';
-            for (const childIdx of evt.path) {
-              navExpr += `.children[${childIdx}]`;
-            }
-            const modParts: string[] = [];
-            if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
-            if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
-            const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
-            if (keyMods.length > 0) {
-              const guard = compileKeyGuard(keyMods);
-              if (guard) modParts.push(`if (${guard}) return`);
-            }
-            const handlerBody = [...modParts, evt.handlerExpr].join('; ');
-            
-            if (evt.path.length === 0) {
-              simplifiedBranches.push(`${handlerBody};`);
-            } else {
-              simplifiedBranches.push(`if (${navExpr}?.contains(e.target)) { ${handlerBody}; return; }`);
-            }
-          }
-          finalBody.push(...simplifiedBranches);
-          
-          delegatedListenerStatements.push(
-            `${containerVar}.addEventListener('${eventName}', (e) => { ${finalBody.join(' ')} });`
-          );
-        }
+        const delegatedListenerStatements = buildDelegatedListenerStatements(delegatedEventsByType, containerVar);
         
         // Handle non-delegatable events (e.g., .self modifier) with per-item listeners
-        const eventNavStatements: string[] = [];
-        const eventAddStatements: string[] = [];
-        if (nonDelegatableEvents.length > 0 && staticInfo.eventElementPaths) {
-          const pathToBindingVar = new Map<string, string>();
-          for (let i = 0; i < staticInfo.elementBindings.length; i++) {
-            const eb = staticInfo.elementBindings[i]!;
-            pathToBindingVar.set(JSON.stringify(eb.path), navVarNames[i]!);
-          }
-          const eventElVarMap = new Map<string, string>();
-          let eventElIdx = 0;
-          for (const evt of nonDelegatableEvents) {
-            if (!eventElVarMap.has(evt.elementId)) {
-              const evtPath = staticInfo.eventElementPaths.get(evt.elementId);
-              if (evtPath) {
-                const existingVar = pathToBindingVar.get(JSON.stringify(evtPath));
-                if (existingVar) {
-                  eventElVarMap.set(evt.elementId, existingVar);
-                } else {
-                  const varName = `_ev${eventElIdx++}`;
-                  eventElVarMap.set(evt.elementId, varName);
-                  if (evtPath.length === 0) {
-                    eventNavStatements.push(`const ${varName} = _el`);
-                  } else {
-                    let navExpr = '_el';
-                    for (const childIdx of evtPath) {
-                      navExpr += `.children[${childIdx}]`;
-                    }
-                    eventNavStatements.push(`const ${varName} = ${navExpr}`);
-                  }
-                }
-              }
-            }
-          }
-          for (const evt of nonDelegatableEvents) {
-            const elVar = eventElVarMap.get(evt.elementId);
-            if (!elVar) continue;
-            let handlerExpr = evt.handlerExpression;
-            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.itemVar, 'item');
-            if (rep.indexVar) {
-              handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
-            }
-            const arrowParsed = parseArrowFunction(handlerExpr);
-            if (arrowParsed) {
-              handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
-            } else if (ap.classStyle && isThisMethodReference(handlerExpr)) {
-              handlerExpr = `${handlerExpr}(e)`;
-            }
-            const bodyParts: string[] = [];
-            if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
-            if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
-            if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
-            const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
-            if (keyMods.length > 0) {
-              const guard = compileKeyGuard(keyMods);
-              if (guard) bodyParts.push(`if (${guard}) return`);
-            }
-            bodyParts.push(handlerExpr);
-            eventAddStatements.push(`${elVar}.addEventListener('${evt.eventName}', (e) => { ${bodyParts.join('; ')}; })`)
-          }
-        }
+        const { navStatements: eventNavStatements, addStatements: eventAddStatements } =
+          buildNonDelegatableEventStatements(
+            nonDelegatableEvents, staticInfo.eventElementPaths,
+            staticInfo.elementBindings, navVarNames, rep, indexVar, ap,
+          );
         
         // Determine if we need to store item data on the element for delegation
         const useDelegation = delegatedEventsByType.size > 0;
@@ -818,7 +957,7 @@ export const generateInitBindingsFunction = (
               condEscapedTemplate = condEscapedTemplate.replace(/\$/g, '\\$');
               condEscapedTemplate = condEscapedTemplate.replace(new RegExp(placeholder, 'g'), `\${${nestedItemSignalVar}()}`);
               const condBindingUpdates: string[] = [];
-              for (const binding of nestedCond.nestedBindings) {
+              for (const binding of nestedCond.nestedBindings.filter(isSimpleBinding)) {
                 if (binding.type === 'text') {
                   condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $n('${binding.id}'); if (el) el.firstChild.nodeValue = v; }, true)`);
                 } else if (binding.type === 'attr' && binding.property) {
@@ -879,7 +1018,7 @@ export const generateInitBindingsFunction = (
           let condNestedCode = '() => []';
           if (nestedCond.nestedBindings.length > 0) {
             const condBindingUpdates: string[] = [];
-            for (const binding of nestedCond.nestedBindings) {
+            for (const binding of nestedCond.nestedBindings.filter(isSimpleBinding)) {
               if (binding.type === 'text') {
                 condBindingUpdates.push(`${ap.signal(binding.signalName)}.subscribe(v => { const el = $('${binding.id}'); if (el) el.firstChild.nodeValue = v; }, true)`);
               } else if (binding.type === 'attr' && binding.property) {

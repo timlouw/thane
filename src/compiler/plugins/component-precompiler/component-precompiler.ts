@@ -1,14 +1,11 @@
 import fs from 'fs';
-import path from 'path';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
 import vm from 'vm';
 import type { ComponentDefinition, BuildContext } from '../../types.js';
 import {
-  extractComponentDefinitions,
   findEnclosingClass,
   isSignalCall,
-  collectFilesRecursively,
   sourceCache,
   logger,
   PLUGIN_NAME,
@@ -16,6 +13,7 @@ import {
   createLoaderResult,
   extendsComponentQuick,
   generateComponentHTML,
+  createBuildContext,
 } from '../../utils/index.js';
 import { transformDefineComponentSource } from '../reactive-binding-compiler/index.js';
 import { ErrorCode, createError } from '../../errors.js';
@@ -385,26 +383,10 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
           componentDefinitions.set(name, def);
         }
       } else {
-        // Fallback: do our own scan
-        sourceCache.clear();
-
-        const workspaceRoot = process.cwd();
-        const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
-
-        const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
-
-        for (const dir of searchDirs) {
-          const files = await collectFilesRecursively(dir, tsFilter);
-
-          for (const filePath of files) {
-            const cached = await sourceCache.get(filePath);
-            if (cached) {
-              const definitions = extractComponentDefinitions(cached.sourceFile, filePath);
-              for (const def of definitions) {
-                componentDefinitions.set(def.name, def);
-              }
-            }
-          }
+        // Fallback: reuse createBuildContext to avoid duplicating the scan logic
+        const fallbackCtx = await createBuildContext();
+        for (const [name, def] of fallbackCtx.componentsByName) {
+          componentDefinitions.set(name, def);
         }
       }
 

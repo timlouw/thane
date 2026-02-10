@@ -1,0 +1,6 @@
+{
+    "tagged-templates.tags": {
+        "json": "json",
+        "sql": "sql"
+    }
+}

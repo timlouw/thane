@@ -287,6 +287,9 @@ export function findBindingsInText(text: string, textStart: number, parent: Html
   const signalExprRegex = SIGNAL_EXPR_REGEX();
   let match: RegExpExecArray | null;
 
+  // Track bare signal binding positions so we skip them for complex expression detection
+  const bareSignalPositions: Array<{ start: number; end: number }> = [];
+
   while ((match = signalExprRegex.exec(text)) !== null) {
     const pos = match.index;
     const insideComplex = complexExprPositions.some((cp) => pos >= cp.start && pos < cp.end);
@@ -294,6 +297,8 @@ export function findBindingsInText(text: string, textStart: number, parent: Html
 
     const signalName = match[1];
     if (!signalName) continue;
+
+    bareSignalPositions.push({ start: pos, end: pos + match[0].length });
 
     bindings.push({
       element: parent,
@@ -303,6 +308,81 @@ export function findBindingsInText(text: string, textStart: number, parent: Html
       expressionEnd: textStart + match.index + match[0].length,
       fullExpression: match[0],
     });
+  }
+
+  // ── Complex expression text bindings ──
+  // Detect ${expr} interpolations that contain signal calls but aren't bare ${sig()}.
+  // Examples: ${count() + 1}, ${isActive() ? 'Yes' : 'No'}, ${a() + b()}
+  const allSkipRanges = [...complexExprPositions, ...bareSignalPositions];
+  let searchPos = 0;
+  while (searchPos < text.length) {
+    const dollarIdx = text.indexOf('${', searchPos);
+    if (dollarIdx === -1) break;
+
+    // Skip if inside a whenElse/repeat/bare-signal range
+    const isInsideSkipRange = allSkipRanges.some(r => dollarIdx >= r.start && dollarIdx < r.end);
+    if (isInsideSkipRange) {
+      searchPos = dollarIdx + 2;
+      continue;
+    }
+
+    // Find the matching closing brace (handle nested braces and template literals)
+    let braceDepth = 1;
+    let i = dollarIdx + 2;
+    let inBacktick = false;
+    let templateBraceDepth = 0;
+
+    while (i < text.length && braceDepth > 0) {
+      const ch = text[i];
+
+      if (inBacktick) {
+        if (ch === '`' && templateBraceDepth === 0) {
+          inBacktick = false;
+        } else if (ch === '$' && text[i + 1] === '{') {
+          templateBraceDepth++;
+          i++;
+        } else if (ch === '}' && templateBraceDepth > 0) {
+          templateBraceDepth--;
+        }
+        i++;
+        continue;
+      }
+
+      if (ch === '`') {
+        inBacktick = true;
+        templateBraceDepth = 0;
+      } else if (ch === '{') {
+        braceDepth++;
+      } else if (ch === '}') {
+        braceDepth--;
+      }
+      if (braceDepth > 0) i++;
+    }
+
+    if (braceDepth !== 0) {
+      searchPos = dollarIdx + 2;
+      continue;
+    }
+
+    const exprContent = text.substring(dollarIdx + 2, i); // inner expression (without ${ and })
+    const fullExpr = text.substring(dollarIdx, i + 1); // ${expr}
+
+    // Check if expression contains signal calls
+    const signals = extractSignalsFromExpression(exprContent);
+    if (signals.length > 0) {
+      bindings.push({
+        element: parent,
+        type: 'text',
+        signalName: signals[0]!,
+        signalNames: signals,
+        expressionStart: textStart + dollarIdx,
+        expressionEnd: textStart + i + 1,
+        fullExpression: fullExpr,
+        jsExpression: exprContent,
+      });
+    }
+
+    searchPos = i + 1;
   }
 }
 

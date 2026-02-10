@@ -100,7 +100,7 @@ export interface RepeatBlock {
   endIndex: number; // Position after }
   itemBindings: ItemBinding[]; // Bindings inside item template that reference item/index
   itemEvents: ItemEventBinding[]; // Event handlers inside item template
-  signalBindings: BindingInfo[]; // Component-level signal bindings inside repeat items
+  signalBindings: SimpleBinding[]; // Component-level signal bindings inside repeat items (always simple)
   eventBindings: EventBinding[]; // Event bindings not involving item
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
@@ -138,14 +138,48 @@ export interface EventBinding {
   endIndex: number; // Position after closing quote
 }
 
-export interface BindingInfo {
+export interface BindingBase {
   id: string;
+  isInsideConditional: boolean;
+  conditionalId?: string;
+  /** True when the element already has a user-provided `id` attribute, so the compiler used `data-bind-id` instead */
+  usesDataBindId?: boolean;
+}
+
+/**
+ * A simple 1:1 signal → element binding.
+ * One signal drives one DOM update (text, style, or attribute).
+ */
+export interface SimpleBinding extends BindingBase {
   signalName: string;
   type: 'text' | 'style' | 'attr';
-  property?: string | undefined; // For style/attr bindings
-  isInsideConditional: boolean;
-  conditionalId?: string | undefined; // Which conditional block this is inside
+  property?: string;
 }
+
+/**
+ * An expression text binding referencing one or more signals.
+ * The full JS expression is evaluated on each signal change.
+ * Always targets `firstChild.nodeValue` (text content).
+ */
+export interface ExpressionBinding extends BindingBase {
+  signalNames: string[];
+  expression: string;
+  type: 'text';
+}
+
+/**
+ * Discriminated union of all binding types.
+ * Use `isExpressionBinding()` / `isSimpleBinding()` to narrow.
+ */
+export type BindingInfo = SimpleBinding | ExpressionBinding;
+
+/** Type guard: narrows BindingInfo to ExpressionBinding */
+export const isExpressionBinding = (b: BindingInfo): b is ExpressionBinding =>
+  'expression' in b;
+
+/** Type guard: narrows BindingInfo to SimpleBinding */
+export const isSimpleBinding = (b: BindingInfo): b is SimpleBinding =>
+  !('expression' in b);
 
 /**
  * Information about a static repeat template with DOM navigation paths

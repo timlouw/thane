@@ -24,6 +24,21 @@ import { logger } from '../../utils/index.js';
 const NAME = 'js-output-optimizer';
 
 /**
+ * Validate that a string is syntactically valid JavaScript.
+ * Uses `new Function()` as a lightweight parse check — no execution occurs.
+ * Returns true if valid, false if a syntax error is detected.
+ */
+const isValidJS = (source: string): boolean => {
+  try {
+    // new Function() parses but does not execute — used purely for syntax validation
+    new Function(source);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Apply safe optimization patterns to minified JS output.
  * Each pattern is documented with the invariant that makes it safe.
  */
@@ -82,14 +97,24 @@ export const JsOutputOptimizerPlugin: Plugin = {
           // Note: console removal is handled by esbuild's `drop: ['console']` in prod config
           const optimized = optimizeOutput(originalContent);
 
-          const newContents = new TextEncoder().encode(optimized);
+          // Validate that the transforms produced syntactically valid JS.
+          // If not, revert to the original and log a warning.
+          let finalContent: string;
+          if (!isValidJS(optimized)) {
+            logger.warn(NAME, `Post-optimization syntax check failed for ${file.path} — reverting to original`);
+            finalContent = originalContent;
+          } else {
+            finalContent = optimized;
+          }
+
+          const newContents = new TextEncoder().encode(finalContent);
           const savedBytes = originalSize - newContents.length;
           totalSaved += savedBytes;
 
           result.outputFiles[i] = {
             path: file.path,
             contents: newContents,
-            text: optimized,
+            text: finalContent,
             hash: file.hash,
           };
         }

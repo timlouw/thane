@@ -121,8 +121,14 @@ export const processConditionalElementHtml = (
   if (element.whenDirective) {
     html = html.replace(element.whenDirective, '');
   }
-  const tagNameEnd = element.tagName.length + 1; // +1 for '<'
-  html = html.substring(0, tagNameEnd) + ` id="${conditionalId}"` + html.substring(tagNameEnd);
+  // Inject the conditional ID — replace user's id to avoid duplicate id attributes
+  if (element.attributes.has('id')) {
+    const userIdAttr = element.attributes.get('id')!;
+    html = html.replace(`id="${userIdAttr.value}"`, `id="${conditionalId}"`);
+  } else {
+    const tagNameEnd = element.tagName.length + 1; // +1 for '<'
+    html = html.substring(0, tagNameEnd) + ` id="${conditionalId}"` + html.substring(tagNameEnd);
+  }
   html = replaceExpressionsWithValues(html, signalInitializers);
   // Find event bindings: @eventName.modifier=${handler}
   // Use a regex that handles nested braces via a non-greedy match up to the closing }
@@ -245,8 +251,9 @@ export const addIdsToNestedElements = (processedHtml: string, rootElement: HtmlE
       if (tagEnd === -1) break;
       const tagContent = result.substring(tagPos, tagEnd + 1);
       if (tagContent.includes('id="')) {
-        searchPos = tagEnd + 1;
-        continue;
+        // Element has a user-provided id — use data-bind-id to avoid conflicts
+        result = result.substring(0, tagPos + openTag.length) + ` data-bind-id="${id}"` + result.substring(tagPos + openTag.length);
+        break;
       }
       
       // Inject the ID after the tag name
@@ -362,6 +369,8 @@ export const processHtmlTemplateWithConditionals = (
     });
   }
   const textBindingSpans = new Map<number, string>(); // Map expression position to span ID
+  /** Expression text bindings that need special handling (full ${expr} replacement) */
+  const expressionBindingSpans = new Map<number, { spanId: string; exprEnd: number }>();
 
   for (const binding of parsed.bindings) {
     if (elementsInsideConditionals.has(binding.element)) continue;
@@ -374,13 +383,27 @@ export const processHtmlTemplateWithConditionals = (
       const spanId = `b${state.idCounter++}`;
       textBindingSpans.set(binding.expressionStart, spanId);
 
-      bindings.push({
+      // Expression text binding (e.g. ${count() + 1}) vs bare signal (e.g. ${count()})
+      const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+
+      if (isExpressionBinding) {
+        expressionBindingSpans.set(binding.expressionStart, {
+          spanId,
+          exprEnd: binding.expressionEnd,
+        });
+      }
+
+      bindings.push(isExpressionBinding ? {
+        id: spanId,
+        signalNames: binding.signalNames!,
+        expression: binding.jsExpression!,
+        type: 'text' as const,
+        isInsideConditional: false,
+      } : {
         id: spanId,
         signalName: binding.signalName,
-        type: 'text',
-        property: binding.property,
+        type: 'text' as const,
         isInsideConditional: false,
-        conditionalId: undefined,
       });
       continue;
     }
@@ -393,9 +416,9 @@ export const processHtmlTemplateWithConditionals = (
       id: elementId,
       signalName: binding.signalName,
       type: binding.type as 'style' | 'attr',
-      property: binding.property,
+      property: binding.property!,
       isInsideConditional: false,
-      conditionalId: undefined,
+      ...(binding.element.attributes.has('id') ? { usesDataBindId: true } : {}),
     });
   }
   for (const binding of parsed.bindings) {
@@ -435,6 +458,7 @@ export const processHtmlTemplateWithConditionals = (
     repeatBlocks,
     eventBindings,
     textBindingSpans,
+    expressionBindingSpans,
   );
 
   return {
@@ -501,9 +525,10 @@ export const processSubTemplateWithNesting = (
       id: elementId,
       signalName: binding.signalName,
       type: binding.type as 'text' | 'style' | 'attr',
-      property: binding.property,
+      ...(binding.property ? { property: binding.property } : {}),
       isInsideConditional: true,
       conditionalId: parentId,
+      ...(binding.element.attributes.has('id') ? { usesDataBindId: true } : {}),
     });
   }
 
@@ -541,6 +566,7 @@ export const generateProcessedHtml = (
   repeatBlocks: RepeatBlock[] = [],
   eventBindings: EventBinding[] = [],
   textBindingSpans: Map<number, string> = new Map(),
+  expressionBindingSpans: Map<number, { spanId: string; exprEnd: number }> = new Map(),
 ): string => {
   const allRanges = [
     ...conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex })),
@@ -552,7 +578,7 @@ export const generateProcessedHtml = (
     ...buildConditionalEdits(conditionals),
     ...buildWhenElseEdits(whenElseBlocks, true, injectIdIntoFirstElement),
     ...repeatBlocks.map((rep) => ({ start: rep.startIndex, end: rep.endIndex, replacement: `<template id="${rep.id}"></template>` })),
-    ...buildSignalReplacementEdits(originalHtml, signalInitializers, allRanges, textBindingSpans),
+    ...buildSignalReplacementEdits(originalHtml, signalInitializers, allRanges, textBindingSpans, expressionBindingSpans),
   ];
 
   // Event binding edits — remove @event attributes (no more data-evt- attributes)
@@ -569,12 +595,10 @@ export const generateProcessedHtml = (
   const isInsideRange = buildRangeOverlapChecker(allRanges);
   for (const [element, id] of elementIdMap) {
     if (isInsideRange(element.tagStart)) continue;
-    const attrsToAdd: string[] = [];
-    if (!element.attributes.has('id')) {
-      attrsToAdd.push(`id="${id}"`);
-    }
-    if (attrsToAdd.length > 0) {
-      edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ' ' + attrsToAdd.join(' ') });
+    if (element.attributes.has('id')) {
+      edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ` data-bind-id="${id}"` });
+    } else {
+      edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ` id="${id}"` });
     }
   }
 

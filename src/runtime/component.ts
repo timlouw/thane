@@ -3,6 +3,14 @@
  * 
  * Thane uses native DOM mode — no Web Components Shadow DOM required.
  * Components are rendered as regular DOM elements with scoped styles.
+ *
+ * Dead code elimination strategy:
+ *   - The compiler strips unused properties (template, empty lifecycle hooks)
+ *     from the return object at compile time.
+ *   - The runtime guards (`if (result.onMount)`) are tiny after minification
+ *     and safe to keep — they short-circuit immediately for absent properties.
+ *   - mountedInstances is lazily allocated so it's absent when destroyComponent
+ *     is never used.
  */
 
 import type { ComponentRoot } from './types.js';
@@ -27,17 +35,23 @@ export interface ComponentContext<P = {}> {
 
 /**
  * The object returned from a defineComponent setup function.
+ *
+ * Lifecycle hooks (onMount, onDestroy) are typed as arrow-function
+ * properties. TypeScript will only autocomplete `onMount: () => { }`,
+ * never the method shorthand `onMount() { }` — enforced both here
+ * at the type level and by lint rule THANE402.
  */
-export interface ComponentReturnType {
-  /** HTML template (html tagged template literal) */
-  template: string;
+export type ComponentReturnType = {
+  /** HTML template (html tagged template literal). Omitted by the compiler when a pre-compiled template is injected. */
+  template?: string;
   /** Scoped styles (css tagged template literal) */
   styles?: string;
+} & {
   /** Called after template is in the DOM and bindings are initialized */
-  onMount?: () => void;
+  onMount?: (() => void) | undefined;
   /** Called when the component is removed from the DOM */
-  onDestroy?: () => void;
-}
+  onDestroy?: (() => void) | undefined;
+};
 
 /**
  * Internal extension of ComponentReturnType used by the compiler.
@@ -66,33 +80,58 @@ interface ComponentInstance {
 // Style Management
 // ============================================================================
 
-// Track registered styles to avoid duplicates.
-// Keys are either CSS text (from registerGlobalStyles) or selector names (from registerComponentStyles).
-const registeredStyles = new Set<string>();
-
 /**
- * Append a CSS string via adoptedStyleSheets.
- * Each stylesheet is parsed exactly once — O(n) total vs O(n²) with textContent +=.
- * No <style> element needed.
- */
-const appendStyle = (cssText: string): void => {
-  const sheet = new CSSStyleSheet();
-  sheet.replaceSync(cssText);
-  (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
-};
-
-/**
- * Register global styles to be added to the document
+ * Register global styles to be added to the document.
  * 
+ * Self-contained: has its own deduplication Set and CSSStyleSheet creation.
+ * If no component imports this, esbuild tree-shakes it entirely.
+ *
  * @param styles - CSS strings to register
  */
+const _globalRegistered = new Set<string>();
 export function registerGlobalStyles(...styles: string[]): void {
   for (const cssText of styles) {
-    if (!registeredStyles.has(cssText)) {
-      registeredStyles.add(cssText);
-      appendStyle(cssText);
+    if (!_globalRegistered.has(cssText)) {
+      _globalRegistered.add(cssText);
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(cssText);
+      (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
     }
   }
+}
+
+/**
+ * Callback for component styles registration.
+ * Starts as null — set by __enableComponentStyles().
+ * When null the factory skips styles entirely (zero cost).
+ * @internal
+ */
+let _onStyles: ((selector: string, cssText: string) => void) | null = null;
+
+/**
+ * Enable the component-styles subsystem.
+ *
+ * The compiler injects a call to this function at module level in every
+ * component file that has a `styles` property.  If no component in the
+ * app uses styles, this is never imported and esbuild tree-shakes it
+ * along with the CSSStyleSheet/Set infrastructure inside.
+ *
+ * @internal — exported only for compiler consumption.
+ */
+export function __enableComponentStyles(): void {
+  if (_onStyles) return;          // idempotent
+  const registered = new Set<string>();
+  _onStyles = (selector, cssText) => {
+    if (!registered.has(selector)) {
+      registered.add(selector);
+      const scoped = cssText
+        .replace(/:host\b/g, `.${selector}`)
+        .replace(/:host\(/g, `.${selector}(`);
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync(`/* ${selector} */\n${scoped}`);
+      (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
+    }
+  };
 }
 
 // ============================================================================
@@ -102,8 +141,14 @@ export function registerGlobalStyles(...styles: string[]): void {
 // Map of component selectors to factory functions
 const componentFactories = new Map<string, (target?: HTMLElement) => ComponentInstance>();
 
-// Track mounted instances for cleanup via destroyComponent
-const mountedInstances = new WeakMap<ComponentRoot, ComponentInstance>();
+/**
+ * Track mounted instances for cleanup via destroyComponent.
+ * Lazily initialized — only allocated when destroyComponent is first called,
+ * so the WeakMap and its .set() calls are absent from bundles that never
+ * import destroyComponent.
+ * @internal
+ */
+let mountedInstances: WeakMap<ComponentRoot, ComponentInstance> | null = null;
 
 /**
  * Create the host element with getElementById support.
@@ -125,19 +170,6 @@ const createHostElement = (selector: string, target?: HTMLElement): ComponentRoo
   el.getElementById = (id: string): HTMLElement | null =>
     el.querySelector(`#${id}`);
   return el as ComponentRoot;
-};
-
-/**
- * Register component styles with :host scoping
- */
-const registerComponentStyles = (selector: string, styles: string): void => {
-  if (styles && !registeredStyles.has(selector)) {
-    registeredStyles.add(selector);
-    const scopedStyles = styles
-      .replace(/:host\b/g, `.${selector}`)
-      .replace(/:host\(/g, `.${selector}(`);
-    appendStyle(`/* ${selector} */\n${scopedStyles}`);
-  }
 };
 
 /**
@@ -185,7 +217,7 @@ export function defineComponent<P extends ComponentProps = {}>(
   }
 
   // Collect any extra static templates (for repeat optimizations)
-  // The compiler passes them as additional arguments after __compiledBindings
+  // The compiler passes them as additional arguments after __compiledTemplate
   const staticTemplatesMap = new Map<string, HTMLTemplateElement>();
   for (let i = 0; i < extraStaticTemplates.length; i += 2) {
     const name = extraStaticTemplates[i];
@@ -208,9 +240,9 @@ export function defineComponent<P extends ComponentProps = {}>(
 
     const result = setup(ctx) as InternalComponentResult;
 
-    // Register styles (once)
-    if (!stylesRegistered && result.styles) {
-      registerComponentStyles(selector, result.styles);
+    // Register styles (once) — only runs when __enableComponentStyles was called
+    if (_onStyles && !stylesRegistered && result.styles) {
+      _onStyles(selector, result.styles);
       stylesRegistered = true;
     }
 
@@ -254,6 +286,66 @@ export function defineComponent<P extends ComponentProps = {}>(
 }
 
 /**
+ * Compiler-optimized component registration.
+ *
+ * Unlike `defineComponent`, this function:
+ * - Always receives the selector as a string (no type branching / error throw)
+ * - Returns a minimal ref object (no HTML generation function)
+ * - Assigns static templates directly to the ref (no Map allocation)
+ *
+ * The compiler emits `__registerComponent` in place of `defineComponent`.
+ * When no module imports `defineComponent`, esbuild tree-shakes it along
+ * with `createComponentHTMLSelector` and the selector-type branching.
+ *
+ * @internal — emitted by the compiler; not part of the public API.
+ */
+export function __registerComponent(
+  selector: string,
+  setup: SetupFunction,
+  compiledTemplate?: HTMLTemplateElement,
+  ...extraStaticTemplates: any[]
+): any {
+  let stylesRegistered = false;
+
+  const factory = (target?: HTMLElement): ComponentInstance => {
+    const root = createHostElement(selector, target);
+    const ctx: ComponentContext = { root, props: {} as Readonly<any> };
+    const result = setup(ctx) as InternalComponentResult;
+
+    if (_onStyles && !stylesRegistered && result.styles) {
+      _onStyles(selector, result.styles);
+      stylesRegistered = true;
+    }
+
+    if (compiledTemplate) {
+      root.appendChild(compiledTemplate.content.cloneNode(true));
+    } else if (result.template) {
+      root.innerHTML = result.template;
+    }
+
+    if (result.__bindings) result.__bindings(ctx);
+    if (result.onMount) result.onMount();
+
+    const instance: ComponentInstance = { root };
+    if (result.onDestroy) instance.__onDestroy = result.onDestroy;
+    return instance;
+  };
+
+  componentFactories.set(selector, factory);
+
+  // Minimal ref — carries __componentSelector for mount() lookup
+  // and any static template references for repeat optimizations.
+  // No HTML generation function (the compiler handles child rendering via CTFE).
+  const ref: any = { __componentSelector: selector };
+  for (let i = 0; i < extraStaticTemplates.length; i += 2) {
+    const name = extraStaticTemplates[i];
+    const tpl = extraStaticTemplates[i + 1];
+    if (typeof name === 'string' && tpl) ref[name] = tpl;
+  }
+  return ref;
+}
+
+/**
  * Mount a component to a target element
  * 
  * Accepts either:
@@ -271,27 +363,53 @@ export function mountComponent(
   let selector: string | undefined;
 
   if (typeof component === 'function') {
-    // ComponentHTMLSelector function — read the selector from it
     selector = (component as any).__componentSelector;
   } else if (typeof component === 'string') {
-    // HTML selector string like "<my-page></my-page>"
     const match = component.match(/<([a-z][a-z0-9-]*)/i);
     if (match) selector = match[1];
   }
 
-  if (!selector) return null;
-  
+  return selector ? _mountBySelector(selector, target) : null;
+}
+
+/**
+ * Mount a component to a target element (function-only path).
+ *
+ * This is the recommended mount function.  It only accepts a
+ * ComponentHTMLSelector (the return value of defineComponent),
+ * so the HTML-string regex path is never included.
+ *
+ * When an app uses `mount()` and never imports `mountComponent`,
+ * esbuild tree-shakes the regex branch entirely.
+ *
+ * @param component - Component selector function returned by defineComponent
+ * @param target - DOM element to mount to (defaults to document.body)
+ */
+export function mount(
+  component: ComponentHTMLSelector<any>,
+  target: HTMLElement = document.body,
+): ComponentRoot | null {
+  const selector: string | undefined = (component as any).__componentSelector;
+  return selector ? _mountBySelector(selector, target) : null;
+}
+
+/**
+ * Shared mount implementation — takes a resolved selector string.
+ * @internal
+ */
+function _mountBySelector(
+  selector: string,
+  target: HTMLElement,
+): ComponentRoot | null {
   const factory = componentFactories.get(selector);
-  
-  if (!factory) {
-    console.error(`Component not found: ${selector}`);
-    return null;
-  }
+  if (!factory) return null;
   
   const instance = factory(target);
-  mountedInstances.set(instance.root, instance);
-  // When rendering directly into target, content is already there
-  // Only append if root is a separate element (child components)
+
+  if (mountedInstances) {
+    mountedInstances.set(instance.root, instance);
+  }
+
   if (instance.root !== target) {
     target.appendChild(instance.root);
   }
@@ -299,16 +417,18 @@ export function mountComponent(
   return instance.root;
 }
 
-// Alias for mountComponent
-export { mountComponent as mount };
-
 /**
  * Destroy a mounted component, calling its onDestroy lifecycle hook
  * and removing it from the DOM.
  * 
+ * Lazily initializes the mountedInstances WeakMap on first call — from
+ * that point forward, mountComponent will also track instances for later
+ * cleanup.
+ * 
  * @param root - The component root element returned by mountComponent
  */
 export function destroyComponent(root: ComponentRoot): void {
+  if (!mountedInstances) mountedInstances = new WeakMap();
   const instance = mountedInstances.get(root);
   if (instance?.__onDestroy) instance.__onDestroy();
   root.remove();
@@ -319,8 +439,12 @@ export function destroyComponent(root: ComponentRoot): void {
  * Generate HTML selector function for a component.
  * The returned function also carries a __componentSelector property
  * so mount() can look up the factory.
+ *
+ * Not exported — internal to defineComponent. The HTML-generation body
+ * only executes when the function is called with props; most apps only
+ * use the __componentSelector property for mount() lookups.
  */
-export function createComponentHTMLSelector<T extends ComponentProps>(
+function createComponentHTMLSelector<T extends ComponentProps>(
   selector: string
 ): ComponentHTMLSelector<T> {
   const fn = ((props: T) => {

@@ -28,6 +28,127 @@ import {
 import type { BindingInfo, ConditionalBlock, WhenElseBlock, RepeatBlock, EventBinding } from './types.js';
 import { CLOSURE_ACCESS } from './types.js';
 import { processHtmlTemplateWithConditionals } from './template-processing.js';
+
+// ============================================================================
+// Lifecycle hook stripping
+// ============================================================================
+
+/** Property names eligible for dead-code removal when their body is empty */
+const STRIPPABLE_LIFECYCLE = new Set(['onMount', 'onDestroy']);
+
+/** Properties that should be stripped when a compiled template is injected */
+const STRIPPABLE_TEMPLATE = new Set(['template']);
+
+/**
+ * Check if an arrow function or function expression has an empty body.
+ * Matches: `() => {}` and `() => { }` (with optional whitespace).
+ */
+const isEmptyArrowFunction = (node: ts.Node): boolean => {
+  if (ts.isArrowFunction(node)) {
+    const body = node.body;
+    return ts.isBlock(body) && body.statements.length === 0;
+  }
+  return false;
+};
+
+/**
+ * Strip empty lifecycle hooks (onMount, onDestroy) and the `template` property
+ * from the return object of defineComponent.
+ *
+ * When a compiled template is injected, the `template` property is redundant —
+ * the runtime clones the pre-compiled template element instead. The `template`
+ * key (usually set to an empty string `""` or backtick ``` `` ```) is pure dead
+ * weight and is stripped here.
+ *
+ * @param source - The full component source (post-injection)
+ * @param hasCompiledTemplate - Whether a compiled template was injected
+ */
+const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplate: boolean): { source: string; hasStyles: boolean } => {
+  const sf = ts.createSourceFile('__strip.ts', source, ts.ScriptTarget.Latest, true);
+
+  // Find the defineComponent return object
+  let returnObj: ts.ObjectLiteralExpression | null = null;
+  const find = (node: ts.Node) => {
+    if (returnObj) return;
+    if (ts.isCallExpression(node) && isDefineComponentCall(node)) {
+      const setupArg = node.arguments.length >= 2 ? node.arguments[1] : node.arguments[0];
+      if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
+        const findReturn = (n: ts.Node) => {
+          if (returnObj) return;
+          if (ts.isArrowFunction(n) && n !== setupArg) return;
+          if (ts.isFunctionExpression(n) && n !== setupArg) return;
+          if (ts.isReturnStatement(n) && n.expression && ts.isObjectLiteralExpression(n.expression)) {
+            returnObj = n.expression;
+          }
+          ts.forEachChild(n, findReturn);
+        };
+        findReturn(setupArg);
+      }
+    }
+    ts.forEachChild(node, find);
+  };
+  find(sf);
+
+  if (!returnObj) return { source, hasStyles: false };
+
+  // Collect ranges to remove (in reverse order for safe splicing)
+  const removals: Array<{ start: number; end: number }> = [];
+  const properties = (returnObj as ts.ObjectLiteralExpression).properties;
+  let hasStyles = false;
+
+  for (const prop of properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const name = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : null;
+    if (!name) continue;
+
+    // ── Feature detection (styles) ──
+    if (name === 'styles') {
+      hasStyles = true;
+      continue;  // keep in return — runtime handles it via _onStyles callback
+    }
+
+    // ── Strippable properties ──
+    const shouldStripLifecycle = STRIPPABLE_LIFECYCLE.has(name) && isEmptyArrowFunction(prop.initializer);
+    const shouldStripTemplate = hasCompiledTemplate && STRIPPABLE_TEMPLATE.has(name);
+
+    if (!shouldStripLifecycle && !shouldStripTemplate) continue;
+
+    // Calculate the full removal range including leading/trailing comma + whitespace
+    let start = prop.getStart(sf);
+    let end = prop.getEnd();
+
+    // Extend to eat the trailing comma if present
+    const textAfter = source.substring(end);
+    const trailingCommaMatch = textAfter.match(/^\s*,/);
+    if (trailingCommaMatch) {
+      end += trailingCommaMatch[0].length;
+    }
+
+    // Extend to eat the preceding whitespace/newline so we don't leave blank lines
+    const textBefore = source.substring(0, start);
+    const precedingWhitespaceMatch = textBefore.match(/[\t ]*$/);
+    if (precedingWhitespaceMatch) {
+      start -= precedingWhitespaceMatch[0].length;
+      // Also eat a preceding newline if present
+      if (start > 0 && source[start - 1] === '\n') {
+        start--;
+        if (start > 0 && source[start - 1] === '\r') start--;
+      }
+    }
+
+    removals.push({ start, end });
+  }
+
+  if (removals.length === 0) return { source, hasStyles };
+
+  // Apply removals in reverse order
+  let modified = source;
+  for (const { start, end } of removals.reverse()) {
+    modified = modified.substring(0, start) + modified.substring(end);
+  }
+
+  return { source: modified, hasStyles };
+};
 import { generateInitBindingsFunction, generateStaticTemplate, generateUpdatedImport } from './codegen.js';
 import { ErrorCode, createError } from '../../errors.js';
 
@@ -221,6 +342,29 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   };
   visitCss(sourceFile);
   
+  // Early detection: check if the component has a `styles` property.
+  // This is needed before edits are applied so we can add __enableComponentStyles to imports.
+  let componentHasStyles = false;
+  {
+    const setupArg = dcCall.arguments.length >= 2 ? dcCall.arguments[1] : dcCall.arguments[0];
+    if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
+      const checkForStyles = (n: ts.Node): void => {
+        if (componentHasStyles) return;
+        if (ts.isArrowFunction(n) && n !== setupArg) return;
+        if (ts.isFunctionExpression(n) && n !== setupArg) return;
+        if (ts.isReturnStatement(n) && n.expression && ts.isObjectLiteralExpression(n.expression)) {
+          for (const prop of n.expression.properties) {
+            if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'styles') {
+              componentHasStyles = true;
+            }
+          }
+        }
+        ts.forEachChild(n, checkForStyles);
+      };
+      checkForStyles(setupArg);
+    }
+  }
+
   // Generate bindings code with CLOSURE_ACCESS — natively emits bare signal refs,
   // ctx.root, and closure-compatible code. No post-hoc stripping needed.
   const ap = CLOSURE_ACCESS;
@@ -237,59 +381,72 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     staticTemplateCode += '\n' + repeatStaticTemplates.join('\n');
   }
   
-  // Update imports for binding functions
+  // Update imports: always replace defineComponent → __registerComponent,
+  // and add binding / styles imports as needed.
   const hasAnyBindings = allBindings.length > 0 || allConditionals.length > 0 || 
     allWhenElseBlocks.length > 0 || allRepeatBlocks.length > 0 || allEventBindings.length > 0;
     
-  if (hasAnyBindings && servicesImport) {
-    const requiredFunctions: string[] = [];
-    if (allBindings.some((b) => b.type === 'style')) requiredFunctions.push(BIND_FN.STYLE);
-    if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
-    if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
-    
-    const hasSimpleConditionals = allConditionals.some((c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`);
-    const hasComplexConditionals = allConditionals.some((c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`);
-    if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
-    if (hasComplexConditionals || allWhenElseBlocks.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
-    
-    if (allRepeatBlocks.length > 0) {
-      const usesOptimized = repeatStaticTemplates.length > 0;
-      if (usesOptimized) requiredFunctions.push(BIND_FN.RECONCILER);
-      const hasNonOptimized = allRepeatBlocks.some(rep => {
+  if (servicesImport) {
+    // Filter out defineComponent (replaced by __registerComponent in compiled output)
+    const filteredImport: typeof servicesImport = {
+      ...servicesImport,
+      namedImports: servicesImport.namedImports.filter(n => n !== 'defineComponent'),
+    };
+    const requiredFunctions: string[] = [BIND_FN.REGISTER_COMPONENT];
+
+    // ── Binding function imports ──
+    if (hasAnyBindings) {
+      if (allBindings.some((b) => b.type === 'style')) requiredFunctions.push(BIND_FN.STYLE);
+      if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
+      if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
+      
+      const hasSimpleConditionals = allConditionals.some((c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`);
+      const hasComplexConditionals = allConditionals.some((c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`);
+      if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
+      if (hasComplexConditionals || allWhenElseBlocks.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
+      
+      if (allRepeatBlocks.length > 0) {
+        const usesOptimized = repeatStaticTemplates.length > 0;
+        if (usesOptimized) requiredFunctions.push(BIND_FN.RECONCILER);
+        const hasNonOptimized = allRepeatBlocks.some(rep => {
+          const hasItemBindings = rep.itemBindings.length > 0;
+          const hasSignalBindings = rep.signalBindings.length > 0;
+          const hasNestedRepeats = rep.nestedRepeats.length > 0;
+          const hasNestedConditionals = rep.nestedConditionals.length > 0;
+          const canUseOptimized = hasItemBindings && 
+            !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals;
+          return !canUseOptimized;
+        });
+        if (hasNonOptimized) requiredFunctions.push(BIND_FN.REPEAT);
+      }
+      
+      const hasNestedRepeats = allRepeatBlocks.some((rep) => rep.nestedRepeats.length > 0);
+      if (hasNestedRepeats) requiredFunctions.push(BIND_FN.NESTED_REPEAT);
+      
+      const hasNonOptimizedWithBindings = allRepeatBlocks.some((rep) => {
         const hasItemBindings = rep.itemBindings.length > 0;
         const hasSignalBindings = rep.signalBindings.length > 0;
-        const hasNestedRepeats = rep.nestedRepeats.length > 0;
+        const hasNestedRepeatSubs = rep.nestedRepeats.length > 0;
         const hasNestedConditionals = rep.nestedConditionals.length > 0;
         const canUseOptimized = hasItemBindings && 
-          !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals;
-        return !canUseOptimized;
+          !hasSignalBindings && !hasNestedRepeatSubs && !hasNestedConditionals;
+        return (!canUseOptimized && hasItemBindings) || rep.nestedRepeats.some((nr) => nr.itemBindings.length > 0);
       });
-      if (hasNonOptimized) requiredFunctions.push(BIND_FN.REPEAT);
+      if (hasNonOptimizedWithBindings) requiredFunctions.push(BIND_FN.FIND_EL);
+      // Events now use direct addEventListener — no runtime import needed
+    }
+
+    // ── Styles enablement import ──
+    if (componentHasStyles) {
+      requiredFunctions.push(BIND_FN.ENABLE_STYLES);
     }
     
-    const hasNestedRepeats = allRepeatBlocks.some((rep) => rep.nestedRepeats.length > 0);
-    if (hasNestedRepeats) requiredFunctions.push(BIND_FN.NESTED_REPEAT);
-    
-    const hasNonOptimizedWithBindings = allRepeatBlocks.some((rep) => {
-      const hasItemBindings = rep.itemBindings.length > 0;
-      const hasSignalBindings = rep.signalBindings.length > 0;
-      const hasNestedRepeatSubs = rep.nestedRepeats.length > 0;
-      const hasNestedConditionals = rep.nestedConditionals.length > 0;
-      const canUseOptimized = hasItemBindings && 
-        !hasSignalBindings && !hasNestedRepeatSubs && !hasNestedConditionals;
-      return (!canUseOptimized && hasItemBindings) || rep.nestedRepeats.some((nr) => nr.itemBindings.length > 0);
+    const newImport = generateUpdatedImport(filteredImport, requiredFunctions);
+    edits.push({
+      start: servicesImport.start,
+      end: servicesImport.end,
+      replacement: newImport,
     });
-    if (hasNonOptimizedWithBindings) requiredFunctions.push(BIND_FN.FIND_EL);
-    // Events now use direct addEventListener — no runtime import needed
-    
-    if (requiredFunctions.length > 0) {
-      const newImport = generateUpdatedImport(servicesImport, requiredFunctions);
-      edits.push({
-        start: servicesImport.start,
-        end: servicesImport.end,
-        replacement: newImport,
-      });
-    }
   }
   
   // Apply all edits to the source (no normalization pass — edits are against the original)
@@ -401,23 +558,56 @@ export const transformDefineComponentSource = (source: string, filePath: string)
       if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + bindingsFnBody.length;
     }
     
-    // ── Step 3: Pass __tpl + repeat templates as extra args to defineComponent() ──
+    // ── Step 3: Pass flags + __tpl + repeat templates as extra args to defineComponent() ──
+    //
+    // New signature: defineComponent(selector, setup, flags, __tpl, ...repeatTemplates)
+    //
+    // Strip dead properties (empty lifecycle hooks, template key) from the
+    // return object, then inject extra defineComponent arguments:
+    //   - __tpl (pre-compiled template element)
+    //   - repeat template name/value pairs
     if (dcCallCloseParen !== null) {
+      // ── Step 3a: Strip dead properties ──
+      // Must happen before we insert extra args (positions would shift)
+      const hasCompiledTemplate = !!lastProcessedTemplateContent;
+      const stripResult = stripDeadPropertiesAndDetectFeatures(result, hasCompiledTemplate);
+      
+      // Adjust dcCallCloseParen for any characters removed by stripping
+      const charDelta = stripResult.source.length - result.length;
+      result = stripResult.source;
+      dcCallCloseParen = dcCallCloseParen + charDelta;
+
+      // ── Step 3b: Build extra arguments ──
       let extraArgs = '';
+
       if (lastProcessedTemplateContent) {
         extraArgs += ', __tpl';
-      } else {
-        extraArgs += ', undefined';
       }
-      extraArgs += ', undefined'; // No __compiledBindings arg
       
       for (const name of repeatTemplateNames) {
         extraArgs += `, '${name}', ${name}`;
       }
       
-      result = result.substring(0, dcCallCloseParen) + extraArgs + result.substring(dcCallCloseParen);
+      if (extraArgs) {
+        result = result.substring(0, dcCallCloseParen) + extraArgs + result.substring(dcCallCloseParen);
+      }
+
+      // ── Step 3c: Inject __enableComponentStyles() when component uses styles ──
+      if (stripResult.hasStyles) {
+        result += '\n__enableComponentStyles();\n';
+      }
     }
   }
+  
+  // Step 4 is now integrated into Step 3a (stripDeadPropertiesAndDetectFeatures)
+  
+  // ── Final step: rename defineComponent → __registerComponent ──
+  // Done AFTER all AST-based injections that rely on isDefineComponentCall()
+  // matching the `defineComponent` identifier. The compiled output uses the
+  // lean __registerComponent which has no selector-type branching, no
+  // createComponentHTMLSelector call, and no Map allocation.
+  // esbuild then tree-shakes the unused defineComponent + createComponentHTMLSelector.
+  result = result.replace(/\bdefineComponent\s*\(/, '__registerComponent(');
   
   return result;
 };

@@ -122,14 +122,29 @@ export const collectConditionalBlocks = (
         }
         elementId = state.elementIdMap.get(binding.element)!;
       }
-      nestedBindings.push({
-        id: elementId,
-        signalName: binding.signalName,
-        type: binding.type as 'text' | 'style' | 'attr',
-        property: binding.property,
-        isInsideConditional: true,
-        conditionalId,
-      });
+      const isExpr = binding.type === 'text' && binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+      const needsDataBindId = binding.element !== condEl && binding.element.attributes.has('id');
+      if (isExpr) {
+        nestedBindings.push({
+          id: elementId,
+          signalNames: binding.signalNames!,
+          expression: binding.jsExpression!,
+          type: 'text',
+          isInsideConditional: true,
+          conditionalId,
+          ...(needsDataBindId ? { usesDataBindId: true } : {}),
+        });
+      } else {
+        nestedBindings.push({
+          id: elementId,
+          signalName: binding.signalName,
+          type: binding.type as 'text' | 'style' | 'attr',
+          ...(binding.property ? { property: binding.property } : {}),
+          isInsideConditional: true,
+          conditionalId,
+          ...(needsDataBindId ? { usesDataBindId: true } : {}),
+        });
+      }
     }
 
     // Handle nested conditionals (main template only)
@@ -159,14 +174,29 @@ export const collectConditionalBlocks = (
             }
             nestedElementId = state.elementIdMap.get(binding.element)!;
           }
-          nestedNestedBindings.push({
-            id: nestedElementId,
-            signalName: binding.signalName,
-            type: binding.type as 'text' | 'style' | 'attr',
-            property: binding.property,
-            isInsideConditional: true,
-            conditionalId: nestedCondId,
-          });
+          const isExpr = binding.type === 'text' && binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+          const needsDataBindId = binding.element !== nestedCondEl && binding.element.attributes.has('id');
+          if (isExpr) {
+            nestedNestedBindings.push({
+              id: nestedElementId,
+              signalNames: binding.signalNames!,
+              expression: binding.jsExpression!,
+              type: 'text',
+              isInsideConditional: true,
+              conditionalId: nestedCondId,
+              ...(needsDataBindId ? { usesDataBindId: true } : {}),
+            });
+          } else {
+            nestedNestedBindings.push({
+              id: nestedElementId,
+              signalName: binding.signalName,
+              type: binding.type as 'text' | 'style' | 'attr',
+              ...(binding.property ? { property: binding.property } : {}),
+              isInsideConditional: true,
+              conditionalId: nestedCondId,
+              ...(needsDataBindId ? { usesDataBindId: true } : {}),
+            });
+          }
         }
 
         const nestedProcessedResult = processConditionalElementHtml(nestedCondEl, templateContent, signalInitializers, state.elementIdMap, nestedCondId, undefined, state.eventIdCounter);
@@ -375,15 +405,21 @@ export const buildElementIdEdits = (
 
   for (const [element, id] of elementIdMap) {
     if (isInsideRange(element.tagStart)) continue;
-    if (element.attributes.has('id')) continue;
 
-    const attrsToAdd: string[] = [`id="${id}"`];
-    // No more data-evt-* attributes — events use direct addEventListener
+    if (element.attributes.has('id')) {
+      // Element already has a user-provided id — use data-bind-id to avoid conflicts
+      edits.push({
+        start: element.tagNameEnd,
+        end: element.tagNameEnd,
+        replacement: ` data-bind-id="${id}"`,
+      });
+      continue;
+    }
 
     edits.push({
       start: element.tagNameEnd,
       end: element.tagNameEnd,
-      replacement: ' ' + attrsToAdd.join(' '),
+      replacement: ` id="${id}"`,
     });
   }
 
@@ -392,15 +428,37 @@ export const buildElementIdEdits = (
 
 /**
  * Build edits to replace ${signal()} expressions with their initial values.
+ * Also handles expression text bindings like ${count() + 1}.
  */
 export const buildSignalReplacementEdits = (
   templateContent: string,
   signalInitializers: Map<string, string | number | boolean>,
   allRanges: Range[],
   textBindingSpans?: Map<number, string>,
+  expressionBindingSpans?: Map<number, { spanId: string; exprEnd: number }>,
 ): TemplateEdit[] => {
   const isInsideRange = buildRangeOverlapChecker(allRanges);
   const edits: TemplateEdit[] = [];
+
+  // Track positions already handled by expression bindings (to skip in bare signal regex)
+  const expressionPositions = new Set<number>();
+
+  // ── Expression text bindings (e.g. ${count() + 1}) ──
+  if (expressionBindingSpans) {
+    for (const [exprStart, { spanId, exprEnd }] of expressionBindingSpans) {
+      if (isInsideRange(exprStart)) continue;
+      expressionPositions.add(exprStart);
+
+      edits.push({
+        start: exprStart,
+        end: exprEnd,
+        // Wrap in span; initial value will be set by initializeBindings
+        replacement: `<span id="${spanId}"> </span>`,
+      });
+    }
+  }
+
+  // ── Bare signal replacements (e.g. ${count()}) ──
   const exprRegex = /\$\{(\w+)\(\)\}/g;
   let match: RegExpExecArray | null;
 
@@ -408,6 +466,7 @@ export const buildSignalReplacementEdits = (
     const exprStart = match.index;
     const exprEnd = exprStart + match[0].length;
     if (isInsideRange(exprStart)) continue;
+    if (expressionPositions.has(exprStart)) continue;
 
     const signalName = match[1];
     if (!signalName) continue;

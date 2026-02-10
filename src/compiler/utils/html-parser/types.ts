@@ -52,9 +52,9 @@ interface HtmlElementBase {
 interface VoidElement extends HtmlElementBase {
   isSelfClosing: true;
   isVoid: boolean;
-  whenDirective?: undefined;
-  whenDirectiveStart?: undefined;
-  whenDirectiveEnd?: undefined;
+  whenDirective?: string;
+  whenDirectiveStart?: number;
+  whenDirectiveEnd?: number;
 }
 
 /**

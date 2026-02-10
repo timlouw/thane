@@ -35,14 +35,6 @@ export const collectFilesRecursively = async (dir: string, filter: (fileName: st
   return files;
 };
 
-export const directoryExists = (dir: string): boolean => {
-  try {
-    return fs.existsSync(dir) && fs.statSync(dir).isDirectory();
-  } catch {
-    return false;
-  }
-};
-
 export const getContentType = (url: string): string => {
   const ext = url.substring(url.lastIndexOf('.'));
   switch (ext) {

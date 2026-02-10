@@ -6,13 +6,13 @@
  *
  *   template → styles → onMount → onDestroy
  *
- * Out-of-order declarations emit a warning (not a build error).
+ * Out-of-order declarations are a build error.
  */
 
 import ts from 'typescript';
 import type { Diagnostic } from '../../../types.js';
 import type { LintRuleDefinition } from './types.js';
-import { ErrorCode, createWarning } from '../../../errors.js';
+import { ErrorCode, createError } from '../../../errors.js';
 import { FN } from '../../../utils/constants.js';
 
 /** Canonical property order. Properties not in this list are ignored. */
@@ -87,8 +87,8 @@ const checkPropertyOrder = (
       const orderHint = CANONICAL_ORDER.join(' → ');
 
       diagnostics.push(
-        createWarning(
-          `'${name}' should be declared after '${lastName}' (expected order: ${orderHint})`,
+        createError(
+          `'${name}' must be declared before '${lastName}' (required order: ${orderHint})`,
           { file: filePath, line: line + 1, column: character + 1 },
           ErrorCode.COMPONENT_PROPERTY_ORDER,
         ),
@@ -118,7 +118,7 @@ export const componentPropertyOrder: LintRuleDefinition = {
   meta: {
     code: ErrorCode.COMPONENT_PROPERTY_ORDER,
     name: 'component-property-order',
-    severity: 'warning',
+    severity: 'error',
     description: 'Enforce canonical property order in defineComponent return objects (template → styles → onMount → onDestroy).',
   },
   check,

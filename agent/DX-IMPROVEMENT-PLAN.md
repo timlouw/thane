@@ -106,27 +106,6 @@ What's missing:
 
 ---
 
-### 6. Lit-style signal syntax (`test = ''` instead of `test('')`)
-
-**Status: ❌ Not done**
-
-Current reality:
-- Signals are callable function objects: `signal()` to get, `signal(value)` to set.
-- The compiler transforms `this._signalName()` patterns in templates.
-- The entire reactive binding compiler (template-processing, codegen) relies on the function-call pattern for detection.
-
-**Verdict: ❌ Not recommended for Thane.** Here's why:
-
-- **Proxy approach** — Wrapping signals in a Proxy to intercept `=` assignment adds runtime cost on every read/write. This directly contradicts Thane's zero-overhead signal design where signals are bare function objects with properties.
-- **Compiler transform** — Rewriting `x = val` → `x(val)` is extremely fragile. How does the compiler distinguish signal assignment from regular variable assignment? It would need full type information at every usage site.
-- **Decorators + classes** — This is how Lit does it (property setters + `@property` decorators). But Thane moved away from classes to the function-based `defineComponent` API specifically to avoid this complexity.
-
-The function-call syntax `count(count() + 1)` is the price of the zero-overhead signal design. It's explicit and unambiguous for both humans and the compiler.
-
-**Priority: ⛔ Skip.**
-
----
-
 ### 7. HTML syntax highlighting in `html` tagged templates
 
 **Status: ❌ Not done**

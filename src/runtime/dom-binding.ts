@@ -216,8 +216,6 @@ interface ReconcilerConfig<T> {
   createItem: (item: T, index: number, refNode: Node) => ManagedItem<T>;
   /** Optional key function for keyed reconciliation */
   keyFn?: KeyFn<T> | undefined;
-  /** Optional HTML to show when array is empty */
-  emptyTemplate?: string | undefined;
   /** Whether to use detach optimization for bulk creates (disabled for nested repeats) */
   useDetachOptimization?: boolean | undefined;
 }
@@ -231,7 +229,7 @@ interface ReconcilerConfig<T> {
 export function createReconciler<T>(config: ReconcilerConfig<T>) {
   const {
     container, anchor, containerParent, containerNextSibling,
-    createItem: createItemFn, keyFn, emptyTemplate,
+    createItem: createItemFn, keyFn,
     useDetachOptimization = true,
   } = config;
 
@@ -249,25 +247,6 @@ export function createReconciler<T>(config: ReconcilerConfig<T>) {
     } else if (m.itemSignal) {
       m.itemSignal(v);
     }
-  };
-
-  let emptyElement: Element | null = null;
-  let emptyShowing = false;
-
-  const showEmpty = () => {
-    if (emptyShowing || !emptyTemplate) return;
-    emptyShowing = true;
-    const tpl = getTempEl();
-    tpl.innerHTML = emptyTemplate;
-    emptyElement = (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild;
-    if (emptyElement) container.insertBefore(emptyElement, anchor);
-  };
-
-  const hideEmpty = () => {
-    if (!emptyShowing || !emptyElement) return;
-    emptyShowing = false;
-    emptyElement.remove();
-    emptyElement = null;
   };
 
   const removeItem = (managed: ManagedItem<T>) => {
@@ -347,13 +326,17 @@ export function createReconciler<T>(config: ReconcilerConfig<T>) {
 
     if (newLength === 0) {
       clearAll();
-      showEmpty();
       return;
     }
-    hideEmpty();
 
     // ── Keyed reconciliation ──
     if (keyMap && keyFn) {
+      // Fast path: create from empty — use bulkCreate with detach optimization
+      if (oldLength === 0) {
+        bulkCreate(newItems);
+        return;
+      }
+
       // Fast path: single item removed
       if (oldLength === newLength + 1) {
         let removedIdx = -1;
@@ -484,7 +467,7 @@ export function createReconciler<T>(config: ReconcilerConfig<T>) {
           }
         }
       }
-      
+
       // General keyed reconciliation
       _keySet.clear();
       for (let i = 0; i < newLength; i++) {
@@ -589,10 +572,62 @@ export function createReconciler<T>(config: ReconcilerConfig<T>) {
   return {
     reconcile,
     clearAll,
-    hideEmpty,
-    get managedItems() { return managedItems; },
   };
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Empty template handler — only referenced by __bindRepeat,
+//  __bindRepeatTpl, __bindNestedRepeat. If those are tree-shaken,
+//  this helper and getTempEl are also eliminated from the bundle.
+// ─────────────────────────────────────────────────────────────
+
+interface EmptyTemplateHandler {
+  show: () => void;
+  hide: () => void;
+}
+
+const createEmptyTemplateHandler = (
+  container: ParentNode & Element,
+  anchor: Element,
+  emptyTemplate?: string,
+): EmptyTemplateHandler | null => {
+  if (!emptyTemplate) return null;
+
+  let emptyElement: Element | null = null;
+  let emptyShowing = false;
+
+  return {
+    show: () => {
+      if (emptyShowing) return;
+      emptyShowing = true;
+      const tpl = getTempEl();
+      tpl.innerHTML = emptyTemplate;
+      emptyElement = (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild;
+      if (emptyElement) container.insertBefore(emptyElement, anchor);
+    },
+    hide: () => {
+      if (!emptyShowing || !emptyElement) return;
+      emptyShowing = false;
+      emptyElement.remove();
+      emptyElement = null;
+    },
+  };
+};
+
+/**
+ * Wrap a reconciler with empty template handling.
+ * Shows emptyTemplate HTML when items array becomes empty,
+ * hides it when items are non-empty.
+ */
+const reconcileWithEmpty = <T>(
+  reconciler: ReturnType<typeof createReconciler<T>>,
+  emptyHandler: EmptyTemplateHandler | null,
+  items: T[],
+): void => {
+  reconciler.reconcile(items);
+  if (!items?.length) emptyHandler?.show();
+  else emptyHandler?.hide();
+};
 
 // ─────────────────────────────────────────────────────────────
 //  __bindRepeat — HTML string based
@@ -635,18 +670,20 @@ export const __bindRepeat = <T>(
 
   const reconciler = createReconciler({
     container, anchor, containerParent, containerNextSibling,
-    createItem, keyFn, emptyTemplate,
+    createItem, keyFn,
   });
 
-  reconciler.reconcile(arraySignal());
+  const emptyHandler = createEmptyTemplateHandler(container, anchor, emptyTemplate);
+
+  reconcileWithEmpty(reconciler, emptyHandler, arraySignal());
 
   const unsubscribe = arraySignal.subscribe((items) => {
-    reconciler.reconcile(items);
+    reconcileWithEmpty(reconciler, emptyHandler, items);
   }, true);
 
   return () => {
     unsubscribe();
-    reconciler.hideEmpty();
+    emptyHandler?.hide();
     reconciler.clearAll();
   };
 };
@@ -728,18 +765,20 @@ export const __bindRepeatTpl = <T>(
 
   const reconciler = createReconciler({
     container, anchor, containerParent, containerNextSibling,
-    createItem, keyFn, emptyTemplate,
+    createItem, keyFn,
   });
 
-  reconciler.reconcile(arraySignal());
+  const emptyHandler = createEmptyTemplateHandler(container, anchor, emptyTemplate);
+
+  reconcileWithEmpty(reconciler, emptyHandler, arraySignal());
 
   const unsubscribe = arraySignal.subscribe((items) => {
-    reconciler.reconcile(items);
+    reconcileWithEmpty(reconciler, emptyHandler, items);
   }, true);
 
   return () => {
     unsubscribe();
-    reconciler.hideEmpty();
+    emptyHandler?.hide();
     reconciler.clearAll();
   };
 };
@@ -787,19 +826,20 @@ export const __bindNestedRepeat = <P, T>(
     containerNextSibling: null,
     createItem,
     keyFn,
-    emptyTemplate,
     useDetachOptimization: false,
   });
 
-  reconciler.reconcile(getArray());
+  const emptyHandler = createEmptyTemplateHandler(container, anchor as Element, emptyTemplate);
+
+  reconcileWithEmpty(reconciler, emptyHandler, getArray());
 
   const unsubscribe = parentSignal.subscribe(() => {
-    reconciler.reconcile(getArray());
+    reconcileWithEmpty(reconciler, emptyHandler, getArray());
   }, true);
 
   return () => {
     unsubscribe();
-    reconciler.hideEmpty();
+    emptyHandler?.hide();
     reconciler.clearAll();
   };
 };

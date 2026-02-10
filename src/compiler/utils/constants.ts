@@ -34,6 +34,8 @@ export const BIND_FN = {
   NESTED_REPEAT: '__bindNestedRepeat',
   FIND_EL: '__findEl',
   FIND_TEXT_NODE: '__findTextNode',
+  ENABLE_STYLES: '__enableComponentStyles',
+  REGISTER_COMPONENT: '__registerComponent',
 } as const;
 
 export const generateSelectorHTML = (selector: string): string => `<${selector}></${selector}>`;

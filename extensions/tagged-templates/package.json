@@ -1,0 +1,163 @@
+{
+  "name": "tagged-templates",
+  "displayName": "Tagged Template Literals",
+  "description": "Configurable syntax highlighting for tagged template literals. Maps tag functions (html, css, sql, etc.) to VS Code's built-in language grammars for proper highlighting inside template strings.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "keywords": [
+    "tagged",
+    "template",
+    "html",
+    "css",
+    "syntax",
+    "highlighting",
+    "embedded"
+  ],
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Tagged Template Literals",
+      "properties": {
+        "tagged-templates.linter.enabled": {
+          "type": "boolean",
+          "description": "Enable the Thane linter integration. Runs the compiler's lint rules in real-time and displays diagnostics (errors/warnings) directly in the editor. Only affects files containing defineComponent.",
+          "default": true
+        },
+        "tagged-templates.tags": {
+          "type": "object",
+          "description": "Maps tag function names to VS Code language IDs for syntax highlighting in tagged template literals.\n\nKey: The tag function name used before the template literal (e.g., \"html\", \"css\", \"sql\").\nValue: The VS Code language ID to apply (e.g., \"html\", \"css\", \"sql\", \"json\", \"xml\").\n\nExample: { \"html\": \"html\", \"css\": \"css\", \"gql\": \"graphql\" }",
+          "default": {
+            "html": "html",
+            "css": "css"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "grammars": [
+      {
+        "injectTo": [
+          "source.js",
+          "source.js.jsx",
+          "source.jsx",
+          "source.ts",
+          "source.tsx"
+        ],
+        "scopeName": "inline.tagged-templates",
+        "path": "./syntaxes/template-tags.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.html": "html",
+          "meta.embedded.block.css": "css",
+          "meta.embedded.block.sql": "sql",
+          "meta.embedded.block.json": "json",
+          "meta.embedded.block.xml": "xml",
+          "meta.embedded.block.markdown": "markdown",
+          "meta.embedded.block.yaml": "yaml",
+          "meta.embedded.block.graphql": "graphql",
+          "meta.embedded.block.scss": "scss",
+          "meta.embedded.block.less": "less",
+          "meta.embedded.block.glsl": "glsl",
+          "meta.embedded.block.javascript": "javascript",
+          "meta.embedded.block.typescript": "typescript",
+          "meta.embedded.block.python": "python",
+          "meta.embedded.block.ruby": "ruby",
+          "meta.embedded.block.go": "go",
+          "meta.embedded.block.rust": "rust",
+          "meta.embedded.block.c": "c",
+          "meta.embedded.block.cpp": "cpp",
+          "meta.embedded.block.csharp": "csharp",
+          "meta.embedded.block.java": "java",
+          "meta.embedded.block.php": "php",
+          "meta.embedded.block.shell": "shellscript",
+          "meta.embedded.block.lua": "lua",
+          "meta.embedded.block.perl": "perl",
+          "meta.embedded.block.r": "r",
+          "meta.embedded.block.dart": "dart",
+          "meta.embedded.block.swift": "swift",
+          "meta.embedded.block.kotlin": "kotlin",
+          "meta.embedded.block.dockerfile": "dockerfile",
+          "meta.embedded.block.ini": "ini",
+          "meta.embedded.block.toml": "toml",
+          "meta.embedded.block.regex": "regex"
+        },
+        "tokenTypes": {
+          "meta.embedded.block.html": "other",
+          "meta.embedded.block.css": "other",
+          "meta.embedded.block.sql": "other",
+          "meta.embedded.block.json": "other",
+          "meta.embedded.block.xml": "other",
+          "meta.embedded.block.markdown": "other",
+          "meta.embedded.block.yaml": "other",
+          "meta.embedded.block.graphql": "other",
+          "meta.embedded.block.scss": "other",
+          "meta.embedded.block.less": "other",
+          "meta.embedded.block.glsl": "other",
+          "meta.embedded.block.javascript": "other",
+          "meta.embedded.block.typescript": "other",
+          "meta.embedded.block.python": "other",
+          "meta.embedded.block.ruby": "other",
+          "meta.embedded.block.go": "other",
+          "meta.embedded.block.rust": "other",
+          "meta.embedded.block.c": "other",
+          "meta.embedded.block.cpp": "other",
+          "meta.embedded.block.csharp": "other",
+          "meta.embedded.block.java": "other",
+          "meta.embedded.block.php": "other",
+          "meta.embedded.block.shell": "other",
+          "meta.embedded.block.lua": "other",
+          "meta.embedded.block.perl": "other",
+          "meta.embedded.block.r": "other",
+          "meta.embedded.block.dart": "other",
+          "meta.embedded.block.swift": "other",
+          "meta.embedded.block.kotlin": "other",
+          "meta.embedded.block.dockerfile": "other",
+          "meta.embedded.block.ini": "other",
+          "meta.embedded.block.toml": "other",
+          "meta.embedded.block.regex": "other"
+        }
+      },
+      {
+        "injectTo": [
+          "source.js",
+          "source.js.jsx",
+          "source.jsx",
+          "source.ts",
+          "source.tsx"
+        ],
+        "scopeName": "inline.tagged-templates.reinjection",
+        "path": "./syntaxes/template-reinjection.json",
+        "embeddedLanguages": {
+          "meta.template.expression.ts": "typescript"
+        }
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc -p ./",
+    "package": "npm run build && npx @vscode/vsce package"
+  },
+  "dependencies": {
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.2",
+    "@types/vscode": "^1.75.0",
+    "esbuild": "^0.25.0"
+  }
+}

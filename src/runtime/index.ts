@@ -60,10 +60,12 @@ export { signal } from './signal.js';
 // Export component
 export { 
   defineComponent,
+  __registerComponent,
   registerGlobalStyles, 
   mountComponent,
   mount,
   destroyComponent,
+  __enableComponentStyles,
   type ComponentContext,
   type ComponentReturnType,
 } from './component.js';
