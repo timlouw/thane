@@ -78,6 +78,7 @@ export {
   __bindRepeat, 
   __bindRepeatTpl,
   createReconciler,
+  createKeyedReconciler,
   __bindNestedRepeat, 
   __findEl,
   __findTextNode 

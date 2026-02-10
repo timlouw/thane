@@ -195,6 +195,219 @@ interface ManagedItem<T> {
  */
 type KeyFn<T> = (item: T, index: number) => string | number;
 
+// ─────────────────────────────────────────────────────────────
+//  createKeyedReconciler — Keyed-only, direct-update mode
+//
+//  Used by the optimized compiler path (inlined createItem) when
+//  a keyFn is provided and there is no emptyTemplate.
+//
+//  Compared to createReconciler, this variant strips:
+//  - Index-based fallback (always keyed)
+//  - getValue/setValue signal branching (always .value/.update)
+//  - Cleanup iteration (optimized items have empty cleanups)
+//  - keyFn/keyMap null guards (always present)
+//  - useDetachOptimization parameter (always uses detach)
+//
+//  Keeps the SAME ManagedItem<T> object shape and per-row update
+//  closures — preserves V8 type feedback from the full reconciler.
+// ─────────────────────────────────────────────────────────────
+
+interface KeyedReconcilerConfig<T> {
+  container: ParentNode & Element;
+  anchor: Element;
+  containerParent: Node | null;
+  containerNextSibling: Node | null;
+  createItem: (item: T, index: number, refNode: Node) => ManagedItem<T>;
+  keyFn: KeyFn<T>;
+}
+
+export function createKeyedReconciler<T>(config: KeyedReconcilerConfig<T>) {
+  const { container, anchor, containerParent, containerNextSibling, createItem: createItemFn, keyFn } = config;
+
+  const managedItems: ManagedItem<T>[] = [];
+  const keyMap = new Map<string | number, ManagedItem<T>>();
+
+  const removeItem = (managed: ManagedItem<T>) => { managed.el.remove(); };
+
+  const clearAll = () => {
+    if (managedItems.length === 0) return;
+    const anchorParent = anchor.parentNode;
+    if (anchorParent) {
+      anchor.remove();
+      (container as HTMLElement).textContent = '';
+      container.appendChild(anchor);
+    }
+    managedItems.length = 0;
+    keyMap.clear();
+  };
+
+  const bulkCreate = (items: T[], startIndex: number = 0) => {
+    const count = items.length;
+    if (count === 0) return;
+
+    if (containerParent) container.remove();
+
+    const base = managedItems.length;
+    managedItems.length = base + count;
+    for (let i = 0; i < count; i++) {
+      const item = items[i]!;
+      const idx = startIndex + i;
+      const managed = createItemFn(item, idx, anchor);
+      managedItems[base + i] = managed;
+      keyMap.set(keyFn(item, idx), managed);
+    }
+
+    if (containerParent) containerParent.insertBefore(container, containerNextSibling);
+  };
+
+  const reconcile = (newItems: T[]) => {
+    const newLength = newItems?.length ?? 0;
+    const oldLength = managedItems.length;
+
+    if (newLength === 0) { clearAll(); return; }
+    if (oldLength === 0) { bulkCreate(newItems); return; }
+
+    // Fast path: single item removed
+    if (oldLength === newLength + 1) {
+      let removedIdx = -1;
+      for (let i = 0; i < newLength; i++) {
+        const newKey = keyFn(newItems[i]!, i);
+        const oldKey = keyFn(managedItems[i]!.value!, i);
+        if (newKey !== oldKey) { removedIdx = i; break; }
+      }
+      if (removedIdx === -1) removedIdx = oldLength - 1;
+
+      const removedManaged = managedItems[removedIdx]!;
+      const removedKey = keyFn(removedManaged.value!, removedIdx);
+
+      let isActualRemoval = true;
+      for (let i = removedIdx; i < newLength; i++) {
+        if (keyFn(newItems[i]!, i) === removedKey) { isActualRemoval = false; break; }
+      }
+
+      if (isActualRemoval) {
+        removeItem(removedManaged);
+        keyMap.delete(removedKey);
+        managedItems.splice(removedIdx, 1);
+        return;
+      }
+    }
+
+    // Fast path: reorder with same keys
+    if (oldLength === newLength) {
+      let allKeysExist = true;
+      for (let i = 0; i < newLength && allKeysExist; i++) {
+        if (!keyMap.has(keyFn(newItems[i]!, i))) allKeysExist = false;
+      }
+
+      if (allKeysExist) {
+        let mismatchCount = 0, mismatch1 = -1, mismatch2 = -1;
+
+        for (let i = 0; i < newLength; i++) {
+          const newItem = newItems[i]!;
+          const existing = keyMap.get(keyFn(newItem, i))!;
+          if (existing.value !== newItem) { existing.value = newItem; existing.update!(newItem); }
+          if (managedItems[i] !== existing) {
+            mismatchCount++;
+            if (mismatchCount === 1) mismatch1 = i;
+            else if (mismatchCount === 2) mismatch2 = i;
+            if (mismatchCount > 2) break;
+          }
+        }
+
+        if (mismatchCount === 0) return;
+
+        if (mismatchCount === 2) {
+          const m1 = managedItems[mismatch1]!, m2 = managedItems[mismatch2]!;
+          const k1 = keyFn(newItems[mismatch1]!, mismatch1), k2 = keyFn(newItems[mismatch2]!, mismatch2);
+          if (keyMap.get(k1) === m2 && keyMap.get(k2) === m1) {
+            const el1 = m1.el, el2 = m2.el;
+            const next1 = el1.nextSibling, next2 = el2.nextSibling;
+            if (next1 === el2) container.insertBefore(el2, el1);
+            else if (next2 === el1) container.insertBefore(el1, el2);
+            else { container.insertBefore(el2, next1); container.insertBefore(el1, next2); }
+            managedItems[mismatch1] = m2; managedItems[mismatch2] = m1;
+            return;
+          }
+        }
+
+        const newManagedItems: ManagedItem<T>[] = new Array(newLength);
+        for (let i = 0; i < newLength; i++) newManagedItems[i] = keyMap.get(keyFn(newItems[i]!, i))!;
+
+        let currentEl: Element | null = managedItems[0]?.el || null;
+        for (let i = 0; i < newLength; i++) {
+          const wanted = newManagedItems[i]!.el;
+          if (wanted === currentEl) currentEl = currentEl?.nextElementSibling || null;
+          else container.insertBefore(wanted, currentEl);
+        }
+        managedItems.length = 0;
+        for (let i = 0; i < newLength; i++) managedItems.push(newManagedItems[i]!);
+        return;
+      }
+    }
+
+    // Fast path: complete replacement (first and last keys both new)
+    if (oldLength > 0 && oldLength === newLength) {
+      const firstNewKey = keyFn(newItems[0]!, 0);
+      if (!keyMap.has(firstNewKey)) {
+        const lastNewKey = keyFn(newItems[newLength - 1]!, newLength - 1);
+        if (!keyMap.has(lastNewKey)) { clearAll(); bulkCreate(newItems); return; }
+      }
+    }
+
+    // General keyed reconciliation
+    _keySet.clear();
+    for (let i = 0; i < newLength; i++) _keySet.add(keyFn(newItems[i]!, i));
+
+    const kept: ManagedItem<T>[] = [];
+    for (let i = 0; i < oldLength; i++) {
+      const managed = managedItems[i]!;
+      const key = keyFn(managed.value!, i);
+      if (_keySet.has(key)) kept.push(managed);
+      else { removeItem(managed); keyMap.delete(key); }
+    }
+    _keySet.clear();
+    managedItems.length = 0;
+    for (let i = 0; i < kept.length; i++) managedItems.push(kept[i]!);
+
+    const newManagedItems: ManagedItem<T>[] = [];
+    for (let i = 0; i < newLength; i++) {
+      const newItem = newItems[i]!;
+      const key = keyFn(newItem, i);
+      const existing = keyMap.get(key);
+      if (existing) {
+        if (existing.value !== newItem) { existing.value = newItem; existing.update!(newItem); }
+        newManagedItems.push(existing);
+      } else {
+        const refNode = i < managedItems.length ? managedItems[i]!.el : anchor;
+        const managed = createItemFn(newItem, i, refNode);
+        keyMap.set(key, managed);
+        newManagedItems.push(managed);
+      }
+    }
+
+    let currentEl: Element | null = newManagedItems[0]?.el.previousElementSibling?.nextElementSibling || container.firstElementChild;
+    for (let i = 0; i < newLength; i++) {
+      const wanted = newManagedItems[i]!.el;
+      if (wanted === currentEl) currentEl = currentEl?.nextElementSibling || null;
+      else container.insertBefore(wanted, currentEl);
+    }
+    managedItems.length = 0;
+    for (let i = 0; i < newLength; i++) managedItems.push(newManagedItems[i]!);
+  };
+
+  return { reconcile, clearAll };
+}
+
+// ─────────────────────────────────────────────────────────────
+//  createReconciler — Full reconciler (signal + index-based)
+//
+//  Used by __bindRepeat, __bindRepeatTpl, __bindNestedRepeat.
+//  Supports both keyed (with key function) and index-based modes,
+//  and both signal-based and direct-value items.
+// ─────────────────────────────────────────────────────────────
+
+
 /**
  * Configuration for the shared reconciler.
  * 

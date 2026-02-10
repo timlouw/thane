@@ -719,7 +719,11 @@ export const generateInitBindingsFunction = (
         // Determine if we need to store item data on the element for delegation
         const useDelegation = delegatedEventsByType.size > 0;
         
-        lines.push(`    const ${reconcilerVar} = ${BIND_FN.RECONCILER}({`);
+        // Use keyed reconciler when we have a keyFn and no emptyTemplate
+        const useKeyedReconciler = !!rep.trackByFn && !rep.emptyTemplate;
+        const reconcilerFn = useKeyedReconciler ? BIND_FN.KEYED_RECONCILER : BIND_FN.RECONCILER;
+        
+        lines.push(`    const ${reconcilerVar} = ${reconcilerFn}({`);
         lines.push(`      container: ${containerVar}, anchor: ${anchorVar},`);
         lines.push(`      containerParent: ${containerVar}.parentNode, containerNextSibling: ${containerVar}.nextSibling,`);
         lines.push(`      createItem: (item, ${indexVar}, _ref) => {`);

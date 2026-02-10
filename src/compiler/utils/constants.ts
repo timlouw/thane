@@ -31,6 +31,7 @@ export const BIND_FN = {
   IF_EXPR: '__bindIfExpr',
   REPEAT: '__bindRepeat',
   RECONCILER: 'createReconciler',
+  KEYED_RECONCILER: 'createKeyedReconciler',
   NESTED_REPEAT: '__bindNestedRepeat',
   FIND_EL: '__findEl',
   FIND_TEXT_NODE: '__findTextNode',

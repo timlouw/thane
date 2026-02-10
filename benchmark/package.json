@@ -17,7 +17,7 @@
                     "start-prod":  "thane serve --prod --entry ./main.ts --out ./dist --assets ./assets --html ./index.html"
                 },
     "dependencies":  {
-                         "thane":  "file:../thane-0.0.38.tgz"
+                         "thane":  "file:../thane-0.0.39.tgz"
                      }
 }
 

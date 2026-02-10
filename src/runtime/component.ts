@@ -372,19 +372,10 @@ export function __registerComponentLean(
   compiledTemplate: HTMLTemplateElement,
   ...extraStaticTemplates: any[]
 ): any {
-  const factory = (target?: HTMLElement): ComponentInstance => {
-    // Inline host element creation — avoids importing shared createHostElement
-    let root: ComponentRoot;
-    if (target) {
-      target.className = target.className ? `${target.className} ${selector}` : selector;
-      (target as any).getElementById = (id: string) => document.getElementById(id);
-      root = target as ComponentRoot;
-    } else {
-      const el = document.createElement('div') as any;
-      el.className = selector;
-      el.getElementById = (id: string) => el.querySelector(`#${id}`);
-      root = el as ComponentRoot;
-    }
+  const factory = (target: HTMLElement): ComponentInstance => {
+    target.className = target.className ? `${target.className} ${selector}` : selector;
+    (target as any).getElementById = (id: string) => document.getElementById(id);
+    const root = target as ComponentRoot;
 
     const ctx: ComponentContext = { root, props: {} as Readonly<any> };
     const result = setup(ctx) as InternalComponentResult;
@@ -395,9 +386,7 @@ export function __registerComponentLean(
     return { root };
   };
 
-  componentFactories.set(selector, factory);
-
-  const ref: any = { __componentSelector: selector };
+  const ref: any = { __componentSelector: selector, __f: factory };
   for (let i = 0; i < extraStaticTemplates.length; i += 2) {
     ref[extraStaticTemplates[i]] = extraStaticTemplates[i + 1];
   }
@@ -448,6 +437,10 @@ export function mount(
   component: ComponentHTMLSelector<any>,
   target: HTMLElement = document.body,
 ): ComponentRoot | null {
+  // Fast path: lean components store factory directly on the ref
+  const factory: ((t: HTMLElement) => ComponentInstance) | undefined = (component as any).__f;
+  if (factory) return factory(target).root;
+  // Fallback: full-registered components use Map lookup
   const selector: string | undefined = (component as any).__componentSelector;
   return selector ? _mountBySelector(selector, target) : null;
 }

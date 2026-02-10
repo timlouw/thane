@@ -418,7 +418,16 @@ export const transformDefineComponentSource = (source: string, filePath: string)
       
       if (allRepeatBlocks.length > 0) {
         const usesOptimized = repeatStaticTemplates.length > 0;
-        if (usesOptimized) requiredFunctions.push(BIND_FN.RECONCILER);
+        if (usesOptimized) {
+          // Keyed repeats (with trackBy, no emptyTemplate) use lighter createKeyedReconciler
+          if (allRepeatBlocks.some(r => !!r.trackByFn && !r.emptyTemplate)) {
+            requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
+          }
+          // Non-keyed or emptyTemplate repeats need full createReconciler
+          if (allRepeatBlocks.some(r => !r.trackByFn || !!r.emptyTemplate)) {
+            requiredFunctions.push(BIND_FN.RECONCILER);
+          }
+        }
         const hasNonOptimized = allRepeatBlocks.some(rep => {
           const hasItemBindings = rep.itemBindings.length > 0;
           const hasSignalBindings = rep.signalBindings.length > 0;
