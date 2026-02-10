@@ -346,6 +346,65 @@ export function __registerComponent(
 }
 
 /**
+ * Lean compiler-optimized component registration.
+ *
+ * Used when the compiler determines a component has:
+ * - No styles property
+ * - No onMount / onDestroy lifecycle hooks
+ * - A pre-compiled template (always provided)
+ *
+ * Compared to `__registerComponent`, this variant:
+ * - Inlines host element creation (tree-shakes `createHostElement`)
+ * - Skips styles registration check (tree-shakes `_onStyles`)
+ * - Skips lifecycle hook guards (no onMount/onDestroy branching)
+ * - Skips template fallback (always uses compiledTemplate)
+ * - Uses simplified rest-params loop (no type guard)
+ *
+ * When all components in an app use this variant, esbuild tree-shakes
+ * `__registerComponent`, `createHostElement`, `_onStyles`, and
+ * `__enableComponentStyles` entirely.
+ *
+ * @internal — emitted by the compiler; not part of the public API.
+ */
+export function __registerComponentLean(
+  selector: string,
+  setup: SetupFunction,
+  compiledTemplate: HTMLTemplateElement,
+  ...extraStaticTemplates: any[]
+): any {
+  const factory = (target?: HTMLElement): ComponentInstance => {
+    // Inline host element creation — avoids importing shared createHostElement
+    let root: ComponentRoot;
+    if (target) {
+      target.className = target.className ? `${target.className} ${selector}` : selector;
+      (target as any).getElementById = (id: string) => document.getElementById(id);
+      root = target as ComponentRoot;
+    } else {
+      const el = document.createElement('div') as any;
+      el.className = selector;
+      el.getElementById = (id: string) => el.querySelector(`#${id}`);
+      root = el as ComponentRoot;
+    }
+
+    const ctx: ComponentContext = { root, props: {} as Readonly<any> };
+    const result = setup(ctx) as InternalComponentResult;
+
+    root.appendChild(compiledTemplate.content.cloneNode(true));
+    if (result.__bindings) result.__bindings(ctx);
+
+    return { root };
+  };
+
+  componentFactories.set(selector, factory);
+
+  const ref: any = { __componentSelector: selector };
+  for (let i = 0; i < extraStaticTemplates.length; i += 2) {
+    ref[extraStaticTemplates[i]] = extraStaticTemplates[i + 1];
+  }
+  return ref;
+}
+
+/**
  * Mount a component to a target element
  * 
  * Accepts either:

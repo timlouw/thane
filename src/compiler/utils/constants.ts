@@ -36,6 +36,7 @@ export const BIND_FN = {
   FIND_TEXT_NODE: '__findTextNode',
   ENABLE_STYLES: '__enableComponentStyles',
   REGISTER_COMPONENT: '__registerComponent',
+  REGISTER_COMPONENT_LEAN: '__registerComponentLean',
 } as const;
 
 export const generateSelectorHTML = (selector: string): string => `<${selector}></${selector}>`;

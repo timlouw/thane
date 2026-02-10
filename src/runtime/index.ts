@@ -61,6 +61,7 @@ export { signal } from './signal.js';
 export { 
   defineComponent,
   __registerComponent,
+  __registerComponentLean,
   registerGlobalStyles, 
   mountComponent,
   mount,

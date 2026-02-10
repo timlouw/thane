@@ -63,7 +63,7 @@ const isEmptyArrowFunction = (node: ts.Node): boolean => {
  * @param source - The full component source (post-injection)
  * @param hasCompiledTemplate - Whether a compiled template was injected
  */
-const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplate: boolean): { source: string; hasStyles: boolean } => {
+const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplate: boolean): { source: string; hasStyles: boolean; hasLifecycle: boolean } => {
   const sf = ts.createSourceFile('__strip.ts', source, ts.ScriptTarget.Latest, true);
 
   // Find the defineComponent return object
@@ -89,12 +89,13 @@ const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplat
   };
   find(sf);
 
-  if (!returnObj) return { source, hasStyles: false };
+  if (!returnObj) return { source, hasStyles: false, hasLifecycle: false };
 
   // Collect ranges to remove (in reverse order for safe splicing)
   const removals: Array<{ start: number; end: number }> = [];
   const properties = (returnObj as ts.ObjectLiteralExpression).properties;
   let hasStyles = false;
+  let hasLifecycle = false;
 
   for (const prop of properties) {
     if (!ts.isPropertyAssignment(prop)) continue;
@@ -105,6 +106,12 @@ const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplat
     if (name === 'styles') {
       hasStyles = true;
       continue;  // keep in return — runtime handles it via _onStyles callback
+    }
+
+    // ── Feature detection (lifecycle) — non-empty hooks that survive stripping ──
+    if (STRIPPABLE_LIFECYCLE.has(name) && !isEmptyArrowFunction(prop.initializer)) {
+      hasLifecycle = true;
+      continue;  // keep — runtime needs these
     }
 
     // ── Strippable properties ──
@@ -139,7 +146,7 @@ const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplat
     removals.push({ start, end });
   }
 
-  if (removals.length === 0) return { source, hasStyles };
+  if (removals.length === 0) return { source, hasStyles, hasLifecycle };
 
   // Apply removals in reverse order
   let modified = source;
@@ -147,7 +154,7 @@ const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplat
     modified = modified.substring(0, start) + modified.substring(end);
   }
 
-  return { source: modified, hasStyles };
+  return { source: modified, hasStyles, hasLifecycle };
 };
 import { generateInitBindingsFunction, generateStaticTemplate, generateUpdatedImport } from './codegen.js';
 import { ErrorCode, createError } from '../../errors.js';
@@ -392,7 +399,11 @@ export const transformDefineComponentSource = (source: string, filePath: string)
       ...servicesImport,
       namedImports: servicesImport.namedImports.filter(n => n !== 'defineComponent'),
     };
-    const requiredFunctions: string[] = [BIND_FN.REGISTER_COMPONENT];
+    // Determine which registration function to import — lean or full.
+    // At this point we don't yet know if the component has lifecycle hooks
+    // (that's detected later in stripDeadPropertiesAndDetectFeatures).
+    // We add a placeholder and fix it up after stripping.
+    const requiredFunctions: string[] = ['__REGISTER_PLACEHOLDER__'];
 
     // ── Binding function imports ──
     if (hasAnyBindings) {
@@ -535,6 +546,9 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     }
   }
   
+  // Track strip result for lean/full registration decision (populated in Step 3a)
+  let stripResult: { source: string; hasStyles: boolean; hasLifecycle: boolean } = { source: result, hasStyles: false, hasLifecycle: false };
+
   if (exportStart !== null) {
     // ── Step 1: Insert static template declarations before the export ──
     let declarations = '';
@@ -570,7 +584,7 @@ export const transformDefineComponentSource = (source: string, filePath: string)
       // ── Step 3a: Strip dead properties ──
       // Must happen before we insert extra args (positions would shift)
       const hasCompiledTemplate = !!lastProcessedTemplateContent;
-      const stripResult = stripDeadPropertiesAndDetectFeatures(result, hasCompiledTemplate);
+      stripResult = stripDeadPropertiesAndDetectFeatures(result, hasCompiledTemplate);
       
       // Adjust dcCallCloseParen for any characters removed by stripping
       const charDelta = stripResult.source.length - result.length;
@@ -601,13 +615,21 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   
   // Step 4 is now integrated into Step 3a (stripDeadPropertiesAndDetectFeatures)
   
-  // ── Final step: rename defineComponent → __registerComponent ──
+  // ── Final step: rename defineComponent → __registerComponent[Lean] ──
   // Done AFTER all AST-based injections that rely on isDefineComponentCall()
-  // matching the `defineComponent` identifier. The compiled output uses the
-  // lean __registerComponent which has no selector-type branching, no
-  // createComponentHTMLSelector call, and no Map allocation.
-  // esbuild then tree-shakes the unused defineComponent + createComponentHTMLSelector.
-  result = result.replace(/\bdefineComponent\s*\(/, '__registerComponent(');
+  // matching the `defineComponent` identifier.
+  //
+  // When the component has no styles and no lifecycle hooks, use the lean
+  // variant which tree-shakes: createHostElement, _onStyles, styles guard,
+  // template fallback, onMount/onDestroy checks.
+  const useLeanRegistration = !stripResult.hasStyles && !stripResult.hasLifecycle;
+  const registerFnName = useLeanRegistration
+    ? BIND_FN.REGISTER_COMPONENT_LEAN
+    : BIND_FN.REGISTER_COMPONENT;
+  result = result.replace(/\bdefineComponent\s*\(/, `${registerFnName}(`);
+
+  // Fix up the placeholder import to the actual registration function
+  result = result.replace('__REGISTER_PLACEHOLDER__', registerFnName);
   
   return result;
 };
