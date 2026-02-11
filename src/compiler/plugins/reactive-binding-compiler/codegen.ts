@@ -326,7 +326,7 @@ export const generateInitBindingsFunction = (
 ): { code: string; staticTemplates: string[] } => {
   const lines: string[] = [];
   const staticTemplates: string[] = []; // Collect static templates for repeat optimizations
-  const buildEventListenerStatements = (events: EventBinding[], rootVar: string): string[] => {
+  const buildEventListenerStatements = (events: EventBinding[], _rootVar: string): string[] => {
     const statements: string[] = [];
     for (const evt of events) {
       let handlerCode = evt.handlerExpression;
@@ -354,7 +354,7 @@ export const generateInitBindingsFunction = (
         handlerExpr = `(e) => { ${bodyParts.join(' ')} }`;
       }
 
-      statements.push(`const _el_${evt.id} = ${rootVar}.getElementById('${evt.elementId}'); if (_el_${evt.id}) _el_${evt.id}.addEventListener('${evt.eventName}', ${handlerExpr});`);
+      statements.push(`_gid('${evt.elementId}')?.addEventListener('${evt.eventName}', ${handlerExpr});`);
     }
     return statements;
   };
@@ -374,6 +374,7 @@ export const generateInitBindingsFunction = (
   const conditionalEventIds = new Set(collectConditionalEventBindings(conditionals).map((evt) => evt.id));
   lines.push('  initializeBindings = () => {');
   lines.push(`    ${ap.rootAlias}`);
+  lines.push(`    const _gid = (id) => r.getElementById(id);`);
   const topLevelBindings = bindings.filter((b) => !b.isInsideConditional);
   // Separate expression bindings (multi-signal) from simple bindings
   const simpleBindings = topLevelBindings.filter(isSimpleBinding);
@@ -384,7 +385,7 @@ export const generateInitBindingsFunction = (
     for (const id of topLevelIds) {
       lines.push(dataBindIdSet.has(id)
         ? `    const ${id} = r.querySelector('[data-bind-id="${id}"]');`
-        : `    const ${id} = r.getElementById('${id}');`);
+        : `    const ${id} = _gid('${id}');`);
     }
   }
   // Simple bindings: initial value assignment + consolidated subscription
@@ -420,7 +421,7 @@ export const generateInitBindingsFunction = (
       for (const id of nestedIds) {
         nestedLines.push(nestedDataBindIds.has(id)
           ? `      const ${id} = r.querySelector('[data-bind-id="${id}"]');`
-          : `      const ${id} = r.getElementById('${id}');`);
+          : `      const ${id} = _gid('${id}');`);
       }
       const nestedSimpleBindings = nestedBindings.filter(isSimpleBinding);
       const nestedExpressionBindings = nestedBindings.filter(isExpressionBinding);
@@ -462,7 +463,7 @@ export const generateInitBindingsFunction = (
           for (const id of innerIds) {
             innerBindingLines.push(innerDataBindIds.has(id)
               ? `        const ${id} = r.querySelector('[data-bind-id="${id}"]');`
-              : `        const ${id} = r.getElementById('${id}');`);
+              : `        const ${id} = _gid('${id}');`);
           }
           for (const binding of innerSimple) {
             innerBindingLines.push(`        ${generateInitialValueCode(binding, ap)};`);
@@ -528,7 +529,7 @@ export const generateInitBindingsFunction = (
       for (const id of ids) {
         initLines.push(weDataBindIds.has(id)
           ? `      const ${id} = r.querySelector('[data-bind-id="${id}"]');`
-          : `      const ${id} = r.getElementById('${id}');`);
+          : `      const ${id} = _gid('${id}');`);
       }
       const simpleNestedBindings = bindings.filter(isSimpleBinding);
       const exprNestedBindings = bindings.filter(isExpressionBinding);
@@ -638,7 +639,7 @@ export const generateInitBindingsFunction = (
           .replace(/\n/g, '\\n')
           .replace(/\r/g, '\\r');
         
-        staticTemplates.push(`  ${ap.classStyle ? 'static' : 'const'} ${templateId} = (() => { const t = document.createElement('template'); t.innerHTML = \`${escapedStaticHtml}\`; return t; })();`);
+        staticTemplates.push(`  ${ap.classStyle ? 'static' : 'const'} ${templateId} = _T(\`${escapedStaticHtml}\`);`);
         
         // Fully inlined repeat — inline navigation code, no runtime navigatePath
         // Generate inlined navigation code for each bound element
@@ -698,7 +699,7 @@ export const generateInitBindingsFunction = (
         const reconcilerVar = `_rc_${rep.id}`;
         
         lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content;`);
-        lines.push(`    const ${anchorVar} = r.getElementById('${rep.id}');`);
+        lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
         // Partition item events into delegated (container listener) vs non-delegatable (per-item)
         const { delegatedByType: delegatedEventsByType, nonDelegatable: nonDelegatableEvents } =
@@ -723,10 +724,15 @@ export const generateInitBindingsFunction = (
         const useKeyedReconciler = !!rep.trackByFn && !rep.emptyTemplate;
         const reconcilerFn = useKeyedReconciler ? BIND_FN.KEYED_RECONCILER : BIND_FN.RECONCILER;
         
-        lines.push(`    const ${reconcilerVar} = ${reconcilerFn}({`);
-        lines.push(`      container: ${containerVar}, anchor: ${anchorVar},`);
-        lines.push(`      containerParent: ${containerVar}.parentNode, containerNextSibling: ${containerVar}.nextSibling,`);
-        lines.push(`      createItem: (item, ${indexVar}, _ref) => {`);
+        const isKeyed = reconcilerFn === BIND_FN.KEYED_RECONCILER;
+        if (isKeyed) {
+          lines.push(`    const ${reconcilerVar} = ${reconcilerFn}(${containerVar}, ${anchorVar},`);
+        } else {
+          lines.push(`    const ${reconcilerVar} = ${reconcilerFn}({`);
+          lines.push(`      container: ${containerVar}, anchor: ${anchorVar},`);
+          lines.push(`      containerParent: ${containerVar}.parentNode, containerNextSibling: ${containerVar}.nextSibling,`);
+        }
+        lines.push(`      ${isKeyed ? '' : 'createItem: '}(item, ${indexVar}, _ref) => {`);
         lines.push(`        const _frag = ${tplContentVar}.cloneNode(true);`);
         lines.push(`        const _el = _frag.firstElementChild;`);
         if (useDelegation) {
@@ -749,14 +755,19 @@ export const generateInitBindingsFunction = (
         }
         lines.push(`        return { itemSignal: null, el: _el, cleanups: [], value: item,`);
         lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
-        lines.push(`      },`);
-        if (rep.trackByFn) {
-          lines.push(`      keyFn: ${keyFnArg},`);
+        if (isKeyed) {
+          lines.push(`      },`);
+          lines.push(`    ${keyFnArg});`);
+        } else {
+          lines.push(`      },`);
+          if (rep.trackByFn) {
+            lines.push(`      keyFn: ${keyFnArg},`);
+          }
+          if (rep.emptyTemplate) {
+            lines.push(`      emptyTemplate: ${emptyTemplateArg},`);
+          }
+          lines.push(`    });`);
         }
-        if (rep.emptyTemplate) {
-          lines.push(`      emptyTemplate: ${emptyTemplateArg},`);
-        }
-        lines.push(`    });`);
         lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
         lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`);
         // Emit delegated event listeners on the container (after reconciler is ready)
@@ -1127,11 +1138,8 @@ export const generateInitBindingsFunction = (
 export const generateStaticTemplate = (content: string, ap: AccessPattern = CLASS_ACCESS): string => {
   const escapedContent = content.replace(/`/g, '\\`');
   return `
-  ${ap.staticTemplatePrefix} = (() => {
-    const t = document.createElement('template');
-    t.innerHTML = \`${escapedContent}\`;
-    return t;
-  })();`;
+  const _T = (h) => { const t = document.createElement('template'); t.innerHTML = h; return t; };
+  ${ap.staticTemplatePrefix} = _T(\`${escapedContent}\`);`;
 };
 
 /**

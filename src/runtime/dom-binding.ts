@@ -212,17 +212,14 @@ type KeyFn<T> = (item: T, index: number) => string | number;
 //  closures — preserves V8 type feedback from the full reconciler.
 // ─────────────────────────────────────────────────────────────
 
-interface KeyedReconcilerConfig<T> {
-  container: ParentNode & Element;
-  anchor: Element;
-  containerParent: Node | null;
-  containerNextSibling: Node | null;
-  createItem: (item: T, index: number, refNode: Node) => ManagedItem<T>;
-  keyFn: KeyFn<T>;
-}
-
-export function createKeyedReconciler<T>(config: KeyedReconcilerConfig<T>) {
-  const { container, anchor, containerParent, containerNextSibling, createItem: createItemFn, keyFn } = config;
+export function createKeyedReconciler<T>(
+  container: ParentNode & Element,
+  anchor: Element,
+  createItemFn: (item: T, index: number, refNode: Node) => ManagedItem<T>,
+  keyFn: KeyFn<T>,
+) {
+  const containerParent = container.parentNode;
+  const containerNextSibling = container.nextSibling;
 
   const managedItems: ManagedItem<T>[] = [];
   const keyMap = new Map<string | number, ManagedItem<T>>();

@@ -575,7 +575,7 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     
     // ── Step 2: Inject __bindings into the return object ──
     if (hasAnyBindings && processedBindings.trim() && returnObjectBracePos !== null) {
-      const bindingsFnBody = `\n  __bindings: (ctx) => {\n  ${processedBindings.trim()}\n  },`;
+      const bindingsFnBody = `\n  __b: (ctx) => {\n  ${processedBindings.trim()}\n  },`;
       result = result.substring(0, returnObjectBracePos) + bindingsFnBody + result.substring(returnObjectBracePos);
       // Adjust closing paren position
       if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + bindingsFnBody.length;

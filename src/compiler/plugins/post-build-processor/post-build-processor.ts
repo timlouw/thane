@@ -14,10 +14,10 @@
 import fs from 'fs';
 import path from 'path';
 import type { Metafile, Plugin } from 'esbuild';
-import { sourceCache, PLUGIN_NAME } from '../../utils/index.js';
+import { sourceCache, PLUGIN_NAME, consoleColors } from '../../utils/index.js';
 import type { BuildContext } from '../../types.js';
 
-import { recursivelyCopyAssetsIntoDist, watchAndRecursivelyCopyAssetsIntoDist } from './file-copy.js';
+import { recursivelyCopyAssetsIntoDist, watchAndRecursivelyCopyAssetsIntoDist, watchFileForChanges } from './file-copy.js';
 import { gzipDistFiles } from './compression.js';
 import { DevServer } from './dev-server.js';
 import { printAllFileSizes, printTotalSizes } from './console-reporting.js';
@@ -48,6 +48,37 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
     isProd: config.isProd,
     useGzip: config.useGzip,
   });
+
+  let watchersStarted = false;
+  let cachedHashedFileNames: Record<string, string> = {};
+
+  /**
+   * Re-process the HTML template and notify live reload clients.
+   * Used by file watchers when index.html or assets change.
+   */
+  const reprocessAndReloadHTML = async (): Promise<void> => {
+    const { inputHTMLFilePath, outputHTMLFilePath, isProd, serve } = config;
+    const placeholders: Record<string, string | undefined> = {
+      MAIN_JS_FILE_PLACEHOLDER: cachedHashedFileNames['main'],
+      ROUTER_JS_FILE_PLACEHOLDER: cachedHashedFileNames['router'],
+      INDEX_JS_FILE_PLACEHOLDER: cachedHashedFileNames['index'],
+    };
+    let data = await fs.promises.readFile(inputHTMLFilePath, 'utf8');
+    for (const [placeholder, fileName] of Object.entries(placeholders)) {
+      if (fileName) {
+        data = data.replace(placeholder, fileName);
+      }
+    }
+    let updatedData = data;
+    if (config.buildContext) {
+      updatedData = minifySelectorsInHTML(updatedData, config.buildContext);
+    }
+    if (serve && !isProd) {
+      updatedData = DevServer.injectLiveReloadScript(updatedData);
+    }
+    await fs.promises.writeFile(outputHTMLFilePath, updatedData, 'utf8');
+    devServer.notifyLiveReloadClients();
+  };
 
   const copyIndexHTMLIntoDistAndStartServer = async (hashedFileNames: Record<string, string | undefined>): Promise<void> => {
     const { inputHTMLFilePath, outputHTMLFilePath, isProd, serve, useGzip, distDir } = config;
@@ -125,6 +156,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
       }
     }
 
+    cachedHashedFileNames = { ...hashedFileNames };
     await copyIndexHTMLIntoDistAndStartServer(hashedFileNames);
   };
 
@@ -145,10 +177,12 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
       build.onEnd(async (result) => {
         totalBundleSizeInBytes = 0;
 
-        const { assetsInputDir, assetsOutputDir, serve } = config;
+        const { assetsInputDir, assetsOutputDir, serve, inputHTMLFilePath } = config;
         if (assetsInputDir && assetsOutputDir) {
-          if (serve) {
-            watchAndRecursivelyCopyAssetsIntoDist(assetsInputDir, assetsOutputDir);
+          if (serve && !watchersStarted) {
+            watchAndRecursivelyCopyAssetsIntoDist(assetsInputDir, assetsOutputDir, () => {
+              devServer.notifyLiveReloadClients();
+            });
           } else {
             await recursivelyCopyAssetsIntoDist(assetsInputDir, assetsOutputDir);
           }
@@ -156,6 +190,14 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
 
         if (result.metafile) {
           await processMetafileAndUpdateHTML(result.metafile);
+        }
+
+        if (serve && !watchersStarted) {
+          watchFileForChanges(inputHTMLFilePath, () => {
+            console.info(consoleColors.blue, 'index.html changed, reloading...');
+            void reprocessAndReloadHTML();
+          });
+          watchersStarted = true;
         }
       });
     },

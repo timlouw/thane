@@ -33,7 +33,7 @@ export const recursivelyCopyAssetsIntoDist = async (src: string, dest: string): 
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DEBOUNCE_MS = 100;
 
-export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string): void => {
+export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string, onUpdate?: () => void): void => {
   if (!fs.existsSync(src)) {
     return;
   }
@@ -75,10 +75,35 @@ export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string)
             await fs.promises.rm(destPath, { recursive: true, force: true }).catch(() => {});
           }
         }
+        onUpdate?.();
       } catch (error) {
         // Race conditions during rapid file changes
         logger.verbose(`[file-copy] Watcher error for ${filename}: ${error instanceof Error ? error.message : error}`);
       }
     }, DEBOUNCE_MS));
+  });
+};
+
+/**
+ * Watch a single file for changes with debouncing
+ */
+export const watchFileForChanges = (filePath: string, onChange: () => void): void => {
+  if (!fs.existsSync(filePath)) {
+    return;
+  }
+
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  fs.watch(filePath, (eventType: string) => {
+    if (eventType !== 'change') return;
+
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    debounceTimer = setTimeout(() => {
+      debounceTimer = null;
+      onChange();
+    }, DEBOUNCE_MS);
   });
 };

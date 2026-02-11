@@ -59,8 +59,8 @@ export type ComponentReturnType = {
  * @internal
  */
 interface InternalComponentResult extends ComponentReturnType {
-  /** Compiler-injected binding initializer */
-  __bindings?: (ctx: ComponentContext) => void;
+  /** Compiler-injected binding initializer (short name for bundle size) */
+  __b?: (ctx: ComponentContext) => void;
 }
 
 /**
@@ -255,8 +255,8 @@ export function defineComponent<P extends ComponentProps = {}>(
     }
 
     // Initialize reactive bindings (injected by the compiler into the return object)
-    if (result.__bindings) {
-      result.__bindings(ctx);
+    if (result.__b) {
+      result.__b(ctx);
     }
 
     // Lifecycle: onMount
@@ -275,7 +275,9 @@ export function defineComponent<P extends ComponentProps = {}>(
   componentFactories.set(selector, factory);
 
   const selectorFn = createComponentHTMLSelector<P>(selector);
-  
+  // All mount paths now use __f — attach factory to selector function
+  (selectorFn as any).__f = factory;
+
   // Expose static templates on the selector function for repeat binding lookups
   // The codegen generates references like `Benchmark.__tpl_b0`
   for (const [name, tpl] of staticTemplatesMap) {
@@ -323,7 +325,7 @@ export function __registerComponent(
       root.innerHTML = result.template;
     }
 
-    if (result.__bindings) result.__bindings(ctx);
+    if (result.__b) result.__b(ctx);
     if (result.onMount) result.onMount();
 
     const instance: ComponentInstance = { root };
@@ -333,10 +335,9 @@ export function __registerComponent(
 
   componentFactories.set(selector, factory);
 
-  // Minimal ref — carries __componentSelector for mount() lookup
-  // and any static template references for repeat optimizations.
-  // No HTML generation function (the compiler handles child rendering via CTFE).
-  const ref: any = { __componentSelector: selector };
+  // Minimal ref — carries __componentSelector for mountComponent() lookup,
+  // __f for mount(), and any static template references for repeat optimizations.
+  const ref: any = { __componentSelector: selector, __f: factory };
   for (let i = 0; i < extraStaticTemplates.length; i += 2) {
     const name = extraStaticTemplates[i];
     const tpl = extraStaticTemplates[i + 1];
@@ -373,7 +374,7 @@ export function __registerComponentLean(
   ...extraStaticTemplates: any[]
 ): any {
   const factory = (target: HTMLElement): ComponentInstance => {
-    target.className = target.className ? `${target.className} ${selector}` : selector;
+    target.classList.add(selector);
     (target as any).getElementById = (id: string) => document.getElementById(id);
     const root = target as ComponentRoot;
 
@@ -381,12 +382,12 @@ export function __registerComponentLean(
     const result = setup(ctx) as InternalComponentResult;
 
     root.appendChild(compiledTemplate.content.cloneNode(true));
-    if (result.__bindings) result.__bindings(ctx);
+    if (result.__b) result.__b(ctx);
 
     return { root };
   };
 
-  const ref: any = { __componentSelector: selector, __f: factory };
+  const ref: any = { __f: factory };
   for (let i = 0; i < extraStaticTemplates.length; i += 2) {
     ref[extraStaticTemplates[i]] = extraStaticTemplates[i + 1];
   }
@@ -437,12 +438,11 @@ export function mount(
   component: ComponentHTMLSelector<any>,
   target: HTMLElement = document.body,
 ): ComponentRoot | null {
-  // Fast path: lean components store factory directly on the ref
+  // All registration paths (defineComponent, __registerComponent,
+  // __registerComponentLean) store the factory as __f on the ref.
+  // mountComponent() is the only consumer of _mountBySelector / componentFactories.
   const factory: ((t: HTMLElement) => ComponentInstance) | undefined = (component as any).__f;
-  if (factory) return factory(target).root;
-  // Fallback: full-registered components use Map lookup
-  const selector: string | undefined = (component as any).__componentSelector;
-  return selector ? _mountBySelector(selector, target) : null;
+  return factory ? factory(target).root : null;
 }
 
 /**
