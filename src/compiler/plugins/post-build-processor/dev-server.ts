@@ -102,7 +102,7 @@ export class DevServer {
       const indexPath = path.join(distDir, 'index.html');
       const hasFileExtension = path.extname(requestedUrl).length > 0;
 
-      if (requestedUrl === '/__live-reload' && !isProd) {
+      if (requestedUrl === '/__live-reload') {
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
@@ -146,9 +146,7 @@ export class DevServer {
 
     const url = `http://localhost:${port}/`;
     server.listen(port, () => {
-      if (!isProd) {
-        console.info(consoleColors.cyan, 'Live reload enabled');
-      }
+      console.info(consoleColors.cyan, 'Live reload enabled');
       console.info(consoleColors.yellow, `Server running at ${url}`);
       console.info('');
       console.info('');

@@ -57,7 +57,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
    * Used by file watchers when index.html or assets change.
    */
   const reprocessAndReloadHTML = async (): Promise<void> => {
-    const { inputHTMLFilePath, outputHTMLFilePath, isProd, serve } = config;
+    const { inputHTMLFilePath, outputHTMLFilePath, serve } = config;
     const placeholders: Record<string, string | undefined> = {
       MAIN_JS_FILE_PLACEHOLDER: cachedHashedFileNames['main'],
       ROUTER_JS_FILE_PLACEHOLDER: cachedHashedFileNames['router'],
@@ -73,7 +73,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
     if (config.buildContext) {
       updatedData = minifySelectorsInHTML(updatedData, config.buildContext);
     }
-    if (serve && !isProd) {
+    if (serve) {
       updatedData = DevServer.injectLiveReloadScript(updatedData);
     }
     await fs.promises.writeFile(outputHTMLFilePath, updatedData, 'utf8');
@@ -100,7 +100,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
     if (isProd) {
       updatedData = minifyHTML(updatedData);
     }
-    if (serve && !isProd) {
+    if (serve) {
       updatedData = DevServer.injectLiveReloadScript(updatedData);
     }
 
