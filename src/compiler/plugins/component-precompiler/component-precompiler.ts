@@ -25,92 +25,11 @@ import { ErrorCode, createError } from '../../errors.js';
 const EVAL_FAILED = Symbol('EVAL_FAILED');
 type EvalResult<T = any> = T | typeof EVAL_FAILED;
 
-interface ComponentImportInfo {
-  importPath: string;
-  componentNames: Set<string>;
-  allNamedImports: string[];
-  importStart: number;
-  importEnd: number;
-  quoteChar: string;
-}
-
 const NAME = PLUGIN_NAME.COMPONENT;
 
-const findComponentImports = (sourceFile: ts.SourceFile, knownComponents: Map<string, ComponentDefinition>): ComponentImportInfo[] => {
-  const imports: ComponentImportInfo[] = [];
-
-  const visit = (node: ts.Node) => {
-    if (ts.isImportDeclaration(node) && node.importClause?.namedBindings && ts.isNamedImports(node.importClause.namedBindings)) {
-      const moduleSpecifier = node.moduleSpecifier;
-      if (!ts.isStringLiteral(moduleSpecifier)) return;
-
-      const importPath = moduleSpecifier.text;
-      const componentNames = new Set<string>();
-      const allNamedImports: string[] = [];
-
-      for (const element of node.importClause.namedBindings.elements) {
-        const importedName = element.name.text;
-        const fullImportText = element.getText(sourceFile);
-        allNamedImports.push(fullImportText);
-
-        if (knownComponents.has(importedName)) {
-          componentNames.add(importedName);
-        }
-      }
-
-      if (componentNames.size > 0) {
-        const specifierText = moduleSpecifier.getFullText(sourceFile);
-        const quoteChar = specifierText.includes("'") ? "'" : '"';
-
-        imports.push({
-          importPath,
-          componentNames,
-          allNamedImports,
-          importStart: node.getStart(sourceFile),
-          importEnd: node.getEnd(),
-          quoteChar,
-        });
-      }
-    }
-
-    ts.forEachChild(node, visit);
-  };
-
-  visit(sourceFile);
-  return imports;
-};
-
-const transformComponentImportsToSideEffects = (source: string, _sourceFile: ts.SourceFile, componentImports: ComponentImportInfo[], ctfedComponents: Set<string>): string => {
-  const sortedImports = [...componentImports].sort((a, b) => b.importStart - a.importStart);
-
-  let modifiedSource = source;
-
-  for (const importInfo of sortedImports) {
-    const ctfedInThisImport = new Set([...importInfo.componentNames].filter((name) => ctfedComponents.has(name)));
-
-    if (ctfedInThisImport.size === 0) continue;
-
-    const { importPath, quoteChar, allNamedImports } = importInfo;
-
-    const remainingImports = allNamedImports.filter((imp) => {
-      const asIndex = imp.indexOf(' as ');
-      const name = asIndex >= 0 ? imp.substring(0, asIndex).trim() : imp.trim();
-      return !ctfedInThisImport.has(name);
-    });
-
-    let newImport = '';
-
-    newImport = `import ${quoteChar}${importPath}${quoteChar};`;
-
-    if (remainingImports.length > 0) {
-      newImport += `\nimport { ${remainingImports.join(', ')} } from ${quoteChar}${importPath}${quoteChar};`;
-    }
-
-    modifiedSource = modifiedSource.substring(0, importInfo.importStart) + newImport + modifiedSource.substring(importInfo.importEnd);
-  }
-
-  return modifiedSource;
-};
+// NOTE: findComponentImports and transformComponentImportsToSideEffects were
+// removed as part of Signal Props (Phase 1, Step 5). Named imports are now
+// preserved so __b can reference Component.__f directly.
 
 const createCTFEContext = (classProperties: Map<string, any>) => {
   const sandbox: Record<string, any> = {
@@ -280,22 +199,39 @@ const extractClassPropertiesCTFE = (classNode: ts.ClassExpression | ts.ClassDecl
   return resolvedProperties;
 };
 
+/**
+ * Information about a child component mount point.
+ * Stored by the CTFE and passed to the reactive binding compiler.
+ */
+export interface ChildMountInfo {
+  /** Component class name, e.g. "MyElementComponent" */
+  componentName: string;
+  /** Kebab-case selector, e.g. "my-element-component" */
+  selector: string;
+  /** Raw source text of the props argument, e.g. "{ color: myColor }" */
+  propsExpression: string;
+  /** Pre-allocated anchor ID from the CTFE counter: "b0", "b1", … */
+  anchorId: string;
+  /** Byte offset of the ${Component(…)} interpolation in the template string */
+  templatePosition: number;
+}
+
+interface CTFECallInfo {
+  componentName: string;
+  propsExpression: string;
+  evaluatedProps?: Record<string, any> | undefined;
+  startIndex: number;
+  endIndex: number;
+  /** Byte offset inside the template literal text */
+  templatePosition: number;
+}
+
 const findComponentCallsCTFE = (
   source: string,
   sourceFile: ts.SourceFile,
   knownComponents: Map<string, ComponentDefinition>,
-): Array<{
-  componentName: string;
-  props: Record<string, any>;
-  startIndex: number;
-  endIndex: number;
-}> => {
-  const calls: Array<{
-    componentName: string;
-    props: Record<string, any>;
-    startIndex: number;
-    endIndex: number;
-  }> = [];
+): CTFECallInfo[] => {
+  const calls: CTFECallInfo[] = [];
 
   const visit = (node: ts.Node) => {
     if (ts.isTaggedTemplateExpression(node)) {
@@ -314,44 +250,46 @@ const findComponentCallsCTFE = (
               const componentName = expr.expression.text;
               const componentDef = knownComponents.get(componentName);
 
-              if (componentDef && expr.arguments.length > 0) {
-                const propsArg = expr.arguments[0];
-                if (!propsArg) return;
+              if (componentDef) {
+                // Capture the raw props expression text (even for dynamic/signal props)
+                let propsExpression = '{}';
+                if (expr.arguments.length > 0 && expr.arguments[0]) {
+                  propsExpression = expr.arguments[0].getText(sourceFile);
+                }
 
-                const props = evaluateExpressionCTFE(propsArg, sourceFile, classProperties);
-
-                if (props !== EVAL_FAILED && typeof props === 'object' && props !== null) {
-                  // Use the template span's position info directly.
-                  // The template head/previous span literal ends right before `${`,
-                  // and the span's literal text starts right after `}`.
-                  // We need the enclosing `${...}` which is:
-                  //   - Start: the head/prev literal's end position - that's where `${` begins
-                  //   - End: the span literal's start position + 1 (after `}`)
-                  
-                  // Get the span index to find the preceding literal end
-                  const spanIndex = template.templateSpans.indexOf(span);
-                  let dollarBraceStart: number;
-                  
-                  if (spanIndex === 0) {
-                    // First span: `${` comes right after the template head
-                    dollarBraceStart = template.head.getEnd() - 2; // head ends with `${`, subtract 2 to get `$` pos
-                  } else {
-                    // Subsequent span: `${` comes at end of previous span's literal
-                    const prevSpan = template.templateSpans[spanIndex - 1]!;
-                    dollarBraceStart = prevSpan.literal.getEnd() - 2;
+                // Try to evaluate props statically (for optimisation hints)
+                let evaluatedProps: Record<string, any> | undefined;
+                if (expr.arguments.length > 0 && expr.arguments[0]) {
+                  const props = evaluateExpressionCTFE(expr.arguments[0]!, sourceFile, classProperties);
+                  if (props !== EVAL_FAILED && typeof props === 'object' && props !== null) {
+                    evaluatedProps = props as Record<string, any>;
                   }
-                  
-                  // The closing `}` is at the start of this span's literal text
-                  const closingBrace = span.literal.getStart(sourceFile);
+                }
 
-                  if (dollarBraceStart >= 0 && closingBrace <= source.length) {
-                    calls.push({
-                      componentName,
-                      props,
-                      startIndex: dollarBraceStart,
-                      endIndex: closingBrace,
-                    });
-                  }
+                // Compute ${…} range in source file
+                const spanIndex = template.templateSpans.indexOf(span);
+                let dollarBraceStart: number;
+                if (spanIndex === 0) {
+                  dollarBraceStart = template.head.getEnd() - 2;
+                } else {
+                  const prevSpan = template.templateSpans[spanIndex - 1]!;
+                  dollarBraceStart = prevSpan.literal.getEnd() - 2;
+                }
+                const closingBrace = span.literal.getStart(sourceFile) + 1;
+
+                // Compute the position inside the template literal text.
+                // This is the offset from the template head start to the ${…} start.
+                const templatePosition = dollarBraceStart - template.head.getStart();
+
+                if (dollarBraceStart >= 0 && closingBrace <= source.length) {
+                  calls.push({
+                    componentName,
+                    propsExpression,
+                    evaluatedProps,
+                    startIndex: dollarBraceStart,
+                    endIndex: closingBrace,
+                    templatePosition,
+                  });
                 }
               }
             }
@@ -425,11 +363,19 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
 
     /**
      * Apply reactive binding transformation, strip template tags, and produce loader result.
+     * When childMounts are present, passes them to the binding compiler so it can
+     * emit mount calls in __b and start its idCounter at the correct offset.
      */
-    const buildTransformedResult = (source: string, modifiedSource: string, filePath: string): { contents: string; loader: 'ts' } => {
+    const buildTransformedResult = (
+      source: string,
+      modifiedSource: string,
+      filePath: string,
+      childMounts?: ChildMountInfo[],
+      childMountCount?: number,
+    ): { contents: string; loader: 'ts' } => {
       let result = modifiedSource;
       if (extendsComponentQuick(source)) {
-        const transformed = transformDefineComponentSource(result, filePath);
+        const transformed = transformDefineComponentSource(result, filePath, childMounts, childMountCount);
         if (transformed) {
           result = transformed;
         }
@@ -460,35 +406,54 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
           }
         }
 
+        // Child mount data to pass to the binding compiler
+        let childMounts: ChildMountInfo[] | undefined;
+        let childMountCount: number | undefined;
+
         if (hasComponentCalls) {
           const sourceFile = sourceCache.parse(args.path, source);
           const componentCalls = findComponentCallsCTFE(source, sourceFile, componentDefinitions);
 
           if (componentCalls.length > 0) {
-            const ctfedComponents = new Set<string>();
+            // CTFE counter — allocates b0, b1, … for child component anchors.
+            // The binding compiler starts its idCounter at this offset.
+            let childIdCounter = 0;
+            const mounts: ChildMountInfo[] = [];
+
             const sortedCalls = [...componentCalls].sort((a, b) => b.startIndex - a.startIndex);
 
             for (const call of sortedCalls) {
               const componentDef = componentDefinitions.get(call.componentName);
               if (componentDef) {
+                const anchorId = `b${childIdCounter++}`;
                 const compiledHTML = generateHTML({
                   selector: componentDef.selector,
-                  props: call.props,
+                  props: {},
+                  anchorId,
                 });
 
                 modifiedSource = modifiedSource.substring(0, call.startIndex) + compiledHTML + modifiedSource.substring(call.endIndex);
-                ctfedComponents.add(call.componentName);
+
+                mounts.push({
+                  componentName: call.componentName,
+                  selector: componentDef.selector,
+                  propsExpression: call.propsExpression,
+                  anchorId,
+                  templatePosition: call.templatePosition,
+                });
               }
             }
 
-            const componentImports = findComponentImports(sourceFile, componentDefinitions);
-            if (componentImports.length > 0) {
-              modifiedSource = transformComponentImportsToSideEffects(modifiedSource, sourceFile, componentImports, ctfedComponents);
-            }
+            // Step 5: Keep named imports — the __b function needs to reference
+            // Component.__f for mount calls. Do NOT call
+            // transformComponentImportsToSideEffects.
+
+            childMounts = mounts;
+            childMountCount = childIdCounter;
           }
         }
 
-        return buildTransformedResult(source, modifiedSource, args.path);
+        return buildTransformedResult(source, modifiedSource, args.path, childMounts, childMountCount);
       } catch (error) {
         const diagnostic = createError(
           `Error processing ${args.path}: ${error instanceof Error ? error.message : error}`,

@@ -15,6 +15,7 @@ import { lifecycleArrowFunction } from './lifecycle-arrow-function.js';
 import { requireConstTaggedTemplates } from './require-const-tagged-templates.js';
 import { noNestedHtmlTags } from './no-nested-html-tags.js';
 import { noConditionalTemplateInit } from './no-conditional-template-init.js';
+import { noElementId } from './no-element-id.js';
 import type { LintRuleDefinition } from './types.js';
 
 export { noDefaultExportComponent } from './no-default-export-component.js';
@@ -23,6 +24,7 @@ export { lifecycleArrowFunction } from './lifecycle-arrow-function.js';
 export { requireConstTaggedTemplates } from './require-const-tagged-templates.js';
 export { noNestedHtmlTags } from './no-nested-html-tags.js';
 export { noConditionalTemplateInit } from './no-conditional-template-init.js';
+export { noElementId } from './no-element-id.js';
 
 /**
  * All built-in lint rules, in registration order.
@@ -35,4 +37,5 @@ export const allRules: readonly LintRuleDefinition[] = [
   requireConstTaggedTemplates,
   noNestedHtmlTags,
   noConditionalTemplateInit,
+  noElementId,
 ];

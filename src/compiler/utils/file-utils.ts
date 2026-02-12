@@ -1,5 +1,4 @@
 import fs from 'fs';
-import path from 'path';
 import type { BuildContext, ComponentDefinition } from '../types.js';
 import { sourceCache } from './cache.js';
 import { extractComponentDefinitions } from './ast-utils.js';
@@ -12,7 +11,17 @@ export const safeReadFile = async (filePath: string): Promise<string | null> => 
   }
 };
 
-export const collectFilesRecursively = async (dir: string, filter: (fileName: string) => boolean): Promise<string[]> => {
+/** Directories that should never be scanned for component sources */
+const EXCLUDED_DIRS = new Set([
+  'node_modules', 'dist', '.git', '.svn', '.hg',
+  'coverage', '.turbo', '.next', '.nuxt',
+]);
+
+export const collectFilesRecursively = async (
+  dir: string,
+  filter: (fileName: string) => boolean,
+  excludeDirs: Set<string> = EXCLUDED_DIRS,
+): Promise<string[]> => {
   const files: string[] = [];
 
   const collect = async (currentDir: string): Promise<void> => {
@@ -21,7 +30,9 @@ export const collectFilesRecursively = async (dir: string, filter: (fileName: st
       for (const entry of entries) {
         const fullPath = `${currentDir}/${entry.name}`;
         if (entry.isDirectory()) {
-          await collect(fullPath);
+          if (!excludeDirs.has(entry.name)) {
+            await collect(fullPath);
+          }
         } else if (entry.isFile() && filter(entry.name)) {
           files.push(fullPath);
         }
@@ -59,13 +70,16 @@ export const getContentType = (url: string): string => {
 };
 
 /**
- * Create a shared BuildContext by scanning workspace directories once.
+ * Create a shared BuildContext by scanning the project root for component files.
  * Both ComponentPrecompiler and HTMLBootstrapInjector use this to avoid
  * duplicate filesystem scans.
+ *
+ * Scans from cwd() recursively, skipping node_modules / dist / .git etc.
+ * This makes it work for any project structure without hardcoded paths.
  */
 export const createBuildContext = async (): Promise<BuildContext> => {
   const workspaceRoot = process.cwd();
-  const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
+  const searchDirs = [workspaceRoot];
   const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
 
   const tsFiles: string[] = [];

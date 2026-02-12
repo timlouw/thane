@@ -78,6 +78,8 @@ export const generateStaticRepeatTemplate = (
   itemBindings: ItemBinding[],
   _itemVar: string,
   itemEvents?: ItemEventBinding[],
+  signalBindings?: SimpleBinding[],
+  directiveAnchorIds?: string[],
 ): StaticTemplateInfo => {
   // Parse the template to get element structure
   const parsed = parseHtmlTemplate(itemTemplate);
@@ -103,7 +105,7 @@ export const generateStaticRepeatTemplate = (
   
   const findElementPath = (el: HtmlElement, targetId: string, currentPath: number[]): number[] | null => {
     // Check if this element has the target ID
-    const elId = el.attributes.get('id')?.value || el.attributes.get('data-bind-id')?.value;
+    const elId = el.attributes.get('id')?.value;
     if (elId === targetId) {
       return currentPath;
     }
@@ -121,7 +123,7 @@ export const generateStaticRepeatTemplate = (
   // Find path for each element with bindings
   for (const elementId of bindingsByElement.keys()) {
     // Check if root element matches
-    const rootId = rootEl.attributes.get('id')?.value || rootEl.attributes.get('data-bind-id')?.value;
+    const rootId = rootEl.attributes.get('id')?.value;
     if (rootId === elementId) {
       elementPaths.set(elementId, []);
     } else {
@@ -150,10 +152,7 @@ export const generateStaticRepeatTemplate = (
   // all be removed from the static template.
   staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
   
-  // Remove data-bind-id attributes (we use paths instead)
-  staticHtml = staticHtml.replace(/\s*data-bind-id="[^"]*"/g, '');
-  
-  // Remove inline id attributes that were only added for bindings
+  // Remove inline id attributesthat were only added for bindings
   // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
   staticHtml = staticHtml.replace(/\s*id="[ib]\d+"/g, '');
   
@@ -213,7 +212,7 @@ export const generateStaticRepeatTemplate = (
     eventElementPaths = new Map();
     for (const evt of itemEvents) {
       if (eventElementPaths.has(evt.elementId)) continue; // Already computed
-      const rootId = rootEl.attributes.get('id')?.value || rootEl.attributes.get('data-bind-id')?.value;
+      const rootId = rootEl.attributes.get('id')?.value;
       if (rootId === evt.elementId) {
         eventElementPaths.set(evt.elementId, []);
       } else {
@@ -225,10 +224,53 @@ export const generateStaticRepeatTemplate = (
     }
   }
   
+  // Compute paths for signal binding elements (Step 13)
+  let signalElementBindings: StaticTemplateInfo['signalElementBindings'];
+  if (signalBindings && signalBindings.length > 0) {
+    signalElementBindings = [];
+    for (const sb of signalBindings) {
+      if (sb.isInsideConditional) continue; // Handled in Step 14
+      const rootId = rootEl.attributes.get('id')?.value;
+      let path: number[] | null = null;
+      if (rootId === sb.id) {
+        path = [];
+      } else {
+        path = findElementPath(rootEl, sb.id, []);
+      }
+      if (path) {
+        signalElementBindings.push({
+          path,
+          signalName: sb.signalName,
+          type: sb.type,
+          property: sb.property,
+        });
+      }
+    }
+  }
+
+  // Compute paths for directive anchors: conditional/repeat anchors (Step 14/15)
+  let directiveAnchorPaths: Map<string, number[]> | undefined;
+  if (directiveAnchorIds && directiveAnchorIds.length > 0) {
+    directiveAnchorPaths = new Map();
+    for (const anchorId of directiveAnchorIds) {
+      const rootId = rootEl.attributes.get('id')?.value;
+      if (rootId === anchorId) {
+        directiveAnchorPaths.set(anchorId, []);
+      } else {
+        const path = findElementPath(rootEl, anchorId, []);
+        if (path) {
+          directiveAnchorPaths.set(anchorId, path);
+        }
+      }
+    }
+  }
+
   return {
     staticHtml,
     elementBindings: elementBindingsArray,
     eventElementPaths,
+    ...(signalElementBindings ? { signalElementBindings } : {}),
+    ...(directiveAnchorPaths ? { directiveAnchorPaths } : {}),
     canUseOptimized: true,
   };
 };
@@ -850,14 +892,10 @@ export const processItemTemplateRecursively = (
         end: tagNameEnd,
         replacement: ` id="${id}"`,
       });
-    } else {
-      // Element already has ID - use data-bind-id instead
-      edits.push({
-        start: tagNameEnd,
-        end: tagNameEnd,
-        replacement: ` data-bind-id="${id}"`,
-      });
     }
+    // If element already has a user-defined id, no attribute injection needed —
+    // the optimized codegen uses path-based navigation (children[N] etc.),
+    // and THANE406 linter rule bans user id attributes in templates anyway.
   }
   const elementIdByTagStart = new Map<number, string>();
   
@@ -870,8 +908,6 @@ export const processItemTemplateRecursively = (
       elementIdByTagStart.set(tagStart, itemAttr.id);
     }
   }
-  const injectedElementIds = new Set<number>();
-  
   for (const { start, end, attrName, expr, id } of itemAttrMatches) {
     let tagStart = start;
     while (tagStart > 0 && templateContent[tagStart] !== '<') {
@@ -882,10 +918,6 @@ export const processItemTemplateRecursively = (
     if (indexVar) {
       transformedExpr = renameIdentifierInExpression(transformedExpr, indexVar, indexVar);
     }
-    const needsDataBindId = !injectedElementIds.has(tagStart);
-    if (needsDataBindId) {
-      injectedElementIds.add(tagStart);
-    }
     const binding = itemBindings.find(b => b.elementId === id);
     if (binding) {
       binding.elementId = elementId;
@@ -894,9 +926,7 @@ export const processItemTemplateRecursively = (
     edits.push({
       start,
       end,
-      replacement: needsDataBindId 
-        ? `data-bind-id="${elementId}" ${attrName}="\${${transformedExpr}}"`
-        : `${attrName}="\${${transformedExpr}}"`,
+      replacement: `${attrName}="\${${transformedExpr}}"`,
     });
   }
   edits.push(...buildElementIdEdits(elementIdMap, allRanges, { eventBindings, itemEvents }));

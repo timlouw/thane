@@ -17,10 +17,8 @@ export type Signal<T> = {
 };
 
 /**
- * The root element for binding lookups (element with getElementById)
+ * The root element for component rendering.
  */
-export type ComponentRoot = HTMLElement & { 
-  getElementById(id: string): HTMLElement | null 
-};
+export type ComponentRoot = HTMLElement;
 
 

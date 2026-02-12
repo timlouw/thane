@@ -28,6 +28,7 @@ import {
 import type { BindingInfo, ConditionalBlock, WhenElseBlock, RepeatBlock, EventBinding } from './types.js';
 import { CLOSURE_ACCESS } from './types.js';
 import { processHtmlTemplateWithConditionals } from './template-processing.js';
+import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
 
 // ============================================================================
 // Lifecycle hook stripping
@@ -256,7 +257,12 @@ const findHtmlTemplates = (sourceFile: ts.SourceFile): TemplateInfo[] => {
  * 3. Generated code uses bare signal references, ctx.root, etc.
  * 4. Inject __template and __bindings as properties on the setup function
  */
-export const transformDefineComponentSource = (source: string, filePath: string): string | null => {
+export const transformDefineComponentSource = (
+  source: string,
+  filePath: string,
+  childMounts?: ChildMountInfo[],
+  childMountCount?: number,
+): string | null => {
   const sourceFile = sourceCache.parse(filePath, source);
   
   // Find the defineComponent call
@@ -309,7 +315,7 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   let allWhenElseBlocks: WhenElseBlock[] = [];
   let allRepeatBlocks: RepeatBlock[] = [];
   let allEventBindings: EventBinding[] = [];
-  let idCounter = 0;
+  let idCounter = childMountCount ?? 0;
   let lastProcessedTemplateContent = '';
   let hasConditionals = false;
   
@@ -372,11 +378,81 @@ export const transformDefineComponentSource = (source: string, filePath: string)
     }
   }
 
+  // ── Partition child mounts by directive containment (Step 7) ──
+  const directiveChildMounts = new Map<string, { cm: ChildMountInfo, globalIndex: number }[]>();
+  const topLevelChildMounts: { cm: ChildMountInfo, globalIndex: number }[] = [];
+
+  if (childMounts && childMounts.length > 0) {
+    const addToDirective = (key: string, cm: ChildMountInfo, idx: number) => {
+      if (!directiveChildMounts.has(key)) directiveChildMounts.set(key, []);
+      directiveChildMounts.get(key)!.push({ cm, globalIndex: idx });
+    };
+
+    // Recursive helper: search nested conditionals (depth-first, innermost match wins)
+    const findInConditionals = (marker: string, conds: ConditionalBlock[]): string | null => {
+      for (const c of conds) {
+        if (!c.templateContent.includes(marker)) continue;
+        // Check deeper nesting first
+        const inner = findInConditionals(marker, c.nestedConditionals || []);
+        if (inner) return inner;
+        return c.id;
+      }
+      return null;
+    };
+
+    const findInWhenElse = (marker: string, wes: WhenElseBlock[]): string | null => {
+      for (const we of wes) {
+        if (we.thenTemplate.includes(marker)) {
+          const inner = findInConditionals(marker, we.nestedConditionals || []);
+          if (inner) return inner;
+          const innerWE = findInWhenElse(marker, we.nestedWhenElse || []);
+          if (innerWE) return innerWE;
+          return we.thenId;
+        }
+        if (we.elseTemplate.includes(marker)) {
+          return we.elseId;
+        }
+      }
+      return null;
+    };
+
+    for (let i = 0; i < childMounts.length; i++) {
+      const cm = childMounts[i]!;
+      const marker = `id="${cm.anchorId}"`;
+      let placed = false;
+
+      // Check repeat blocks (and their nested directives)
+      for (const rep of allRepeatBlocks) {
+        if (!rep.itemTemplate.includes(marker)) continue;
+        const innerCond = findInConditionals(marker, rep.nestedConditionals);
+        if (innerCond) { addToDirective(innerCond, cm, i); placed = true; break; }
+        const innerWE = findInWhenElse(marker, rep.nestedWhenElse);
+        if (innerWE) { addToDirective(innerWE, cm, i); placed = true; break; }
+        addToDirective(rep.id, cm, i);
+        placed = true;
+        break;
+      }
+      if (placed) continue;
+
+      // Check top-level conditionals
+      const condId = findInConditionals(marker, allConditionals);
+      if (condId) { addToDirective(condId, cm, i); continue; }
+
+      // Check whenElse blocks
+      const weId = findInWhenElse(marker, allWhenElseBlocks);
+      if (weId) { addToDirective(weId, cm, i); continue; }
+
+      // Top-level mount
+      topLevelChildMounts.push({ cm, globalIndex: i });
+    }
+  }
+
   // Generate bindings code with CLOSURE_ACCESS — natively emits bare signal refs,
   // ctx.root, and closure-compatible code. No post-hoc stripping needed.
   const ap = CLOSURE_ACCESS;
   const { code: initBindingsFunction, staticTemplates: repeatStaticTemplates } = generateInitBindingsFunction(
     allBindings, allConditionals, allWhenElseBlocks, allRepeatBlocks, allEventBindings, filePath, ap,
+    directiveChildMounts.size > 0 ? directiveChildMounts : undefined,
   );
   
   let staticTemplateCode = '';
@@ -391,7 +467,8 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   // Update imports: always replace defineComponent → __registerComponent,
   // and add binding / styles imports as needed.
   const hasAnyBindings = allBindings.length > 0 || allConditionals.length > 0 || 
-    allWhenElseBlocks.length > 0 || allRepeatBlocks.length > 0 || allEventBindings.length > 0;
+    allWhenElseBlocks.length > 0 || allRepeatBlocks.length > 0 || allEventBindings.length > 0 ||
+    (childMounts != null && childMounts.length > 0);
     
   if (servicesImport) {
     // Filter out defineComponent (replaced by __registerComponent in compiled output)
@@ -411,48 +488,25 @@ export const transformDefineComponentSource = (source: string, filePath: string)
       if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
       if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
       
-      const hasSimpleConditionals = allConditionals.some((c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`);
-      const hasComplexConditionals = allConditionals.some((c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`);
+      // Check for conditionals at top level AND nested inside repeat items (Step 14)
+      const allConditionalsIncludingNested = [
+        ...allConditionals,
+        ...allRepeatBlocks.flatMap(r => r.nestedConditionals),
+      ];
+      const allWhenElseIncludingNested = [
+        ...allWhenElseBlocks,
+        ...allRepeatBlocks.flatMap(r => r.nestedWhenElse),
+      ];
+      const hasSimpleConditionals = allConditionalsIncludingNested.some((c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`);
+      const hasComplexConditionals = allConditionalsIncludingNested.some((c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`);
       if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
-      if (hasComplexConditionals || allWhenElseBlocks.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
+      if (hasComplexConditionals || allWhenElseIncludingNested.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
       
       if (allRepeatBlocks.length > 0) {
-        const usesOptimized = repeatStaticTemplates.length > 0;
-        if (usesOptimized) {
-          // Keyed repeats (with trackBy, no emptyTemplate) use lighter createKeyedReconciler
-          if (allRepeatBlocks.some(r => !!r.trackByFn && !r.emptyTemplate)) {
-            requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
-          }
-          // Non-keyed or emptyTemplate repeats need full createReconciler
-          if (allRepeatBlocks.some(r => !r.trackByFn || !!r.emptyTemplate)) {
-            requiredFunctions.push(BIND_FN.RECONCILER);
-          }
-        }
-        const hasNonOptimized = allRepeatBlocks.some(rep => {
-          const hasItemBindings = rep.itemBindings.length > 0;
-          const hasSignalBindings = rep.signalBindings.length > 0;
-          const hasNestedRepeats = rep.nestedRepeats.length > 0;
-          const hasNestedConditionals = rep.nestedConditionals.length > 0;
-          const canUseOptimized = hasItemBindings && 
-            !hasSignalBindings && !hasNestedRepeats && !hasNestedConditionals;
-          return !canUseOptimized;
-        });
-        if (hasNonOptimized) requiredFunctions.push(BIND_FN.REPEAT);
+        // Always import createKeyedReconciler — it's the sole reconciler now (Step 16)
+        requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
+        
       }
-      
-      const hasNestedRepeats = allRepeatBlocks.some((rep) => rep.nestedRepeats.length > 0);
-      if (hasNestedRepeats) requiredFunctions.push(BIND_FN.NESTED_REPEAT);
-      
-      const hasNonOptimizedWithBindings = allRepeatBlocks.some((rep) => {
-        const hasItemBindings = rep.itemBindings.length > 0;
-        const hasSignalBindings = rep.signalBindings.length > 0;
-        const hasNestedRepeatSubs = rep.nestedRepeats.length > 0;
-        const hasNestedConditionals = rep.nestedConditionals.length > 0;
-        const canUseOptimized = hasItemBindings && 
-          !hasSignalBindings && !hasNestedRepeatSubs && !hasNestedConditionals;
-        return (!canUseOptimized && hasItemBindings) || rep.nestedRepeats.some((nr) => nr.itemBindings.length > 0);
-      });
-      if (hasNonOptimizedWithBindings) requiredFunctions.push(BIND_FN.FIND_EL);
       // Events now use direct addEventListener — no runtime import needed
     }
 
@@ -493,6 +547,20 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   let processedBindings = initBindingsFunction
     .replace(/\s*initializeBindings = \(\) => \{\s*/, '')
     .replace(/\};\s*$/, '');
+
+  // ── Child component mount code (Signal Props) ──
+  // Top-level mounts are appended here. Mounts inside conditionals/whenElse/repeat
+  // are injected into nested initializers by generateInitBindingsFunction (Step 7).
+  if (topLevelChildMounts.length > 0) {
+    const mountLines: string[] = [];
+    for (const { cm, globalIndex } of topLevelChildMounts) {
+      const varName = `_cm${globalIndex}`;
+      mountLines.push(`const ${varName} = document.createElement('${cm.selector}');`);
+      mountLines.push(`_gid('${cm.anchorId}').replaceWith(${varName});`);
+      mountLines.push(`${cm.componentName}.__f(${varName}, ${cm.propsExpression});`);
+    }
+    processedBindings += '\n    ' + mountLines.join('\n    ');
+  }
   
   // Collect repeat static template names
   const repeatTemplateNames: string[] = [];
@@ -505,8 +573,8 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   // Inject selector if auto-derived (before the setup function argument)
   if (!hasExplicitSelector && selector) {
     result = result.replace(
-      /defineComponent\s*\(/,
-      `defineComponent('${selector}', `,
+      /defineComponent\s*((?:<[^(]*>)?)\s*\(/,
+      `defineComponent$1('${selector}', `,
     );
   }
   
@@ -520,8 +588,8 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   let returnObjectBracePos: number | null = null;
   
   const findInjectionPoints = (node: ts.Node) => {
-    // Find: export const X = defineComponent(...)
-    if (ts.isVariableStatement(node) && node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) {
+    // Find: [export] const X = defineComponent(...)
+    if (ts.isVariableStatement(node)) {
       for (const decl of node.declarationList.declarations) {
         if (decl.initializer && ts.isCallExpression(decl.initializer) && isDefineComponentCall(decl.initializer)) {
           exportStart = node.getStart(injectionSf);
@@ -624,18 +692,11 @@ export const transformDefineComponentSource = (source: string, filePath: string)
   
   // Step 4 is now integrated into Step 3a (stripDeadPropertiesAndDetectFeatures)
   
-  // ── Final step: rename defineComponent → __registerComponent[Lean] ──
+  // ── Final step: rename defineComponent → __registerComponent ──
   // Done AFTER all AST-based injections that rely on isDefineComponentCall()
   // matching the `defineComponent` identifier.
-  //
-  // When the component has no styles and no lifecycle hooks, use the lean
-  // variant which tree-shakes: createHostElement, _onStyles, styles guard,
-  // template fallback, onMount/onDestroy checks.
-  const useLeanRegistration = !stripResult.hasStyles && !stripResult.hasLifecycle;
-  const registerFnName = useLeanRegistration
-    ? BIND_FN.REGISTER_COMPONENT_LEAN
-    : BIND_FN.REGISTER_COMPONENT;
-  result = result.replace(/\bdefineComponent\s*\(/, `${registerFnName}(`);
+  const registerFnName = BIND_FN.REGISTER_COMPONENT;
+  result = result.replace(/\bdefineComponent\s*(?:<[^(]*>)?\s*\(/, `${registerFnName}(`);
 
   // Fix up the placeholder import to the actual registration function
   result = result.replace('__REGISTER_PLACEHOLDER__', registerFnName);

@@ -138,39 +138,21 @@ export function __enableComponentStyles(): void {
 // Component Registration
 // ============================================================================
 
-// Map of component selectors to factory functions
-const componentFactories = new Map<string, (target?: HTMLElement) => ComponentInstance>();
-
 /**
- * Track mounted instances for cleanup via destroyComponent.
- * Lazily initialized — only allocated when destroyComponent is first called,
- * so the WeakMap and its .set() calls are absent from bundles that never
- * import destroyComponent.
- * @internal
+ * After a component's template is rendered, scan its root for child elements
+ * whose tag name matches a registered component selector. For each match,
+ * extract HTML attributes as props and mount the child factory into that element.
+ *
+ * This enables the CTFE (compile-time function evaluation) path where the
+ * compiler inlines `${ChildComponent({ prop: 'val' })}` as
+ * `<child-component prop="val"></child-component>` in the parent template.
+ * Without this scan, those elements would be inert DOM nodes.
+ * REMOVED: Child mounting is now handled by compiler-generated __b binding code (Signal Props).
  */
-let mountedInstances: WeakMap<ComponentRoot, ComponentInstance> | null = null;
 
-/**
- * Create the host element with getElementById support.
- * If a target is provided, renders directly into it (no wrapper div).
- * Falls back to a wrapper div for child components.
- */
-const createHostElement = (selector: string, target?: HTMLElement): ComponentRoot => {
-  if (target) {
-    // Render directly into target — no wrapper div
-    target.className = target.className ? `${target.className} ${selector}` : selector;
-    // Use document.getElementById for native speed
-    const root = target as any;
-    root.getElementById = (id: string): HTMLElement | null => document.getElementById(id);
-    return root as ComponentRoot;
-  }
-  // Fallback: create wrapper div for child components
-  const el = document.createElement('div') as any;
-  el.className = selector;
-  el.getElementById = (id: string): HTMLElement | null =>
-    el.querySelector(`#${id}`);
-  return el as ComponentRoot;
-};
+// ============================================================================
+// Host Element Setup (inlined into __registerComponent)
+// ============================================================================
 
 /**
  * Define a component using the function-based API.
@@ -231,11 +213,12 @@ export function defineComponent<P extends ComponentProps = {}>(
   let stylesRegistered = false;
 
   // Create factory function for component instantiation
-  const factory = (target?: HTMLElement): ComponentInstance => {
-    const root = createHostElement(selector, target);
+  const factory = (target?: HTMLElement, props?: P): ComponentInstance => {
+    target!.classList.add(selector);
+    const root = target as unknown as ComponentRoot;
     const ctx: ComponentContext<P> = {
       root,
-      props: {} as Readonly<P>,
+      props: (props || {}) as Readonly<P>,
     };
 
     const result = setup(ctx) as InternalComponentResult;
@@ -272,46 +255,41 @@ export function defineComponent<P extends ComponentProps = {}>(
     return instance;
   };
 
-  componentFactories.set(selector, factory);
-
-  const selectorFn = createComponentHTMLSelector<P>(selector);
-  // All mount paths now use __f — attach factory to selector function
-  (selectorFn as any).__f = factory;
-
-  // Expose static templates on the selector function for repeat binding lookups
-  // The codegen generates references like `Benchmark.__tpl_b0`
+  // Return a ref object compatible with mount() and repeat template lookups
+  const ref: any = { __f: factory };
   for (const [name, tpl] of staticTemplatesMap) {
-    (selectorFn as any)[name] = tpl;
+    ref[name] = tpl;
   }
-  
-  return selectorFn;
+  return ref;
 }
 
 /**
- * Compiler-optimized component registration.
- *
- * Unlike `defineComponent`, this function:
- * - Always receives the selector as a string (no type branching / error throw)
- * - Returns a minimal ref object (no HTML generation function)
- * - Assigns static templates directly to the ref (no Map allocation)
+ * Compiler-optimized component registration (consolidated).
  *
  * The compiler emits `__registerComponent` in place of `defineComponent`.
+ * This is the sole registration function — it handles all components:
+ * - Styles registration (guarded, zero-cost when no styles)
+ * - Lifecycle hooks (guarded, zero-cost when absent)
+ * - Pre-compiled templates (always provided by the compiler)
+ *
  * When no module imports `defineComponent`, esbuild tree-shakes it along
- * with `createComponentHTMLSelector` and the selector-type branching.
+ * with the selector-type branching and error handling.
  *
  * @internal — emitted by the compiler; not part of the public API.
  */
 export function __registerComponent(
   selector: string,
   setup: SetupFunction,
-  compiledTemplate?: HTMLTemplateElement,
+  compiledTemplate: HTMLTemplateElement,
   ...extraStaticTemplates: any[]
 ): any {
   let stylesRegistered = false;
 
-  const factory = (target?: HTMLElement): ComponentInstance => {
-    const root = createHostElement(selector, target);
-    const ctx: ComponentContext = { root, props: {} as Readonly<any> };
+  const factory = (target: HTMLElement, props?: Record<string, any>): ComponentInstance => {
+    target.classList.add(selector);
+    const root = target as ComponentRoot;
+
+    const ctx: ComponentContext = { root, props: (props || {}) as Readonly<any> };
     const result = setup(ctx) as InternalComponentResult;
 
     if (_onStyles && !stylesRegistered && result.styles) {
@@ -319,70 +297,9 @@ export function __registerComponent(
       stylesRegistered = true;
     }
 
-    if (compiledTemplate) {
-      root.appendChild(compiledTemplate.content.cloneNode(true));
-    } else if (result.template) {
-      root.innerHTML = result.template;
-    }
-
-    if (result.__b) result.__b(ctx);
-    if (result.onMount) result.onMount();
-
-    const instance: ComponentInstance = { root };
-    if (result.onDestroy) instance.__onDestroy = result.onDestroy;
-    return instance;
-  };
-
-  componentFactories.set(selector, factory);
-
-  // Minimal ref — carries __componentSelector for mountComponent() lookup,
-  // __f for mount(), and any static template references for repeat optimizations.
-  const ref: any = { __componentSelector: selector, __f: factory };
-  for (let i = 0; i < extraStaticTemplates.length; i += 2) {
-    const name = extraStaticTemplates[i];
-    const tpl = extraStaticTemplates[i + 1];
-    if (typeof name === 'string' && tpl) ref[name] = tpl;
-  }
-  return ref;
-}
-
-/**
- * Lean compiler-optimized component registration.
- *
- * Used when the compiler determines a component has:
- * - No styles property
- * - No onMount / onDestroy lifecycle hooks
- * - A pre-compiled template (always provided)
- *
- * Compared to `__registerComponent`, this variant:
- * - Inlines host element creation (tree-shakes `createHostElement`)
- * - Skips styles registration check (tree-shakes `_onStyles`)
- * - Skips lifecycle hook guards (no onMount/onDestroy branching)
- * - Skips template fallback (always uses compiledTemplate)
- * - Uses simplified rest-params loop (no type guard)
- *
- * When all components in an app use this variant, esbuild tree-shakes
- * `__registerComponent`, `createHostElement`, `_onStyles`, and
- * `__enableComponentStyles` entirely.
- *
- * @internal — emitted by the compiler; not part of the public API.
- */
-export function __registerComponentLean(
-  selector: string,
-  setup: SetupFunction,
-  compiledTemplate: HTMLTemplateElement,
-  ...extraStaticTemplates: any[]
-): any {
-  const factory = (target: HTMLElement): ComponentInstance => {
-    target.classList.add(selector);
-    (target as any).getElementById = (id: string) => document.getElementById(id);
-    const root = target as ComponentRoot;
-
-    const ctx: ComponentContext = { root, props: {} as Readonly<any> };
-    const result = setup(ctx) as InternalComponentResult;
-
     root.appendChild(compiledTemplate.content.cloneNode(true));
     if (result.__b) result.__b(ctx);
+    if (result.onMount) result.onMount();
 
     return { root };
   };
@@ -392,33 +309,6 @@ export function __registerComponentLean(
     ref[extraStaticTemplates[i]] = extraStaticTemplates[i + 1];
   }
   return ref;
-}
-
-/**
- * Mount a component to a target element
- * 
- * Accepts either:
- * - A ComponentHTMLSelector function (returned by defineComponent)
- * - An HTML selector string like "<my-page></my-page>"
- * 
- * @param component - Component selector function or HTML string
- * @param target - DOM element to mount to (defaults to document.body)
- * @returns The mounted component root element or null
- */
-export function mountComponent(
-  component: ComponentHTMLSelector<any> | string,
-  target: HTMLElement = document.body
-): ComponentRoot | null {
-  let selector: string | undefined;
-
-  if (typeof component === 'function') {
-    selector = (component as any).__componentSelector;
-  } else if (typeof component === 'string') {
-    const match = component.match(/<([a-z][a-z0-9-]*)/i);
-    if (match) selector = match[1];
-  }
-
-  return selector ? _mountBySelector(selector, target) : null;
 }
 
 /**
@@ -437,78 +327,13 @@ export function mountComponent(
 export function mount(
   component: ComponentHTMLSelector<any>,
   target: HTMLElement = document.body,
+  props?: Record<string, any>,
 ): ComponentRoot | null {
-  // All registration paths (defineComponent, __registerComponent,
-  // __registerComponentLean) store the factory as __f on the ref.
-  // mountComponent() is the only consumer of _mountBySelector / componentFactories.
-  const factory: ((t: HTMLElement) => ComponentInstance) | undefined = (component as any).__f;
-  return factory ? factory(target).root : null;
+  // Both registration paths (defineComponent, __registerComponent)
+  // store the factory as __f on the ref.
+  const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (component as any).__f;
+  return factory ? factory(target, props).root : null;
 }
 
-/**
- * Shared mount implementation — takes a resolved selector string.
- * @internal
- */
-function _mountBySelector(
-  selector: string,
-  target: HTMLElement,
-): ComponentRoot | null {
-  const factory = componentFactories.get(selector);
-  if (!factory) return null;
-  
-  const instance = factory(target);
 
-  if (mountedInstances) {
-    mountedInstances.set(instance.root, instance);
-  }
-
-  if (instance.root !== target) {
-    target.appendChild(instance.root);
-  }
-  
-  return instance.root;
-}
-
-/**
- * Destroy a mounted component, calling its onDestroy lifecycle hook
- * and removing it from the DOM.
- * 
- * Lazily initializes the mountedInstances WeakMap on first call — from
- * that point forward, mountComponent will also track instances for later
- * cleanup.
- * 
- * @param root - The component root element returned by mountComponent
- */
-export function destroyComponent(root: ComponentRoot): void {
-  if (!mountedInstances) mountedInstances = new WeakMap();
-  const instance = mountedInstances.get(root);
-  if (instance?.__onDestroy) instance.__onDestroy();
-  root.remove();
-  mountedInstances.delete(root);
-}
-
-/**
- * Generate HTML selector function for a component.
- * The returned function also carries a __componentSelector property
- * so mount() can look up the factory.
- *
- * Not exported — internal to defineComponent. The HTML-generation body
- * only executes when the function is called with props; most apps only
- * use the __componentSelector property for mount() lookups.
- */
-function createComponentHTMLSelector<T extends ComponentProps>(
-  selector: string
-): ComponentHTMLSelector<T> {
-  const fn = ((props: T) => {
-    const propsString = Object.entries(props)
-      .map(([key, value]) => {
-        const val = typeof value === 'string' ? value : JSON.stringify(value) || '';
-        return `${key}="${val.replace(/"/g, '&quot;')}"`;
-      })
-      .join(' ');
-    return `<div class="${selector}" ${propsString}></div>`;
-  }) as ComponentHTMLSelector<T> & { __componentSelector: string };
-  fn.__componentSelector = selector;
-  return fn;
-}
 

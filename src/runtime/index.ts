@@ -61,11 +61,8 @@ export { signal } from './signal.js';
 export { 
   defineComponent,
   __registerComponent,
-  __registerComponentLean,
   registerGlobalStyles, 
-  mountComponent,
   mount,
-  destroyComponent,
   __enableComponentStyles,
   type ComponentContext,
   type ComponentReturnType,
@@ -75,11 +72,5 @@ export {
 export { 
   __bindIf, 
   __bindIfExpr, 
-  __bindRepeat, 
-  __bindRepeatTpl,
-  createReconciler,
   createKeyedReconciler,
-  __bindNestedRepeat, 
-  __findEl,
-  __findTextNode 
 } from './dom-binding.js';

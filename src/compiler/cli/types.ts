@@ -4,7 +4,7 @@
 
 export interface CLIOptions {
   /** Command to execute */
-  command: 'build' | 'dev' | 'serve';
+  command: 'build' | 'dev' | 'serve' | 'analyze';
   /** Production mode */
   prod: boolean;
   /** Enable gzip/brotli compression */
@@ -21,6 +21,10 @@ export interface CLIOptions {
   htmlTemplate?: string | undefined;
   /** Start dev server after build */
   serve: boolean;
+  /** Compare dev and prod builds (analyze command) */
+  compare: boolean;
+  /** Port for analyzer server */
+  analyzerPort: number;
 }
 
 export interface BuildConfig {

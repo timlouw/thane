@@ -215,7 +215,7 @@ const collectComponentDefinitions = async (ctx?: BuildContext): Promise<Map<stri
 
   const componentDefinitions = new Map<string, ComponentDefinition>();
   const workspaceRoot = process.cwd();
-  const searchDirs = [path.join(workspaceRoot, 'libs', 'components'), path.join(workspaceRoot, 'apps')];
+  const searchDirs = [workspaceRoot];
 
   const tsFilter = (name: string) => name.endsWith('.ts') && !name.endsWith('.d.ts');
 

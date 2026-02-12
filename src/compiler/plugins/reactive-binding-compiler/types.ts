@@ -22,25 +22,9 @@ export interface AccessPattern {
   rootAlias: string;
   /** Prefix for static template class properties, e.g. `"this.constructor."` or `""` */
   staticPrefix: string;
-  /** Call context for event handlers, e.g. `"this"` or `"null"` */
-  callContext: string;
-  /** Whether to emit class-style `initializeBindings = () => {` or plain arrow syntax */
-  classStyle: boolean;
   /** Static template declaration format: class property or standalone const */
   staticTemplatePrefix: string;
 }
-
-/** Access pattern for class-based components (extends ShadowDom) */
-export const CLASS_ACCESS: AccessPattern = {
-  signal: (name) => `this.${name}`,
-  signalCall: (name) => `this.${name}()`,
-  root: 'this.shadowRoot',
-  rootAlias: 'const r = this.shadowRoot;',
-  staticPrefix: 'this.constructor.',
-  callContext: 'this',
-  classStyle: true,
-  staticTemplatePrefix: 'static template',
-};
 
 /** Access pattern for defineComponent (closure-based) */
 export const CLOSURE_ACCESS: AccessPattern = {
@@ -49,8 +33,6 @@ export const CLOSURE_ACCESS: AccessPattern = {
   root: 'ctx.root',
   rootAlias: 'const r = ctx.root;',
   staticPrefix: '',
-  callContext: 'null',
-  classStyle: false,
   staticTemplatePrefix: 'const __tpl',
 };
 
@@ -142,8 +124,6 @@ export interface BindingBase {
   id: string;
   isInsideConditional: boolean;
   conditionalId?: string;
-  /** True when the element already has a user-provided `id` attribute, so the compiler used `data-bind-id` instead */
-  usesDataBindId?: boolean;
 }
 
 /**
@@ -199,6 +179,15 @@ export interface StaticTemplateInfo {
   }>;
   /** Navigation paths for event-bound elements (elementId -> path) */
   eventElementPaths?: Map<string, number[]> | undefined;
+  /** Navigation paths and binding info for signal-bound elements inside repeat items */
+  signalElementBindings?: Array<{
+    path: number[];
+    signalName: string;
+    type: 'text' | 'style' | 'attr';
+    property?: string | undefined;
+  }>;
+  /** Navigation paths for directive anchors: conditional/repeat anchors inside item template (Step 14/15) */
+  directiveAnchorPaths?: Map<string, number[]>;
   /** Whether this template can use the optimized path */
   canUseOptimized: boolean;
   /** Reason optimization was skipped (for warnings) */

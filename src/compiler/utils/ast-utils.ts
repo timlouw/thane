@@ -554,23 +554,21 @@ export const isThisMethodReference = (expression: string): boolean => {
 // Component HTML Generation (Compile-time)
 // ============================================================================
 
-interface ComponentHTMLConfig {
+export interface ComponentHTMLConfig {
   selector: string;
   props: Record<string, any>;
+  /** Pre-allocated anchor ID from the CTFE counter ("b0", "b1", …) */
+  anchorId: string;
 }
 
 /**
- * Generate HTML for a component at compile time
+ * Emit a `<template>` anchor for a child component mount point.
+ *
+ * The CTFE owns the start of the bN counter and allocates IDs `b0`, `b1`, …
+ * for each child component call. The binding compiler starts its `idCounter`
+ * at the offset = number of child mounts. The element is later created in JS
+ * via `document.createElement` and replaces this anchor at runtime.
  */
 export const generateComponentHTML = (config: ComponentHTMLConfig): string => {
-  const { selector, props } = config;
-
-  const propsString = Object.entries(props)
-    .map(([key, value]) => {
-      const val = typeof value === 'string' ? value : JSON.stringify(value) || '';
-      return `${key}="${val.replace(/"/g, '&quot;')}"`;
-    })
-    .join(' ');
-
-  return `<${selector}${propsString ? ' ' + propsString : ''}></${selector}>`;
+  return `<template id="${config.anchorId}"></template>`;
 };

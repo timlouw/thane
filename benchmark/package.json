@@ -7,16 +7,17 @@
     "type": "module",
     "js-framework-benchmark": {
         "customURL": "/dist/",
-        "frameworkVersion": "0.0.38",
+        "frameworkVersion": "0.0.48",
         "frameworkHomeURL": "https://github.com/timlouw/thane"
     },
     "scripts": {
         "build": "thane build --entry ./main.ts --out ./dist --assets ./assets --html ./index.html",
         "build-prod": "thane build --prod --entry ./main.ts --out ./dist --assets ./assets --html ./index.html",
         "start": "thane dev --entry ./main.ts --out ./dist --assets ./assets --html ./index.html",
-        "start-prod": "thane serve --prod --entry ./main.ts --out ./dist --assets ./assets --html ./index.html"
+        "start-prod": "thane serve --prod --entry ./main.ts --out ./dist --assets ./assets --html ./index.html",
+        "analyze": "thane analyze --entry ./main.ts"
     },
     "dependencies": {
-        "thane": "file:../thane-0.0.42.tgz"
+        "thane": "file:../thane-0.0.48.tgz"
     }
 }

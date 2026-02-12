@@ -104,7 +104,9 @@ export const collectConditionalBlocks = (
 
     const signalNames = whenBinding.signalNames || [whenBinding.signalName];
     const jsExpression = whenBinding.jsExpression;
-    const conditionalId = `b${state.idCounter++}`;
+    // Reuse user-defined ID if the element already has one, otherwise generate a compiler ID
+    const existingId = condEl.attributes.get('id');
+    const conditionalId = existingId ? existingId.value : `b${state.idCounter++}`;
     state.elementIdMap.set(condEl, conditionalId);
 
     const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
@@ -123,7 +125,6 @@ export const collectConditionalBlocks = (
         elementId = state.elementIdMap.get(binding.element)!;
       }
       const isExpr = binding.type === 'text' && binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
-      const needsDataBindId = binding.element !== condEl && binding.element.attributes.has('id');
       if (isExpr) {
         nestedBindings.push({
           id: elementId,
@@ -132,7 +133,6 @@ export const collectConditionalBlocks = (
           type: 'text',
           isInsideConditional: true,
           conditionalId,
-          ...(needsDataBindId ? { usesDataBindId: true } : {}),
         });
       } else {
         nestedBindings.push({
@@ -142,7 +142,6 @@ export const collectConditionalBlocks = (
           ...(binding.property ? { property: binding.property } : {}),
           isInsideConditional: true,
           conditionalId,
-          ...(needsDataBindId ? { usesDataBindId: true } : {}),
         });
       }
     }
@@ -157,7 +156,9 @@ export const collectConditionalBlocks = (
 
         const nestedSignalNames = nestedWhenBinding.signalNames || [nestedWhenBinding.signalName];
         const nestedJsExpression = nestedWhenBinding.jsExpression;
-        const nestedCondId = `b${state.idCounter++}`;
+        // Reuse user-defined ID if the element already has one, otherwise generate a compiler ID
+        const nestedExistingId = nestedCondEl.attributes.get('id');
+        const nestedCondId = nestedExistingId ? nestedExistingId.value : `b${state.idCounter++}`;
         state.elementIdMap.set(nestedCondEl, nestedCondId);
         const nestedInitialValue = safeEvaluateCondition(nestedJsExpression, nestedSignalNames, signalInitializers);
         const nestedCondBindings = getBindingsForElement(nestedCondEl, parsed.bindings);
@@ -175,7 +176,6 @@ export const collectConditionalBlocks = (
             nestedElementId = state.elementIdMap.get(binding.element)!;
           }
           const isExpr = binding.type === 'text' && binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
-          const needsDataBindId = binding.element !== nestedCondEl && binding.element.attributes.has('id');
           if (isExpr) {
             nestedNestedBindings.push({
               id: nestedElementId,
@@ -184,7 +184,6 @@ export const collectConditionalBlocks = (
               type: 'text',
               isInsideConditional: true,
               conditionalId: nestedCondId,
-              ...(needsDataBindId ? { usesDataBindId: true } : {}),
             });
           } else {
             nestedNestedBindings.push({
@@ -194,7 +193,6 @@ export const collectConditionalBlocks = (
               ...(binding.property ? { property: binding.property } : {}),
               isInsideConditional: true,
               conditionalId: nestedCondId,
-              ...(needsDataBindId ? { usesDataBindId: true } : {}),
             });
           }
         }
@@ -405,16 +403,6 @@ export const buildElementIdEdits = (
 
   for (const [element, id] of elementIdMap) {
     if (isInsideRange(element.tagStart)) continue;
-
-    if (element.attributes.has('id')) {
-      // Element already has a user-provided id — use data-bind-id to avoid conflicts
-      edits.push({
-        start: element.tagNameEnd,
-        end: element.tagNameEnd,
-        replacement: ` data-bind-id="${id}"`,
-      });
-      continue;
-    }
 
     edits.push({
       start: element.tagNameEnd,

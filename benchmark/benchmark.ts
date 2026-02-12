@@ -137,6 +137,6 @@ export const Benchmark = defineComponent('bench-mark', () => {
         </table>
         <span class="preloadicon glyphicon glyphicon-remove" aria-hidden="true"></span>
       </div>
-    `
+    `,
   };
 });

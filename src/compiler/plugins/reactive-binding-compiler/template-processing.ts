@@ -121,10 +121,14 @@ export const processConditionalElementHtml = (
   if (element.whenDirective) {
     html = html.replace(element.whenDirective, '');
   }
-  // Inject the conditional ID — replace user's id to avoid duplicate id attributes
+  // Ensure the element has the conditional ID — reuse user ID when it matches
   if (element.attributes.has('id')) {
     const userIdAttr = element.attributes.get('id')!;
-    html = html.replace(`id="${userIdAttr.value}"`, `id="${conditionalId}"`);
+    if (userIdAttr.value !== conditionalId) {
+      // User ID differs from conditional ID (shouldn't happen with reuse, but guard)
+      html = html.replace(`id="${userIdAttr.value}"`, `id="${conditionalId}"`);
+    }
+    // else: user's ID is already the conditional ID — leave it as-is
   } else {
     const tagNameEnd = element.tagName.length + 1; // +1 for '<'
     html = html.substring(0, tagNameEnd) + ` id="${conditionalId}"` + html.substring(tagNameEnd);
@@ -251,8 +255,7 @@ export const addIdsToNestedElements = (processedHtml: string, rootElement: HtmlE
       if (tagEnd === -1) break;
       const tagContent = result.substring(tagPos, tagEnd + 1);
       if (tagContent.includes('id="')) {
-        // Element has a user-provided id — use data-bind-id to avoid conflicts
-        result = result.substring(0, tagPos + openTag.length) + ` data-bind-id="${id}"` + result.substring(tagPos + openTag.length);
+        // Element already has an id — reuse it as the binding anchor
         break;
       }
       
@@ -418,7 +421,6 @@ export const processHtmlTemplateWithConditionals = (
       type: binding.type as 'style' | 'attr',
       property: binding.property!,
       isInsideConditional: false,
-      ...(binding.element.attributes.has('id') ? { usesDataBindId: true } : {}),
     });
   }
   for (const binding of parsed.bindings) {
@@ -528,7 +530,6 @@ export const processSubTemplateWithNesting = (
       ...(binding.property ? { property: binding.property } : {}),
       isInsideConditional: true,
       conditionalId: parentId,
-      ...(binding.element.attributes.has('id') ? { usesDataBindId: true } : {}),
     });
   }
 
@@ -595,11 +596,7 @@ export const generateProcessedHtml = (
   const isInsideRange = buildRangeOverlapChecker(allRanges);
   for (const [element, id] of elementIdMap) {
     if (isInsideRange(element.tagStart)) continue;
-    if (element.attributes.has('id')) {
-      edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ` data-bind-id="${id}"` });
-    } else {
-      edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ` id="${id}"` });
-    }
+    edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ` id="${id}"` });
   }
 
   return applyTemplateEdits(originalHtml, edits);
