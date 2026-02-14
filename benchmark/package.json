@@ -18,6 +18,6 @@
         "analyze": "thane analyze --entry ./main.ts"
     },
     "dependencies": {
-        "thane": "file:../thane-0.0.48.tgz"
+        "thane": "file:../thane-0.0.64.tgz"
     }
 }

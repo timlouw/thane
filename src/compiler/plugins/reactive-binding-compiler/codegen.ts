@@ -26,6 +26,24 @@ import type { ChildMountInfo } from '../component-precompiler/component-precompi
 const NAME = PLUGIN_NAME.REACTIVE;
 
 // ============================================================================
+// Navigation Helper
+// ============================================================================
+
+/**
+ * Convert a child-index path to firstElementChild/nextElementSibling navigation.
+ * Avoids HTMLCollection creation from .children[N] access.
+ * @example pathToSiblingNav('_el', [1, 0]) → '_el.firstElementChild.nextElementSibling.firstElementChild'
+ */
+const pathToSiblingNav = (root: string, path: number[]): string => {
+  let expr = root;
+  for (const idx of path) {
+    expr += '.firstElementChild';
+    for (let s = 0; s < idx; s++) expr += '.nextElementSibling';
+  }
+  return expr;
+};
+
+// ============================================================================
 // Event Delegation Types & Helpers
 // ============================================================================
 
@@ -112,10 +130,7 @@ const buildDelegatedListenerStatements = (
     ];
 
     for (const evt of events) {
-      let navExpr = '_row';
-      for (const childIdx of evt.path) {
-        navExpr += `.children[${childIdx}]`;
-      }
+      const navExpr = evt.path.length === 0 ? '_row' : pathToSiblingNav('_row', evt.path);
       const modParts: string[] = [];
       if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
       if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
@@ -182,11 +197,7 @@ const buildNonDelegatableEventStatements = (
           if (evtPath.length === 0) {
             navStatements.push(`const ${varName} = _el`);
           } else {
-            let navExpr = '_el';
-            for (const childIdx of evtPath) {
-              navExpr += `.children[${childIdx}]`;
-            }
-            navStatements.push(`const ${varName} = ${navExpr}`);
+            navStatements.push(`const ${varName} = ${pathToSiblingNav('_el', evtPath)}`);
           }
         }
       }
@@ -689,6 +700,12 @@ export const generateInitBindingsFunction = (
     lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThenTemplate}\`, ${thenCode});`);
     lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElseTemplate}\`, ${elseCode});`);
   }
+  // Cached prototype methods for repeat block hot paths (avoids prototype chain lookup per call)
+  if (repeatBlocks.length > 0) {
+    staticTemplates.push(`  const _cloneNode = Node.prototype.cloneNode;`);
+    staticTemplates.push(`  const _insertBefore = Node.prototype.insertBefore;`);
+  }
+
   for (const rep of repeatBlocks) {
     const indexVar = rep.indexVar || '_idx';
     const hasItemBindings = rep.itemBindings.length > 0;
@@ -742,12 +759,7 @@ export const generateInitBindingsFunction = (
           if (eb.path.length === 0) {
             navStatements.push(`const ${varName} = _el`);
           } else {
-            // Generate inlined navigation: .children[0].children[1] etc.
-            let navExpr = '_el';
-            for (const childIdx of eb.path) {
-              navExpr += `.children[${childIdx}]`;
-            }
-            navStatements.push(`const ${varName} = ${navExpr}`);
+            navStatements.push(`const ${varName} = ${pathToSiblingNav('_el', eb.path)}`);
           }
         }
         
@@ -781,11 +793,7 @@ export const generateInitBindingsFunction = (
             if (sb.path.length === 0) {
               signalNavStatements.push(`const ${varName} = _el`);
             } else {
-              let navExpr = '_el';
-              for (const childIdx of sb.path) {
-                navExpr += `.children[${childIdx}]`;
-              }
-              signalNavStatements.push(`const ${varName} = ${navExpr}`);
+              signalNavStatements.push(`const ${varName} = ${pathToSiblingNav('_el', sb.path)}`);
             }
             // Fill + subscription
             const signalRef = ap.signal(sb.signalName);
@@ -802,7 +810,6 @@ export const generateInitBindingsFunction = (
             }
           }
         }
-        const hasSignalSubs = signalSubscriptions.length > 0;
         
         // Key function and empty template are handled inline below
         
@@ -812,7 +819,7 @@ export const generateInitBindingsFunction = (
         const containerVar = `_ct_${rep.id}`;
         const reconcilerVar = `_rc_${rep.id}`;
         
-        lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content;`);
+        lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content.firstElementChild;`);
         lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
         // Partition item events into delegated (container listener) vs non-delegatable (per-item)
@@ -837,10 +844,21 @@ export const generateInitBindingsFunction = (
         // Always use createKeyedReconciler — when no trackBy, inject (_, i) => i
         const keyFnExpr = rep.trackByFn || '(_, i) => i';
 
+        const repMountLines = generateMountLines(rep.id, '        ', {
+          itemVar: rep.itemVar,
+          indexVar: rep.indexVar || '_idx',
+        });
+        const hasSignalSubs = signalSubscriptions.length > 0;
+        const needsCleanups = hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0;
+
+        const updateParts = [...updateStatements];
+        if (useDelegation) {
+          updateParts.push('_el.__d = item');
+        }
+
         lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
         lines.push(`      (item, ${indexVar}, _ref) => {`);
-        lines.push(`        const _frag = ${tplContentVar}.cloneNode(true);`);
-        lines.push(`        const _el = _frag.firstElementChild;`);
+        lines.push(`        const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true);`);
         if (useDelegation) {
           lines.push(`        _el.__d = item;`);
         }
@@ -860,16 +878,10 @@ export const generateInitBindingsFunction = (
         if (eventAddStatements.length > 0) {
           lines.push(`        ${eventAddStatements.join('; ')};`);
         }
-        lines.push(`        ${containerVar}.insertBefore(_frag, _ref);`);
-        // Child component mounts inside repeat items (Step 7 + Step 10)
-        const repMountLines = generateMountLines(rep.id, '        ', {
-          itemVar: rep.itemVar,
-          indexVar: rep.indexVar || '_idx',
-        });
+        lines.push(`        ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref);`);
         for (const ml of repMountLines) {
           lines.push(ml);
         }
-        const needsCleanups = hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0;
         if (needsCleanups) {
           lines.push(`        const _cleanups = [];`);
           for (const sub of signalSubscriptions) {
@@ -880,8 +892,7 @@ export const generateInitBindingsFunction = (
         for (const cond of rep.nestedConditionals) {
           const condAnchorPath = staticInfo.directiveAnchorPaths?.get(cond.id);
           if (!condAnchorPath) continue;
-          let condNavExpr = '_el';
-          for (const ci of condAnchorPath) condNavExpr += `.children[${ci}]`;
+          const condNavExpr = pathToSiblingNav('_el', condAnchorPath);
           lines.push(`        const _cond_${cond.id} = ${condNavExpr};`);
           const condTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
           const condInitNested = generateRepeatNestedCondInitFn(cond.nestedBindings, cond.nestedItemBindings, cond.nestedEventBindings, rep.itemVar, ap);
@@ -898,10 +909,8 @@ export const generateInitBindingsFunction = (
           const thenAnchorPath = staticInfo.directiveAnchorPaths?.get(we.thenId);
           const elseAnchorPath = staticInfo.directiveAnchorPaths?.get(we.elseId);
           if (!thenAnchorPath || !elseAnchorPath) continue;
-          let thenNavExpr = '_el';
-          for (const ci of thenAnchorPath) thenNavExpr += `.children[${ci}]`;
-          let elseNavExpr = '_el';
-          for (const ci of elseAnchorPath) elseNavExpr += `.children[${ci}]`;
+          const thenNavExpr = pathToSiblingNav('_el', thenAnchorPath);
+          const elseNavExpr = pathToSiblingNav('_el', elseAnchorPath);
           lines.push(`        const _cond_${we.thenId} = ${thenNavExpr};`);
           lines.push(`        const _cond_${we.elseId} = ${elseNavExpr};`);
           const thenTplWithId = injectIdIntoFirstElement(we.thenTemplate, we.thenId);
@@ -918,8 +927,7 @@ export const generateInitBindingsFunction = (
         for (const nr of rep.nestedRepeats) {
           const nrAnchorPath = staticInfo.directiveAnchorPaths?.get(nr.id);
           if (!nrAnchorPath) continue;
-          let nrNavExpr = '_el';
-          for (const ci of nrAnchorPath) nrNavExpr += `.children[${ci}]`;
+          const nrNavExpr = pathToSiblingNav('_el', nrAnchorPath);
           lines.push(`        const _nrA_${nr.id} = ${nrNavExpr};`);
           lines.push(`        const _nrC_${nr.id} = _nrA_${nr.id}.parentNode;`);
           // Generate inner static template
@@ -935,11 +943,10 @@ export const generateInitBindingsFunction = (
           }
           const innerIndexVar = nr.indexVar || '_idx';
           const innerKeyFn = nr.trackByFn || '(_, i) => i';
-          lines.push(`        const _nrTc_${nr.id} = ${ap.staticPrefix}${innerTplId}.content;`);
+          lines.push(`        const _nrTc_${nr.id} = ${ap.staticPrefix}${innerTplId}.content.firstElementChild;`);
           lines.push(`        const _nrRc_${nr.id} = ${BIND_FN.KEYED_RECONCILER}(_nrC_${nr.id}, _nrA_${nr.id},`);
           lines.push(`          (_nrItem, ${innerIndexVar}, _nrRef) => {`);
-          lines.push(`            const _nrFrag = _nrTc_${nr.id}.cloneNode(true);`);
-          lines.push(`            const _nrEl = _nrFrag.firstElementChild;`);
+          lines.push(`            const _nrEl = ${ap.staticPrefix}_cloneNode.call(_nrTc_${nr.id}, true);`);
           // Inner item bindings fill & navigation
           if (innerStaticInfo.canUseOptimized && innerStaticInfo.elementBindings.length > 0) {
             for (let bi = 0; bi < innerStaticInfo.elementBindings.length; bi++) {
@@ -948,9 +955,7 @@ export const generateInitBindingsFunction = (
               if (eb.path.length === 0) {
                 lines.push(`            const ${nv} = _nrEl;`);
               } else {
-                let nav = '_nrEl';
-                for (const ci of eb.path) nav += `.children[${ci}]`;
-                lines.push(`            const ${nv} = ${nav};`);
+                lines.push(`            const ${nv} = ${pathToSiblingNav('_nrEl', eb.path)};`);
               }
               for (const binding of eb.bindings) {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
@@ -962,7 +967,7 @@ export const generateInitBindingsFunction = (
               }
             }
           }
-          lines.push(`            _nrC_${nr.id}.insertBefore(_nrFrag, _nrRef);`);
+          lines.push(`            ${ap.staticPrefix}_insertBefore.call(_nrC_${nr.id}, _nrEl, _nrRef);`);
           // Inner update statements
           const innerUpdateParts: string[] = [];
           if (innerStaticInfo.canUseOptimized && innerStaticInfo.elementBindings.length > 0) {
@@ -994,14 +999,10 @@ export const generateInitBindingsFunction = (
           }
           lines.push(`        _cleanups.push(() => { _nrRc_${nr.id}.clearAll(); });`);
         }
-        const updateParts = [...updateStatements];
-        if (useDelegation) {
-          updateParts.push('_el.__d = item');
-        }
         lines.push(`        return { itemSignal: null, el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`);
         lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
         lines.push(`      },`);
-        lines.push(`    ${keyFnExpr});`)
+        lines.push(`    ${keyFnExpr});`);
 
         // Empty template handling (inlined by compiler — not in reconciler)
         if (rep.emptyTemplate) {
@@ -1057,7 +1058,7 @@ export const generateInitBindingsFunction = (
         const containerVar = `_ct_${rep.id}`;
         const reconcilerVar = `_rc_${rep.id}`;
 
-        lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content;`);
+        lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content.firstElementChild;`);
         lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
 
@@ -1065,9 +1066,8 @@ export const generateInitBindingsFunction = (
 
         lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
         lines.push(`      (item, ${indexVar}, _ref) => {`);
-        lines.push(`        const _frag = ${tplContentVar}.cloneNode(true);`);
-        lines.push(`        const _el = _frag.firstElementChild;`);
-        lines.push(`        ${containerVar}.insertBefore(_frag, _ref);`);
+        lines.push(`        const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true);`);
+        lines.push(`        ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref);`);
         // Child component mounts inside repeat items (Step 7 + Step 10)
         const repMountLines = generateMountLines(rep.id, '        ', {
           itemVar: rep.itemVar,
