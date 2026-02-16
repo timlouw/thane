@@ -5,7 +5,7 @@
  * finding imports, and orchestrating the full component transformation.
  */
 
-import fs from 'fs';
+import fs from 'node:fs';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
 import type { ImportInfo, TemplateInfo } from '../../types.js';
@@ -99,11 +99,20 @@ const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplat
   let hasLifecycle = false;
 
   for (const prop of properties) {
+    // Handle shorthand property assignment: return { styles }
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      if (prop.name.text === 'styles') {
+        hasStyles = true;
+      }
+      continue;  // shorthand props are never strippable
+    }
+
     if (!ts.isPropertyAssignment(prop)) continue;
     const name = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : null;
     if (!name) continue;
 
     // ── Feature detection (styles) ──
+    // Supports both inline css`` and imported CSS file strings
     if (name === 'styles') {
       hasStyles = true;
       continue;  // keep in return — runtime handles it via _onStyles callback
@@ -163,6 +172,40 @@ import { ErrorCode, createError } from '../../errors.js';
 const NAME = PLUGIN_NAME.REACTIVE;
 
 /**
+ * Compute a deterministic starting seed for generated binding ids.
+ *
+ * Why: generated ids (b0, b1, ...) are looked up with getElementById at runtime.
+ * If multiple compiled components reuse the same ids in the same document, lookups
+ * can bind to the wrong node. We avoid collisions by assigning each file a stable,
+ * non-overlapping numeric id range.
+ */
+const computeInitialIdSeed = (filePath: string, source: string): number => {
+  // FNV-1a 32-bit hash of normalized file path (fast, deterministic)
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < filePath.length; i++) {
+    hash ^= filePath.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  const unsigned = hash >>> 0;
+
+  // Allocate a file-specific block of ids. 1000 ids per file keeps generated
+  // ids short while providing room for typical component templates.
+  const blockBase = (unsigned % 100000) * 1000;
+
+  // Respect any already-inserted bN ids present in the source (e.g. CTFE child mounts)
+  // so the next generated id does not overlap.
+  let maxExisting = -1;
+  const idRegex = /id="b(\d+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = idRegex.exec(source)) !== null) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > maxExisting) maxExisting = n;
+  }
+
+  return Math.max(blockBase, maxExisting + 1);
+};
+
+/**
  * Check if a module specifier refers to the Thane runtime
  */
 export const isThaneRuntimeImport = (specifier: string): boolean => {
@@ -216,34 +259,117 @@ export const findServicesImport = (sourceFile: ts.SourceFile): ImportInfo | null
 // defineComponent Support
 // ============================================================================
 
-/**
- * Find all html-tagged template literals in the source file.
- * Does not extract signal expressions — those are handled by the template
- * processing pipeline downstream.
- */
-const findHtmlTemplates = (sourceFile: ts.SourceFile): TemplateInfo[] => {
-  const templates: TemplateInfo[] = [];
+const resolveTemplateIdentifier = (
+  sourceFile: ts.SourceFile,
+  scopeRoot: ts.Node,
+  identifier: ts.Identifier,
+): ts.TaggedTemplateExpression | null => {
+  let resolved: ts.TaggedTemplateExpression | null = null;
 
-  const visit = (node: ts.Node, insideHtmlTemplate: boolean) => {
-    if (ts.isTaggedTemplateExpression(node) && isHtmlTemplate(node)) {
-      if (insideHtmlTemplate) {
-        return; // Don't process or recurse into nested html templates
+  const visit = (node: ts.Node) => {
+    if (resolved) return;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === identifier.text) {
+      if (node.initializer && ts.isTaggedTemplateExpression(node.initializer) && isHtmlTemplate(node.initializer)) {
+        resolved = node.initializer;
       }
-
-      templates.push({
-        node,
-        expressions: [],
-        templateStart: node.getStart(sourceFile),
-        templateEnd: node.getEnd(),
-      });
-      ts.forEachChild(node, (child) => visit(child, true));
-      return;
     }
-
-    ts.forEachChild(node, (child) => visit(child, insideHtmlTemplate));
+    ts.forEachChild(node, visit);
   };
 
-  visit(sourceFile, false);
+  visit(scopeRoot);
+  if (resolved) return resolved;
+
+  let moduleResolved: ts.TaggedTemplateExpression | null = null;
+  const visitModule = (node: ts.Node) => {
+    if (moduleResolved) return;
+    if (ts.isVariableStatement(node)) {
+      for (const decl of node.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || decl.name.text !== identifier.text) continue;
+        if (decl.initializer && ts.isTaggedTemplateExpression(decl.initializer) && isHtmlTemplate(decl.initializer)) {
+          moduleResolved = decl.initializer;
+          return;
+        }
+      }
+    }
+    ts.forEachChild(node, visitModule);
+  };
+  visitModule(sourceFile);
+  return moduleResolved;
+};
+
+/**
+ * Find the defineComponent return template(s) only.
+ *
+ * Important: this intentionally does NOT process every html`` variable in the file,
+ * so fragment templates (const piece = html`...`) can be injected via ${piece}
+ * without being blanked by this compile pass.
+ */
+const findHtmlTemplates = (
+  sourceFile: ts.SourceFile,
+  defineComponentCall: ts.CallExpression,
+): TemplateInfo[] => {
+  const templates: TemplateInfo[] = [];
+  const seen = new Set<number>();
+
+  const setupArg = defineComponentCall.arguments.length >= 2
+    ? defineComponentCall.arguments[1]
+    : defineComponentCall.arguments[0];
+  if (!setupArg || (!ts.isArrowFunction(setupArg) && !ts.isFunctionExpression(setupArg))) {
+    return templates;
+  }
+
+  const collectFromReturnObject = (obj: ts.ObjectLiteralExpression) => {
+    for (const prop of obj.properties) {
+      if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name) || prop.name.text !== 'template') continue;
+
+      let tplNode: ts.TaggedTemplateExpression | null = null;
+      if (ts.isTaggedTemplateExpression(prop.initializer) && isHtmlTemplate(prop.initializer)) {
+        tplNode = prop.initializer;
+      } else if (ts.isIdentifier(prop.initializer)) {
+        tplNode = resolveTemplateIdentifier(sourceFile, setupArg, prop.initializer);
+      }
+
+      if (!tplNode) continue;
+      const start = tplNode.getStart(sourceFile);
+      if (seen.has(start)) continue;
+      seen.add(start);
+      templates.push({
+        node: tplNode,
+        expressions: [],
+        templateStart: start,
+        templateEnd: tplNode.getEnd(),
+      });
+    }
+  };
+
+  // Handle expression-body arrows: () => ({ template: html`...` })
+  // The body is a ParenthesizedExpression wrapping an ObjectLiteralExpression,
+  // not a Block with a ReturnStatement, so we unwrap it directly.
+  if (ts.isArrowFunction(setupArg) && !ts.isBlock(setupArg.body)) {
+    let expr: ts.Expression = setupArg.body;
+    // Unwrap parenthesized expression: () => ({...}) parses as Paren(ObjLiteral)
+    while (ts.isParenthesizedExpression(expr)) {
+      expr = expr.expression;
+    }
+    if (ts.isObjectLiteralExpression(expr)) {
+      collectFromReturnObject(expr);
+    }
+    return templates;
+  }
+
+  const visitSetup = (node: ts.Node) => {
+    if (ts.isArrowFunction(node) && node !== setupArg) return;
+    if (ts.isFunctionExpression(node) && node !== setupArg) return;
+    if (ts.isFunctionDeclaration(node)) return;
+
+    if (ts.isReturnStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression)) {
+      collectFromReturnObject(node.expression);
+    }
+
+    ts.forEachChild(node, visitSetup);
+  };
+
+  visitSetup(setupArg);
   return templates;
 };
 
@@ -261,7 +387,7 @@ export const transformDefineComponentSource = (
   source: string,
   filePath: string,
   childMounts?: ChildMountInfo[],
-  childMountCount?: number,
+  _childMountCount?: number,
 ): string | null => {
   const sourceFile = sourceCache.parse(filePath, source);
   
@@ -307,7 +433,7 @@ export const transformDefineComponentSource = (
   // Find html templates directly — no normalization needed.
   // The regex pipeline natively matches bare signal() calls.
   const servicesImport = findServicesImport(sourceFile);
-  const htmlTemplates = findHtmlTemplates(sourceFile);
+  const htmlTemplates = findHtmlTemplates(sourceFile, dcCall);
   
   const edits: Array<{ start: number; end: number; replacement: string }> = [];
   let allBindings: BindingInfo[] = [];
@@ -315,7 +441,7 @@ export const transformDefineComponentSource = (
   let allWhenElseBlocks: WhenElseBlock[] = [];
   let allRepeatBlocks: RepeatBlock[] = [];
   let allEventBindings: EventBinding[] = [];
-  let idCounter = childMountCount ?? 0;
+  let idCounter = computeInitialIdSeed(filePath, source);
   let lastProcessedTemplateContent = '';
   let hasConditionals = false;
   
@@ -365,13 +491,32 @@ export const transformDefineComponentSource = (
         if (componentHasStyles) return;
         if (ts.isArrowFunction(n) && n !== setupArg) return;
         if (ts.isFunctionExpression(n) && n !== setupArg) return;
-        if (ts.isReturnStatement(n) && n.expression && ts.isObjectLiteralExpression(n.expression)) {
-          for (const prop of n.expression.properties) {
+
+        // Check object literals in return statements and arrow expression bodies
+        const checkObjectForStyles = (obj: ts.ObjectLiteralExpression) => {
+          for (const prop of obj.properties) {
             if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'styles') {
               componentHasStyles = true;
             }
+            // Support shorthand: return { styles } (e.g. from CSS file import)
+            if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === 'styles') {
+              componentHasStyles = true;
+            }
           }
+        };
+
+        if (ts.isReturnStatement(n) && n.expression && ts.isObjectLiteralExpression(n.expression)) {
+          checkObjectForStyles(n.expression);
         }
+
+        // Handle arrow expression body: () => ({ styles })
+        if (ts.isParenthesizedExpression(n) && ts.isObjectLiteralExpression(n.expression) && n.parent === setupArg) {
+          checkObjectForStyles(n.expression);
+        }
+        if (ts.isObjectLiteralExpression(n) && n.parent && ts.isParenthesizedExpression(n.parent) && n.parent.parent === setupArg) {
+          checkObjectForStyles(n);
+        }
+
         ts.forEachChild(n, checkForStyles);
       };
       checkForStyles(setupArg);

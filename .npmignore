@@ -1,4 +1,4 @@
-# Source files (we ship only dist)
+# Source files (we ship only dist + client.d.ts — see "files" in package.json)
 src/
 
 # Test files
@@ -7,17 +7,30 @@ src/
 **/*.spec.ts
 **/*.spec.js
 
+# E2E, benchmarks, extensions, docs (development only)
+e2e/
+benchmark/
+extensions/
+documentation/
+agent/
+test-results/
+dist/e2e/
+
 # Debug output
 debug-output/
 debug-*.js
 
-# Development files
+# Development config
 .gitignore
 .prettierrc
+.prettierignore
 .eslintrc*
 .editorconfig
 tsconfig.json
 bun.lockb
+bun.lock
+package-lock.json
+.github/
 
 # IDE
 .vscode/

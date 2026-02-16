@@ -12,7 +12,7 @@
  * @internal
  */
 
-import path from 'path';
+import path from 'node:path';
 import { consoleColors } from '../../utils/index.js';
 import type { AnalyzerOptions, AnalyzerReport } from './types.js';
 import { runBuildAnalysis, getMetafileOnly } from './analyze.js';

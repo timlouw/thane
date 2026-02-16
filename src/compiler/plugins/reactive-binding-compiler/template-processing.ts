@@ -7,7 +7,7 @@
  */
 
 import ts from 'typescript';
-import vm from 'vm';
+import vm from 'node:vm';
 import type {
   ConditionalBlock,
   WhenElseBlock,
@@ -115,6 +115,7 @@ export const processConditionalElementHtml = (
   conditionalId: string,
   nestedConditionalBlocks?: ConditionalBlock[],
   eventIdCounter: { value: number } = { value: 0 },
+  textBindingCommentIds?: Map<string, string>,
 ): { html: string; eventBindings: EventBinding[] } => {
   let html = getElementHtml(element, originalHtml);
   const eventBindings: EventBinding[] = [];
@@ -133,7 +134,22 @@ export const processConditionalElementHtml = (
     const tagNameEnd = element.tagName.length + 1; // +1 for '<'
     html = html.substring(0, tagNameEnd) + ` id="${conditionalId}"` + html.substring(tagNameEnd);
   }
-  html = replaceExpressionsWithValues(html, signalInitializers);
+  // Replace text binding expressions with comment markers + initial values
+  if (textBindingCommentIds && textBindingCommentIds.size > 0) {
+    html = html.replace(/\$\{(\w+)\(\)\}/g, (_match, signalName) => {
+      const commentId = textBindingCommentIds.get(signalName);
+      if (commentId) {
+        const value = signalInitializers.get(signalName);
+        const valueStr = value !== undefined ? String(value) : ' ';
+        return `<!--${commentId}-->${valueStr}<!---->`;
+      }
+      // Not a tracked text binding — replace with bare value (attr/style bindings)
+      const value = signalInitializers.get(signalName);
+      return value !== undefined ? String(value) : '';
+    });
+  } else {
+    html = replaceExpressionsWithValues(html, signalInitializers);
+  }
   // Find event bindings: @eventName.modifier=${handler}
   // Use a regex that handles nested braces via a non-greedy match up to the closing }
   const eventAttrRegex = /@([\w.]+)=\$\{((?:[^{}]|\{[^}]*\})*)\}/g;
@@ -371,9 +387,11 @@ export const processHtmlTemplateWithConditionals = (
       nestedRepeats: itemTemplateProcessed.nestedRepeats,
     });
   }
-  const textBindingSpans = new Map<number, string>(); // Map expression position to span ID
+  const textBindingSpans = new Map<number, { spanId: string; exprEnd: number; signalName: string }>(); // Map expression position to binding info
   /** Expression text bindings that need special handling (full ${expr} replacement) */
   const expressionBindingSpans = new Map<number, { spanId: string; exprEnd: number }>();
+  /** Non-text expression bindings (${...} in attr/style) that must be neutralized in static template HTML */
+  const inlineExpressionReplacements = new Map<number, { exprEnd: number; replacement: string }>();
 
   for (const binding of parsed.bindings) {
     if (elementsInsideConditionals.has(binding.element)) continue;
@@ -384,7 +402,11 @@ export const processHtmlTemplateWithConditionals = (
     if (binding.type === 'event') continue;
     if (binding.type === 'text') {
       const spanId = `b${state.idCounter++}`;
-      textBindingSpans.set(binding.expressionStart, spanId);
+      textBindingSpans.set(binding.expressionStart, {
+        spanId,
+        exprEnd: binding.expressionEnd,
+        signalName: binding.signalName,
+      });
 
       // Expression text binding (e.g. ${count() + 1}) vs bare signal (e.g. ${count()})
       const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
@@ -415,13 +437,29 @@ export const processHtmlTemplateWithConditionals = (
     }
     const elementId = elementIdMap.get(binding.element)!;
 
-    bindings.push({
-      id: elementId,
-      signalName: binding.signalName,
-      type: binding.type as 'style' | 'attr',
-      property: binding.property!,
-      isInsideConditional: false,
-    });
+    const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+    if (isExpressionBinding) {
+      inlineExpressionReplacements.set(binding.expressionStart, {
+        exprEnd: binding.expressionEnd,
+        replacement: '',
+      });
+      bindings.push({
+        id: elementId,
+        signalNames: binding.signalNames!,
+        expression: binding.jsExpression!,
+        type: binding.type as 'style' | 'attr',
+        ...(binding.property ? { property: binding.property } : {}),
+        isInsideConditional: false,
+      });
+    } else {
+      bindings.push({
+        id: elementId,
+        signalName: binding.signalName,
+        type: binding.type as 'style' | 'attr',
+        property: binding.property!,
+        isInsideConditional: false,
+      });
+    }
   }
   for (const binding of parsed.bindings) {
     if (binding.type !== 'event') continue;
@@ -461,6 +499,7 @@ export const processHtmlTemplateWithConditionals = (
     eventBindings,
     textBindingSpans,
     expressionBindingSpans,
+    inlineExpressionReplacements,
   );
 
   return {
@@ -514,16 +553,61 @@ export const processSubTemplateWithNesting = (
       if (el !== condEl) elementsInsideConditionals.add(el);
     });
   }
+  const textBindingSpans = new Map<number, { spanId: string; exprEnd: number; signalName: string }>();
+  const expressionBindingSpans = new Map<number, { spanId: string; exprEnd: number }>();
   for (const binding of parsed.bindings) {
     if (elementsInsideConditionals.has(binding.element)) continue;
     if (conditionalElementSet.has(binding.element)) continue;
     if (binding.type === 'when' || binding.type === 'whenElse') continue;
 
+    if (binding.type === 'text') {
+      // Text bindings use comment markers — assign a dedicated ID
+      const spanId = `b${state.idCounter++}`;
+      textBindingSpans.set(binding.expressionStart, {
+        spanId,
+        exprEnd: binding.expressionEnd,
+        signalName: binding.signalName,
+      });
+
+      const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+      if (isExpressionBinding) {
+        expressionBindingSpans.set(binding.expressionStart, {
+          spanId,
+          exprEnd: binding.expressionEnd,
+        });
+      }
+
+      bindings.push(isExpressionBinding ? {
+        id: spanId,
+        signalNames: binding.signalNames!,
+        expression: binding.jsExpression!,
+        type: 'text' as const,
+        isInsideConditional: true,
+        conditionalId: parentId,
+      } : {
+        id: spanId,
+        signalName: binding.signalName,
+        type: 'text' as const,
+        isInsideConditional: true,
+        conditionalId: parentId,
+      });
+      continue;
+    }
+
     if (!elementIdMap.has(binding.element)) {
       elementIdMap.set(binding.element, `b${state.idCounter++}`);
     }
     const elementId = elementIdMap.get(binding.element)!;
-    bindings.push({
+    const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+    bindings.push(isExpressionBinding ? {
+      id: elementId,
+      signalNames: binding.signalNames!,
+      expression: binding.jsExpression!,
+      type: binding.type as 'text' | 'style' | 'attr',
+      ...(binding.property ? { property: binding.property } : {}),
+      isInsideConditional: true,
+      conditionalId: parentId,
+    } : {
       id: elementId,
       signalName: binding.signalName,
       type: binding.type as 'text' | 'style' | 'attr',
@@ -541,7 +625,7 @@ export const processSubTemplateWithNesting = (
   const edits: TemplateEdit[] = [
     ...buildConditionalEdits(conditionals),
     ...buildWhenElseEdits(whenElseBlocks, false),
-    ...buildSignalReplacementEdits(templateContent, signalInitializers, allRanges),
+    ...buildSignalReplacementEdits(templateContent, signalInitializers, allRanges, textBindingSpans, expressionBindingSpans),
     ...buildElementIdEdits(elementIdMap, allRanges),
   ];
 
@@ -566,8 +650,9 @@ export const generateProcessedHtml = (
   whenElseBlocks: WhenElseBlock[] = [],
   repeatBlocks: RepeatBlock[] = [],
   eventBindings: EventBinding[] = [],
-  textBindingSpans: Map<number, string> = new Map(),
+  textBindingSpans: Map<number, { spanId: string; exprEnd: number; signalName: string }> = new Map(),
   expressionBindingSpans: Map<number, { spanId: string; exprEnd: number }> = new Map(),
+  inlineExpressionReplacements: Map<number, { exprEnd: number; replacement: string }> = new Map(),
 ): string => {
   const allRanges = [
     ...conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex })),
@@ -579,7 +664,14 @@ export const generateProcessedHtml = (
     ...buildConditionalEdits(conditionals),
     ...buildWhenElseEdits(whenElseBlocks, true, injectIdIntoFirstElement),
     ...repeatBlocks.map((rep) => ({ start: rep.startIndex, end: rep.endIndex, replacement: `<template id="${rep.id}"></template>` })),
-    ...buildSignalReplacementEdits(originalHtml, signalInitializers, allRanges, textBindingSpans, expressionBindingSpans),
+    ...buildSignalReplacementEdits(
+      originalHtml,
+      signalInitializers,
+      allRanges,
+      textBindingSpans,
+      expressionBindingSpans,
+      inlineExpressionReplacements,
+    ),
   ];
 
   // Event binding edits — remove @event attributes (no more data-evt- attributes)

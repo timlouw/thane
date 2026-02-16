@@ -91,9 +91,12 @@ export const generateStaticRepeatTemplate = (
   
   const rootEl = parsed.roots[0]!;
   
-  // Build a map of element ID to bindings
+  // Build a map of element ID to bindings (only element-navigable bindings)
+  // Comment-marker bindings (textBindingMode === 'commentMarker') are handled
+  // separately via TreeWalker and are not included here.
   const bindingsByElement = new Map<string, ItemBinding[]>();
   for (const binding of itemBindings) {
+    if (binding.textBindingMode === 'commentMarker') continue; // handled via TreeWalker
     if (!bindingsByElement.has(binding.elementId)) {
       bindingsByElement.set(binding.elementId, []);
     }
@@ -146,17 +149,24 @@ export const generateStaticRepeatTemplate = (
   
   // Strip ALL remaining ${...} template expressions from the static HTML.
   // By this point, component-level signal bindings have already been replaced
-  // with <span id="...">value</span> elements, and event bindings have been
+  // with <!--bN-->value comment markers, and event bindings have been
   // extracted. The only ${...} expressions left are item-variable bindings,
   // which are handled at runtime via the element binding paths — so they must
   // all be removed from the static template.
   staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
   
-  // Remove inline id attributesthat were only added for bindings
+  // Remove inline id attributes that were only added for bindings
   // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
   staticHtml = staticHtml.replace(/\s*id="[ib]\d+"/g, '');
   
-  // Ensure elements with text bindings have a text node child.
+  // Ensure comment markers have an isolated text node after them.
+  // After stripping ${...}, a comment marker like <!--i0--> needs a placeholder
+  // text node for commentNode.nextSibling.data to work. We also add a boundary
+  // comment <!----> to prevent the placeholder from merging with following static text.
+  // <!--i0--> → <!--i0--> <!---->  (space placeholder + boundary)
+  staticHtml = staticHtml.replace(/(<!--[ib]\d+-->)/g, '$1 <!---->');
+  
+  // Ensure elements with sole-content text bindings have a text node child.
   // After stripping ${...}, elements like <td></td> or <a></a> become empty.
   // We need a text node so that .firstChild.nodeValue works at runtime.
   // Insert a single space as a placeholder text node.
@@ -226,10 +236,21 @@ export const generateStaticRepeatTemplate = (
   
   // Compute paths for signal binding elements (Step 13)
   let signalElementBindings: StaticTemplateInfo['signalElementBindings'];
+  let signalCommentBindings: StaticTemplateInfo['signalCommentBindings'];
   if (signalBindings && signalBindings.length > 0) {
     signalElementBindings = [];
+    signalCommentBindings = [];
     for (const sb of signalBindings) {
       if (sb.isInsideConditional) continue; // Handled in Step 14
+      // Signal text bindings use comment-marker IDs (<!--bN-->) which cannot
+      // be found by element path navigation. Route them to signalCommentBindings.
+      if (sb.type === 'text') {
+        signalCommentBindings.push({
+          commentId: sb.id,
+          signalName: sb.signalName,
+        });
+        continue;
+      }
       const rootId = rootEl.attributes.get('id')?.value;
       let path: number[] | null = null;
       if (rootId === sb.id) {
@@ -270,6 +291,7 @@ export const generateStaticRepeatTemplate = (
     elementBindings: elementBindingsArray,
     eventElementPaths,
     ...(signalElementBindings ? { signalElementBindings } : {}),
+    ...(signalCommentBindings && signalCommentBindings.length > 0 ? { signalCommentBindings } : {}),
     ...(directiveAnchorPaths ? { directiveAnchorPaths } : {}),
     canUseOptimized: true,
   };
@@ -475,7 +497,7 @@ const classifyParsedBindings = (
   signalBindings: SimpleBinding[],
   eventBindings: EventBinding[],
   elementIdMap: Map<HtmlElement, string>,
-  textBindingSpans: Map<number, string>,
+  textBindingSpans: Map<number, { spanId: string; exprEnd: number; signalName: string }>,
 ): { itemEventIdCounter: number } => {
   let itemEventIdCounter = 0;
 
@@ -524,15 +546,22 @@ const classifyParsedBindings = (
       const spanId = `b${state.idCounter++}`;
 
       if (binding.type === 'text') {
-        textBindingSpans.set(binding.expressionStart, spanId);
+        textBindingSpans.set(binding.expressionStart, {
+          spanId,
+          exprEnd: binding.expressionEnd,
+          signalName: binding.signalName,
+        });
       } else {
         if (!elementIdMap.has(binding.element)) {
           elementIdMap.set(binding.element, spanId);
         }
       }
 
+      const bindingId = binding.type === 'text'
+        ? textBindingSpans.get(binding.expressionStart)!.spanId
+        : elementIdMap.get(binding.element)!;
       signalBindings.push({
-        id: binding.type === 'text' ? spanId : elementIdMap.get(binding.element)!,
+        id: bindingId,
         signalName: binding.signalName,
         type: binding.type as 'text' | 'style' | 'attr',
         ...(binding.property ? { property: binding.property } : {}),
@@ -551,6 +580,7 @@ const classifyParsedBindings = (
 const collectItemTextBindings = (
   templateContent: string,
   itemVar: string,
+  indexVar: string | undefined,
   allRanges: Range[],
   parsed: ReturnType<typeof parseHtmlTemplate>,
   state: IdState,
@@ -566,7 +596,9 @@ const collectItemTextBindings = (
     const insideRange = allRanges.some((r) => matchStart >= r.start && matchStart < r.end);
     if (insideRange) continue;
     const innerExpr = match[1]?.trim() ?? '';
-    if (!expressionReferencesIdentifier(innerExpr, itemVar)) continue;
+    const refsItem = expressionReferencesIdentifier(innerExpr, itemVar);
+    const refsIndex = indexVar ? expressionReferencesIdentifier(innerExpr, indexVar) : false;
+    if (!refsItem && !refsIndex) continue;
 
     // Check if we're inside an attribute — use parser element positions instead of regex
     const isInAttr = parsed.bindings.some(
@@ -596,6 +628,7 @@ const collectItemTextBindings = (
         elementId: id,
         type: 'text',
         expression: expression,
+        // sole-content → textContent on parent; mixed-content → comment marker
         textBindingMode: context.isSoleContent ? 'textContent' : 'commentMarker',
       });
 
@@ -730,9 +763,10 @@ export const processItemTemplateRecursively = (
           const matchEnd = matchStart + match[0].length;
           const itemBindingId = `i${state.idCounter++}`;
           const transformedExpr = renameIdentifierInExpression(innerExpr, itemVar, `${itemVar}$()`);
-          const replacement = `<span id="${itemBindingId}">\${${transformedExpr}}</span>`;
+          // Use comment marker instead of span wrapper
+          const replacement = `<!--${itemBindingId}-->\${${transformedExpr}}`;
           transformedHtml = transformedHtml.substring(0, matchStart) + replacement + transformedHtml.substring(matchEnd);
-          condItemBindings.push({ elementId: itemBindingId, expression: innerExpr, type: 'text' });
+          condItemBindings.push({ elementId: itemBindingId, expression: innerExpr, type: 'text', textBindingMode: 'commentMarker' });
           offset += replacement.length - match[0].length;
         }
       }
@@ -788,14 +822,14 @@ export const processItemTemplateRecursively = (
   const whenElseRanges = whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex }));
   const repeatRanges = repeatBlocks.map((r) => ({ start: r.startIndex, end: r.endIndex }));
   const allRanges = [...conditionalRanges, ...whenElseRanges, ...repeatRanges];
-  const textBindingSpans = new Map<number, string>();
+  const textBindingSpans = new Map<number, { spanId: string; exprEnd: number; signalName: string }>();
   classifyParsedBindings(
     parsed, itemVar, indexVar, allRanges,
     conditionalElementSet, elementsInsideConditionals, state,
     itemEvents, signalBindings, eventBindings, elementIdMap, textBindingSpans,
   );
   // Find ${...} expressions that reference the item variable (text bindings)
-  const itemTextMatches = collectItemTextBindings(templateContent, itemVar, allRanges, parsed, state, itemBindings);
+  const itemTextMatches = collectItemTextBindings(templateContent, itemVar, indexVar, allRanges, parsed, state, itemBindings);
   // Find attribute bindings that reference item/index variables using the parsed HTML tree
   const itemAttrMatches = collectItemAttrBindings(
     parsed, itemVar, indexVar, allRanges,
@@ -809,18 +843,16 @@ export const processItemTemplateRecursively = (
   for (const rep of repeatBlocks) {
     edits.push({ start: rep.startIndex, end: rep.endIndex, replacement: `<template id="${rep.id}"></template>` });
   }
-  for (const [exprPos, spanId] of textBindingSpans) {
-    const exprMatch = /\$\{this\.(\w+)\(\)\}/.exec(templateContent.substring(exprPos));
-    if (exprMatch && exprMatch.index === 0 && exprMatch[1]) {
-      const signalName = exprMatch[1];
-      const value = signalInitializers.get(signalName);
-      const valueStr = value !== undefined ? String(value) : '';
-      edits.push({
-        start: exprPos,
-        end: exprPos + exprMatch[0].length,
-        replacement: `<span id="${spanId}">${valueStr}</span>`,
-      });
-    }
+  // Inject comment markers for signal text bindings (AST-driven, no regex)
+  for (const [exprPos, { spanId, exprEnd }] of textBindingSpans) {
+    // Use a comment marker <!--id--> followed by the live expression so the
+    // fallback renderer can still evaluate the template literal while the
+    // optimized path locates the adjacent text node via the comment.
+    edits.push({
+      start: exprPos,
+      end: exprEnd,
+      replacement: `<!--${spanId}-->\${${templateContent.substring(exprPos + 2, exprEnd - 1)}}`,
+    });
   }
   
   // Track which parent elements need IDs for sole-content text bindings
@@ -844,13 +876,18 @@ export const processItemTemplateRecursively = (
         parentElementIds.set(parentTagStart, id);
       }
     } else {
-      // For mixed content: use comment marker approach
-      // Insert <!--id--> before the expression, the runtime will find the next text node
+      // For mixed content: inject a comment marker so the optimized path can
+      // locate the adjacent text node without a wrapper element.
       edits.push({
         start,
         end,
         replacement: `<!--${id}-->\${${transformedExpr}}`,
       });
+      // Mark the binding as comment-marker-based so codegen uses nextSibling.data
+      const binding = itemBindings.find(b => b.elementId === id && b.type === 'text');
+      if (binding) {
+        binding.textBindingMode = 'commentMarker';
+      }
     }
   }
   

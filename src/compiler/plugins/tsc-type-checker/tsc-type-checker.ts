@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import path from 'path';
+import path from 'node:path';
 import type { Plugin } from 'esbuild';
 import { logger, PLUGIN_NAME } from '../../utils/index.js';
 import { ErrorCode, createError } from '../../errors.js';

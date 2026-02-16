@@ -7,8 +7,7 @@
  */
 
 import { build, type BuildOptions, type Metafile, type OutputFile } from 'esbuild';
-import { gzipSync } from 'zlib';
-import path from 'path';
+import path from 'node:path';
 import { createBuildContext } from '../../utils/index.js';
 import { ComponentPrecompilerPlugin } from '../../plugins/component-precompiler/component-precompiler.js';
 import { ReactiveBindingPlugin } from '../../plugins/reactive-binding-compiler/index.js';
@@ -50,7 +49,7 @@ function categorizeModule(filePath: string): ModuleCategory {
 function gzipSize(content: Uint8Array | string): number {
   try {
     const buf = typeof content === 'string' ? Buffer.from(content) : Buffer.from(content);
-    return gzipSync(buf, { level: 9 }).length;
+    return Bun.gzipSync(buf, { level: 9 }).length;
   } catch {
     return 0;
   }

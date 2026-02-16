@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import type { Plugin } from 'esbuild';
 import { PLUGIN_NAME } from '../../utils/index.js';
 import { minifyCSS } from '../minification/template-minifier.js';

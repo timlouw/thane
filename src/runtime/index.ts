@@ -66,6 +66,7 @@ export {
   __enableComponentStyles,
   type ComponentContext,
   type ComponentReturnType,
+  type MountHandle,
 } from './component.js';
 
 // Export DOM binding utilities

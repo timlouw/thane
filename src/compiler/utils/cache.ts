@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import ts from 'typescript';
 import { safeReadFile } from './file-utils.js';
 

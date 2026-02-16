@@ -490,7 +490,7 @@ describe('Signal Edge Cases', () => {
     expect(s()).toEqual({});
 
     s({ key: 'value' });
-    expect(s().key).toBe('value');
+    expect(s()['key']).toBe('value');
 
     s({});
     expect(s()).toEqual({});

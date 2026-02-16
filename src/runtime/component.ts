@@ -9,8 +9,6 @@
  *     from the return object at compile time.
  *   - The runtime guards (`if (result.onMount)`) are tiny after minification
  *     and safe to keep — they short-circuit immediately for absent properties.
- *   - mountedInstances is lazily allocated so it's absent when destroyComponent
- *     is never used.
  */
 
 import type { ComponentRoot } from './types.js';
@@ -116,6 +114,11 @@ let _onStyles: ((selector: string, cssText: string) => void) | null = null;
  * app uses styles, this is never imported and esbuild tree-shakes it
  * along with the CSSStyleSheet/Set infrastructure inside.
  *
+ * CSS is automatically scoped to the component via CSS nesting — users
+ * write bare selectors (`.card { ... }`) and the runtime wraps them as
+ * `.selector { .card { ... } }`.  The `:host` prefix is still supported
+ * for backward compatibility (replaced with `&` before wrapping).
+ *
  * @internal — exported only for compiler consumption.
  */
 export function __enableComponentStyles(): void {
@@ -124,11 +127,12 @@ export function __enableComponentStyles(): void {
   _onStyles = (selector, cssText) => {
     if (!registered.has(selector)) {
       registered.add(selector);
-      const scoped = cssText
-        .replace(/:host\b/g, `.${selector}`)
-        .replace(/:host\(/g, `.${selector}(`);
+      // Replace legacy :host with & (CSS nesting parent selector) for backward compat
+      const normalized = cssText
+        .replace(/:host\b/g, '&')
+        .replace(/:host\(/g, '&(');
       const sheet = new CSSStyleSheet();
-      sheet.replaceSync(`/* ${selector} */\n${scoped}`);
+      sheet.replaceSync(`.${selector} { ${normalized} }`);
       (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
     }
   };
@@ -301,7 +305,11 @@ export function __registerComponent(
     if (result.__b) result.__b(ctx);
     if (result.onMount) result.onMount();
 
-    return { root };
+    const instance: ComponentInstance = { root };
+    if (result.onDestroy) {
+      instance.__onDestroy = result.onDestroy;
+    }
+    return instance;
   };
 
   const ref: any = { __f: factory };
@@ -309,6 +317,17 @@ export function __registerComponent(
     ref[extraStaticTemplates[i]] = extraStaticTemplates[i + 1];
   }
   return ref;
+}
+
+/**
+ * Handle returned by mount(), allowing the caller to destroy the mounted
+ * component and invoke its onDestroy lifecycle hook.
+ */
+export interface MountHandle {
+  /** The root DOM element of the mounted component */
+  root: ComponentRoot;
+  /** Tear down the component: runs onDestroy, removes all child nodes */
+  destroy: () => void;
 }
 
 /**
@@ -323,16 +342,27 @@ export function __registerComponent(
  *
  * @param component - Component selector function returned by defineComponent
  * @param target - DOM element to mount to (defaults to document.body)
+ * @returns A MountHandle with the root element and a destroy() function,
+ *          or null if mounting failed.
  */
 export function mount(
   component: ComponentHTMLSelector<any>,
   target: HTMLElement = document.body,
   props?: Record<string, any>,
-): ComponentRoot | null {
+): MountHandle | null {
   // Both registration paths (defineComponent, __registerComponent)
   // store the factory as __f on the ref.
   const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (component as any).__f;
-  return factory ? factory(target, props).root : null;
+  if (!factory) return null;
+
+  const instance = factory(target, props);
+  return {
+    root: instance.root,
+    destroy: () => {
+      if (instance.__onDestroy) instance.__onDestroy();
+      instance.root.innerHTML = '';
+    },
+  };
 }
 
 

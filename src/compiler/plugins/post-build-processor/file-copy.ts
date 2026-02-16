@@ -2,8 +2,8 @@
  * Post-Build Processor — File copying utilities
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { logger } from '../../utils/index.js';
 
 export const recursivelyCopyAssetsIntoDist = async (src: string, dest: string): Promise<void> => {

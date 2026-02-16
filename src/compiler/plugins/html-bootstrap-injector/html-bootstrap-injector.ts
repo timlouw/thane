@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import ts from 'typescript';
 import type { Plugin } from 'esbuild';
 import { logger, collectFilesRecursively, sourceCache, extractComponentDefinitions, extractPageSelector } from '../../utils/index.js';

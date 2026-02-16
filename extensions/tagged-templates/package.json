@@ -147,10 +147,10 @@
     ]
   },
   "scripts": {
-    "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
+    "build": "bun esbuild.mjs",
+    "watch": "bun esbuild.mjs --watch",
     "typecheck": "tsc -p ./",
-    "package": "npm run build && npx @vscode/vsce package"
+    "package": "bun run build && bunx @vscode/vsce package"
   },
   "dependencies": {
     "typescript": "^5.0.0"

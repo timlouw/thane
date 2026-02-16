@@ -11,8 +11,8 @@
  * - console-reporting.ts — File size reporting
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Metafile, Plugin } from 'esbuild';
 import { sourceCache, PLUGIN_NAME, consoleColors } from '../../utils/index.js';
 import type { BuildContext } from '../../types.js';

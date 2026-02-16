@@ -113,10 +113,16 @@ export const collectConditionalBlocks = (
     const condBindings = getBindingsForElement(condEl, parsed.bindings);
     const nestedBindings: BindingInfo[] = [];
 
+    // Track text binding comment-marker IDs: signalName → commentId
+    const textBindingCommentIds = new Map<string, string>();
     for (const binding of condBindings) {
       if (binding.type === 'when' || binding.type === 'event') continue;
       let elementId: string;
-      if (binding.element === condEl) {
+      if (binding.type === 'text') {
+        // Text bindings always get a dedicated comment marker ID
+        elementId = `b${state.idCounter++}`;
+        textBindingCommentIds.set(binding.signalName, elementId);
+      } else if (binding.element === condEl) {
         elementId = conditionalId;
       } else {
         if (!state.elementIdMap.has(binding.element)) {
@@ -164,10 +170,14 @@ export const collectConditionalBlocks = (
         const nestedCondBindings = getBindingsForElement(nestedCondEl, parsed.bindings);
         const nestedNestedBindings: BindingInfo[] = [];
 
+        const nestedTextBindingCommentIds = new Map<string, string>();
         for (const binding of nestedCondBindings) {
           if (binding.type === 'when' || binding.type === 'event') continue;
           let nestedElementId: string;
-          if (binding.element === nestedCondEl) {
+          if (binding.type === 'text') {
+            nestedElementId = `b${state.idCounter++}`;
+            nestedTextBindingCommentIds.set(binding.signalName, nestedElementId);
+          } else if (binding.element === nestedCondEl) {
             nestedElementId = nestedCondId;
           } else {
             if (!state.elementIdMap.has(binding.element)) {
@@ -197,7 +207,7 @@ export const collectConditionalBlocks = (
           }
         }
 
-        const nestedProcessedResult = processConditionalElementHtml(nestedCondEl, templateContent, signalInitializers, state.elementIdMap, nestedCondId, undefined, state.eventIdCounter);
+        const nestedProcessedResult = processConditionalElementHtml(nestedCondEl, templateContent, signalInitializers, state.elementIdMap, nestedCondId, undefined, state.eventIdCounter, nestedTextBindingCommentIds);
         const primarySignal = nestedSignalNames[0];
         if (!primarySignal) continue;
 
@@ -222,6 +232,7 @@ export const collectConditionalBlocks = (
       condEl, templateContent, signalInitializers, state.elementIdMap, conditionalId,
       opts?.handleNestedConditionals ? nestedConditionals : undefined,
       state.eventIdCounter,
+      textBindingCommentIds,
     );
 
     let finalHtml = processedCondResult.html;
@@ -419,19 +430,34 @@ export const buildElementIdEdits = (
  * Also handles expression text bindings like ${count() + 1}.
  */
 export const buildSignalReplacementEdits = (
-  templateContent: string,
+  _templateContent: string,
   signalInitializers: Map<string, string | number | boolean>,
   allRanges: Range[],
-  textBindingSpans?: Map<number, string>,
+  textBindingSpans?: Map<number, { spanId: string; exprEnd: number; signalName: string }>,
   expressionBindingSpans?: Map<number, { spanId: string; exprEnd: number }>,
+  inlineExpressionReplacements?: Map<number, { exprEnd: number; replacement: string }>,
 ): TemplateEdit[] => {
   const isInsideRange = buildRangeOverlapChecker(allRanges);
   const edits: TemplateEdit[] = [];
 
-  // Track positions already handled by expression bindings (to skip in bare signal regex)
+  // Track positions already handled by expression bindings
   const expressionPositions = new Set<number>();
 
+  if (inlineExpressionReplacements) {
+    for (const [exprStart, { exprEnd, replacement }] of inlineExpressionReplacements) {
+      if (isInsideRange(exprStart)) continue;
+      expressionPositions.add(exprStart);
+      edits.push({
+        start: exprStart,
+        end: exprEnd,
+        replacement,
+      });
+    }
+  }
+
   // ── Expression text bindings (e.g. ${count() + 1}) ──
+  // Use comment marker: <!--bN--> with a space placeholder for the text node
+  // An empty comment <!----> follows to prevent merging with subsequent static text
   if (expressionBindingSpans) {
     for (const [exprStart, { spanId, exprEnd }] of expressionBindingSpans) {
       if (isInsideRange(exprStart)) continue;
@@ -440,35 +466,28 @@ export const buildSignalReplacementEdits = (
       edits.push({
         start: exprStart,
         end: exprEnd,
-        // Wrap in span; initial value will be set by initializeBindings
-        replacement: `<span id="${spanId}"> </span>`,
+        // Comment marker + space placeholder + boundary comment
+        replacement: `<!--${spanId}--> <!---->`,
       });
     }
   }
 
-  // ── Bare signal replacements (e.g. ${count()}) ──
-  const exprRegex = /\$\{(\w+)\(\)\}/g;
-  let match: RegExpExecArray | null;
+  // ── Bare signal replacements (e.g. ${count()}) — AST-driven, no regex ──
+  if (textBindingSpans) {
+    for (const [exprStart, { spanId, exprEnd, signalName }] of textBindingSpans) {
+      if (isInsideRange(exprStart)) continue;
+      if (expressionPositions.has(exprStart)) continue;
 
-  while ((match = exprRegex.exec(templateContent)) !== null) {
-    const exprStart = match.index;
-    const exprEnd = exprStart + match[0].length;
-    if (isInsideRange(exprStart)) continue;
-    if (expressionPositions.has(exprStart)) continue;
+      const value = signalInitializers.get(signalName);
+      const valueStr = value !== undefined ? String(value) : '';
 
-    const signalName = match[1];
-    if (!signalName) continue;
-    const value = signalInitializers.get(signalName);
-    const valueStr = value !== undefined ? String(value) : '';
-    const spanId = textBindingSpans?.get(exprStart);
-
-    edits.push({
-      start: exprStart,
-      end: exprEnd,
-      // Ensure text node child always exists for firstChild.nodeValue access.
-      // Use a space as placeholder when value is empty — overwritten by initializeBindings.
-      replacement: spanId ? `<span id="${spanId}">${valueStr || ' '}</span>` : (valueStr || ' '),
-    });
+      edits.push({
+        start: exprStart,
+        end: exprEnd,
+        // Comment marker + initial value + boundary comment to prevent text merging
+        replacement: `<!--${spanId}-->${valueStr || ' '}<!---->`,
+      });
+    }
   }
 
   return edits;

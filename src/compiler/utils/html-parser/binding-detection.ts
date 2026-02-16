@@ -5,7 +5,7 @@
  */
 
 import type { HtmlElement, BindingInfo } from './types.js';
-import { WHEN_ELSE_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX, SIGNAL_CALL_REGEX, STYLE_EXPR_REGEX, ATTR_EXPR_REGEX } from './types.js';
+import { WHEN_ELSE_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX, SIGNAL_CALL_REGEX } from './types.js';
 import { logger } from '../logger.js';
 import { parseArrowFunction } from '../ast-utils.js';
 
@@ -121,6 +121,79 @@ function extractSignalsFromExpression(expression: string): string[] {
     }
   }
   return signals;
+}
+
+function findTemplateExpressions(value: string): Array<{ start: number; end: number; expression: string; full: string }> {
+  const results: Array<{ start: number; end: number; expression: string; full: string }> = [];
+  let searchPos = 0;
+
+  while (searchPos < value.length) {
+    const dollarIdx = value.indexOf('${', searchPos);
+    if (dollarIdx === -1) break;
+
+    let braceDepth = 1;
+    let i = dollarIdx + 2;
+    let inBacktick = false;
+    let templateBraceDepth = 0;
+
+    while (i < value.length && braceDepth > 0) {
+      const ch = value[i];
+
+      if (inBacktick) {
+        if (ch === '`' && templateBraceDepth === 0) {
+          inBacktick = false;
+        } else if (ch === '$' && value[i + 1] === '{') {
+          templateBraceDepth++;
+          i++;
+        } else if (ch === '}' && templateBraceDepth > 0) {
+          templateBraceDepth--;
+        }
+        i++;
+        continue;
+      }
+
+      if (ch === '`') {
+        inBacktick = true;
+        templateBraceDepth = 0;
+      } else if (ch === '{') {
+        braceDepth++;
+      } else if (ch === '}') {
+        braceDepth--;
+      }
+
+      if (braceDepth > 0) i++;
+    }
+
+    if (braceDepth !== 0) {
+      searchPos = dollarIdx + 2;
+      continue;
+    }
+
+    const full = value.substring(dollarIdx, i + 1);
+    const expression = value.substring(dollarIdx + 2, i).trim();
+    results.push({ start: dollarIdx, end: i + 1, expression, full });
+    searchPos = i + 1;
+  }
+
+  return results;
+}
+
+function inferStyleProperty(styleValue: string, expressionStart: number): string | null {
+  let colon = -1;
+  for (let i = expressionStart - 1; i >= 0; i--) {
+    const ch = styleValue[i];
+    if (ch === ';') break;
+    if (ch === ':') {
+      colon = i;
+      break;
+    }
+  }
+  if (colon === -1) return null;
+
+  const declStart = styleValue.lastIndexOf(';', colon) + 1;
+  const prop = styleValue.substring(declStart, colon).trim();
+  if (!/^[\w-]+$/.test(prop)) return null;
+  return prop;
 }
 
 export function parseWhenElseExpression(
@@ -435,43 +508,48 @@ export function findBindingsInAttributes(element: HtmlElement, bindings: Binding
     }
 
     if (name === 'style') {
-      const styleExprRegex = STYLE_EXPR_REGEX();
-      let styleMatch: RegExpExecArray | null;
+      const styleExprs = findTemplateExpressions(attr.value);
+      for (const expr of styleExprs) {
+        const signals = extractSignalsFromExpression(expr.expression);
+        if (signals.length === 0) continue;
 
-      while ((styleMatch = styleExprRegex.exec(attr.value)) !== null) {
-        const fullExpr = styleMatch[2];
-        const signalName = styleMatch[3];
-        const propertyName = styleMatch[1];
-        if (!fullExpr || !signalName || !propertyName) continue;
+        const propertyName = inferStyleProperty(attr.value, expr.start);
+        if (!propertyName) continue;
 
-        const exprStartInValue = styleMatch.index + styleMatch[0].indexOf(fullExpr);
+        const bareSignal = expr.expression.match(/^\s*(\w+)\(\)\s*$/);
+        const primarySignal = bareSignal?.[1] || signals[0]!;
+
         bindings.push({
           element,
           type: 'style',
-          signalName,
+          signalName: primarySignal,
+          ...(bareSignal ? {} : { signalNames: signals, jsExpression: expr.expression }),
           property: propertyName,
-          expressionStart: attr.valueStart + exprStartInValue,
-          expressionEnd: attr.valueStart + exprStartInValue + fullExpr.length,
-          fullExpression: fullExpr,
+          expressionStart: attr.valueStart + expr.start,
+          expressionEnd: attr.valueStart + expr.end,
+          fullExpression: expr.full,
         });
       }
       continue;
     }
 
-    const attrExprRegex = ATTR_EXPR_REGEX();
-    let attrMatch: RegExpExecArray | null;
+    const attrExprs = findTemplateExpressions(attr.value);
+    for (const expr of attrExprs) {
+      const signals = extractSignalsFromExpression(expr.expression);
+      if (signals.length === 0) continue;
 
-    while ((attrMatch = attrExprRegex.exec(attr.value)) !== null) {
-      const signalName = attrMatch[1];
-      if (!signalName) continue;
+      const bareSignal = expr.expression.match(/^\s*(\w+)\(\)\s*$/);
+      const signalName = bareSignal?.[1] || signals[0]!;
+
       bindings.push({
         element,
         type: 'attr',
         signalName,
+        ...(bareSignal ? {} : { signalNames: signals, jsExpression: expr.expression }),
         property: name,
-        expressionStart: attr.valueStart + attrMatch.index,
-        expressionEnd: attr.valueStart + attrMatch.index + attrMatch[0].length,
-        fullExpression: attrMatch[0],
+        expressionStart: attr.valueStart + expr.start,
+        expressionEnd: attr.valueStart + expr.end,
+        fullExpression: expr.full,
       });
     }
   }

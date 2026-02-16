@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import type { BuildContext, ComponentDefinition } from '../types.js';
 import { sourceCache } from './cache.js';
 import { extractComponentDefinitions } from './ast-utils.js';

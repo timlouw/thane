@@ -44,8 +44,11 @@ const findReturnObjects = (node: ts.Node, results: ts.ObjectLiteralExpression[])
 };
 
 const collectReturns = (body: ts.Node, results: ts.ObjectLiteralExpression[]): void => {
-  if (ts.isObjectLiteralExpression(body)) {
-    results.push(body);
+  // Unwrap ParenthesizedExpression — TS parses `() => ({})` as Paren(ObjLiteral)
+  let expr: ts.Node = body;
+  while (ts.isParenthesizedExpression(expr)) expr = expr.expression;
+  if (ts.isObjectLiteralExpression(expr)) {
+    results.push(expr);
     return;
   }
   if (ts.isBlock(body)) {

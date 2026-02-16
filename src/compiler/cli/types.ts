@@ -25,6 +25,50 @@ export interface CLIOptions {
   compare: boolean;
   /** Port for analyzer server */
   analyzerPort: number;
+  /** Optional config file path passed via --config */
+  configPath?: string | undefined;
+}
+
+/**
+ * Build options supported in thane config files.
+ */
+export interface ThaneBuildOptions {
+  /** Production mode */
+  prod?: boolean | undefined;
+  /** Enable gzip compression */
+  gzip?: boolean | undefined;
+  /** Application name */
+  app?: string | undefined;
+  /** Entry point file */
+  entry?: string | undefined;
+  /** Output directory */
+  outDir?: string | undefined;
+  /** Assets source directory */
+  assetsDir?: string | undefined;
+  /** HTML template file */
+  htmlTemplate?: string | undefined;
+  /** Port for analyzer server */
+  analyzerPort?: number | undefined;
+  /** Compare dev/prod in analyze mode */
+  compare?: boolean | undefined;
+}
+
+/**
+ * Config file schema for thane.
+ *
+ * Supports:
+ * - Top-level defaults (`entry`, `outDir`, etc.)
+ * - Per-command overrides in `commands`.
+ *
+ * Precedence: CLI flags > command overrides > top-level config > built-in defaults.
+ */
+export interface ThaneConfigFile extends ThaneBuildOptions {
+  commands?: {
+    build?: ThaneBuildOptions | undefined;
+    dev?: ThaneBuildOptions | undefined;
+    serve?: ThaneBuildOptions | undefined;
+    analyze?: ThaneBuildOptions | undefined;
+  } | undefined;
 }
 
 export interface BuildConfig {

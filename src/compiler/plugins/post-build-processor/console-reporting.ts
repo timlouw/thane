@@ -2,8 +2,8 @@
  * Post-Build Processor — Console reporting utilities
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import { consoleColors } from '../../utils/index.js';
 
 const getSizeColor = (sizeInBytes: number, maxSize: number): string => {

@@ -37,5 +37,5 @@
     "declarationMap": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules", "**/*.test.ts", "**/debug-output/**", "benchmark"]
+  "exclude": ["dist", "node_modules", "**/debug-output/**", "benchmark"]
 }

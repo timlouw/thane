@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Plugin } from 'esbuild';
 import { SelectorMap, applySelectorsToSource, extractSelectorsFromSource } from './selector-minifier.js';
 import { minifyTemplatesInSource } from './template-minifier.js';

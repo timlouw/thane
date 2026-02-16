@@ -19,6 +19,12 @@ import type { LintRuleDefinition } from './rules/types.js';
 
 const NAME = PLUGIN_NAME.LINTER;
 
+/** Rule codes that apply to entry-point files (mount() calls), not just component files */
+const ENTRY_POINT_RULES = new Set(['THANE411']);
+
+/** Quick string check for files that contain mount() calls */
+const hasMountCall = (source: string): boolean => source.includes('mount(');
+
 export interface ThaneLinterOptions {
   /**
    * Extra rules to append to the built-in set.
@@ -43,15 +49,26 @@ export const ThaneLinterPlugin = (options: ThaneLinterOptions = {}): Plugin => {
     name: NAME,
     setup(build) {
       build.onLoad({ filter: /\.ts$/ }, async (args) => {
-        // Only lint files that contain defineComponent
         const source = await sourceCache.get(args.path);
         if (!source) return undefined;
-        if (!extendsComponentQuick(source.source)) return undefined;
+
+        const isComponent = extendsComponentQuick(source.source);
+        const isEntryPoint = hasMountCall(source.source);
+
+        // Skip files that are neither component files nor entry points
+        if (!isComponent && !isEntryPoint) return undefined;
 
         const diagnostics: Diagnostic[] = [];
 
         for (const rule of rules) {
           if (suppress.has(rule.meta.code)) continue;
+
+          // Skip entry-point-only rules on non-entry files, and
+          // skip component-only rules on non-component files
+          const isEntryRule = ENTRY_POINT_RULES.has(rule.meta.code);
+          if (isEntryRule && !isEntryPoint) continue;
+          if (!isEntryRule && !isComponent) continue;
+
           const results = rule.check(source.sourceFile, args.path);
           diagnostics.push(...results);
         }

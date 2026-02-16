@@ -2,5 +2,6 @@
     "tagged-templates.tags": {
         "json": "json",
         "sql": "sql"
-    }
+    },
+    "typescript.tsdk": "node_modules/typescript/lib"
 }

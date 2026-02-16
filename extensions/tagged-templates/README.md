@@ -104,8 +104,8 @@ When you change the `tagged-templates.tags` configuration, the extension regener
 
 ```bash
 cd extensions/tagged-templates
-npm install
-npm run compile
+bun install
+bun run compile
 ```
 
 To test locally, press `F5` in VS Code to launch the Extension Development Host.
@@ -113,5 +113,5 @@ To test locally, press `F5` in VS Code to launch the Extension Development Host.
 To package:
 
 ```bash
-npm run package
+bun run package
 ```

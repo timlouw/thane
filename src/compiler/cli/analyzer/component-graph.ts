@@ -7,8 +7,8 @@
  * @internal
  */
 
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Metafile } from 'esbuild';
 import type { ComponentNode } from './types.js';
 

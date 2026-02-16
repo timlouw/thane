@@ -1,7 +1,7 @@
-import fs from 'fs';
+import fs from 'node:fs';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
-import vm from 'vm';
+import vm from 'node:vm';
 import type { ComponentDefinition, BuildContext } from '../../types.js';
 import {
   findEnclosingClass,

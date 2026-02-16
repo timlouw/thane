@@ -1,4 +1,4 @@
-import path from 'path';
+import path from 'node:path';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
 import type { PageSelectorInfo, RouteObject } from '../../types.js';
