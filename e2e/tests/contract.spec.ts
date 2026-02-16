@@ -637,3 +637,141 @@ test('signal props deliver fine-grained DOM updates without re-creating elements
   const sameGrandchildA = await grandchildAHandle!.evaluate((n, o) => n === o, grandchildAAfter);
   expect(sameGrandchildA).toBe(true);
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// computed() — derived reactive signals
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('computed signal derives initial value and updates when dependencies change', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('computed-section');
+
+  // ── 1. Initial derived values ──
+  await expect(section.getByTestId('comp-first')).toHaveText('John');
+  await expect(section.getByTestId('comp-last')).toHaveText('Doe');
+  await expect(section.getByTestId('comp-full')).toHaveText('John Doe');
+  await expect(section.getByTestId('comp-sum')).toHaveText('7'); // 3 + 4
+
+  // ── 2. Update one dependency — computed updates ──
+  await section.getByTestId('comp-set-first').click();
+  await expect(section.getByTestId('comp-first')).toHaveText('Jane');
+  await expect(section.getByTestId('comp-full')).toHaveText('Jane Doe');
+
+  // ── 3. Update the other dependency ──
+  await section.getByTestId('comp-set-last').click();
+  await expect(section.getByTestId('comp-last')).toHaveText('Smith');
+  await expect(section.getByTestId('comp-full')).toHaveText('Jane Smith');
+
+  // ── 4. Numeric computed reacts to dependency increment ──
+  await section.getByTestId('comp-inc-a').click();
+  await expect(section.getByTestId('comp-a')).toHaveText('4');
+  await expect(section.getByTestId('comp-sum')).toHaveText('8'); // 4 + 4
+
+  await section.getByTestId('comp-inc-a').click();
+  await section.getByTestId('comp-inc-a').click();
+  await expect(section.getByTestId('comp-a')).toHaveText('6');
+  await expect(section.getByTestId('comp-sum')).toHaveText('10'); // 6 + 4
+
+  // ── 5. comp-b is unchanged throughout ──
+  await expect(section.getByTestId('comp-b')).toHaveText('4');
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// batch() — deferred subscriber notifications
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('batch defers notifications until batch completes and updates multiple signals atomically', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('batch-section');
+
+  // ── 1. Initial values ──
+  await expect(section.getByTestId('batch-x')).toHaveText('1');
+  await expect(section.getByTestId('batch-y')).toHaveText('10');
+  await expect(section.getByTestId('batch-log')).toHaveText('');
+
+  // Record initial notification count (subscription fires on initial set, so starts at 1)
+  const initialNotify = await section.getByTestId('batch-notify').textContent();
+
+  // ── 2. Batched update — both signals update atomically ──
+  await section.getByTestId('batch-both').click();
+  await expect(section.getByTestId('batch-x')).toHaveText('2');
+  await expect(section.getByTestId('batch-y')).toHaveText('11');
+  await expect(section.getByTestId('batch-log')).toHaveText('batched');
+
+  // ── 3. Another batched update ──
+  await section.getByTestId('batch-both').click();
+  await expect(section.getByTestId('batch-x')).toHaveText('3');
+  await expect(section.getByTestId('batch-y')).toHaveText('12');
+
+  // ── 4. Nested batch — outermost controls flush ──
+  await section.getByTestId('batch-nested').click();
+  await expect(section.getByTestId('batch-x')).toHaveText('100');
+  await expect(section.getByTestId('batch-y')).toHaveText('200');
+  await expect(section.getByTestId('batch-log')).toHaveText('nested');
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// effect() — auto-tracked side effects
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('effect runs immediately and re-runs when tracked signals change, dispose stops it', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('effect-section');
+
+  // ── 1. Effect ran once during setup — but template bakes in compile-time
+  //        initial values, so we verify reactivity via user interaction. ──
+  await expect(section.getByTestId('effect-source')).toHaveText('0');
+
+  // ── 2. Incrementing source re-runs the effect ──
+  await section.getByTestId('effect-inc').click();
+  await expect(section.getByTestId('effect-source')).toHaveText('1');
+  await expect(section.getByTestId('effect-log')).toHaveText('effect-1');
+
+  await section.getByTestId('effect-inc').click();
+  await expect(section.getByTestId('effect-source')).toHaveText('2');
+  await expect(section.getByTestId('effect-log')).toHaveText('effect-2');
+
+  // ── 3. Dispose stops the effect — further changes do not re-run it ──
+  await section.getByTestId('effect-stop').click();
+  const logBeforeStop = await section.getByTestId('effect-log').textContent();
+
+  await section.getByTestId('effect-inc').click();
+  await expect(section.getByTestId('effect-source')).toHaveText('3');
+  // Effect log should NOT have changed
+  await expect(section.getByTestId('effect-log')).toHaveText(logBeforeStop!);
+
+  // ── 4. Multiple increments after dispose — still no effect re-runs ──
+  await section.getByTestId('effect-inc').click();
+  await section.getByTestId('effect-inc').click();
+  await expect(section.getByTestId('effect-source')).toHaveText('5');
+  await expect(section.getByTestId('effect-log')).toHaveText(logBeforeStop!);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Subscriber exception handling — one throwing subscriber does not break others
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('a throwing subscriber does not prevent subsequent subscribers from firing', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('exc-section');
+
+  // ── 1. Initial source value ──
+  await expect(section.getByTestId('exc-source')).toHaveText('0');
+
+  // ── 2. Trigger update — middle subscriber throws, but before and after still fire ──
+  await section.getByTestId('exc-trigger').click();
+  await expect(section.getByTestId('exc-source')).toHaveText('1');
+  await expect(section.getByTestId('exc-before')).toHaveText('before-1');
+  await expect(section.getByTestId('exc-after')).toHaveText('after-1');
+
+  // ── 3. Multiple triggers — all continue working despite repeated throws ──
+  await section.getByTestId('exc-trigger').click();
+  await section.getByTestId('exc-trigger').click();
+  await expect(section.getByTestId('exc-source')).toHaveText('3');
+  await expect(section.getByTestId('exc-before')).toHaveText('before-3');
+  await expect(section.getByTestId('exc-after')).toHaveText('after-3');
+});

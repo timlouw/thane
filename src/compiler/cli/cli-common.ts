@@ -4,9 +4,9 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import type { CLIOptions, BuildConfig, ThaneBuildOptions, ThaneConfigFile } from './types.js';
 import { runBuild } from './build.js';
-import { runAnalyzer } from './analyzer/index.js';
+import { logger } from '../utils/index.js';
 
-const COMMANDS = new Set(['build', 'dev', 'serve', 'analyze']);
+const COMMANDS = new Set(['build', 'dev', 'serve']);
 
 const DEFAULT_OPTIONS: CLIOptions = {
   command: 'build',
@@ -14,8 +14,7 @@ const DEFAULT_OPTIONS: CLIOptions = {
   gzip: false,
   app: 'client',
   serve: false,
-  compare: false,
-  analyzerPort: 4300,
+  logLevel: 'normal',
 };
 
 const toAbsoluteIfRelative = (value: string, baseDir: string): string =>
@@ -70,8 +69,6 @@ const coerceConfigToCLIOptions = (cfg: ThaneBuildOptions | undefined): Partial<C
     ...(cfg.outDir != null && { outDir: cfg.outDir }),
     ...(cfg.assetsDir != null && { assetsDir: cfg.assetsDir }),
     ...(cfg.htmlTemplate != null && { htmlTemplate: cfg.htmlTemplate }),
-    ...(cfg.analyzerPort != null && { analyzerPort: cfg.analyzerPort }),
-    ...(cfg.compare != null && { compare: cfg.compare }),
   };
 };
 
@@ -133,13 +130,13 @@ const mergeCLIAndConfig = (args: string[], parsedCLI: CLIOptions): CLIOptions =>
   // CLI overrides config (Angular/React-style precedence)
   if (hasFlag(args, '--prod', '-p')) merged.prod = true;
   if (hasFlag(args, '--gzip')) merged.gzip = true;
-  if (hasFlag(args, '--compare')) merged.compare = true;
+  if (hasFlag(args, '--verbose', '-V')) merged.logLevel = 'verbose';
+  if (hasFlag(args, '--quiet', '-q')) merged.logLevel = 'silent';
   if (hasValueFlag(args, '--app') && parsedCLI.app) merged.app = parsedCLI.app;
   if (hasValueFlag(args, '--entry') && parsedCLI.entry) merged.entry = parsedCLI.entry;
   if (hasValueFlag(args, '--out') && parsedCLI.outDir) merged.outDir = parsedCLI.outDir;
   if (hasValueFlag(args, '--assets') && parsedCLI.assetsDir) merged.assetsDir = parsedCLI.assetsDir;
   if (hasValueFlag(args, '--html') && parsedCLI.htmlTemplate) merged.htmlTemplate = parsedCLI.htmlTemplate;
-  if (hasValueFlag(args, '--port')) merged.analyzerPort = parsedCLI.analyzerPort;
   if (hasValueFlag(args, '--config') && parsedCLI.configPath) {
     merged.configPath = toAbsoluteIfRelative(parsedCLI.configPath, process.cwd());
   }
@@ -153,9 +150,9 @@ export function parseArgs(args: string[]): CLIOptions {
   const knownFlags = new Set([
     '--prod', '-p', '--gzip', '--app', '--entry', '--out',
     '--assets', '--html', '--help', '-h', '--version', '-v',
-    '--compare', '--port', '--config',
+    '--verbose', '-V', '--quiet', '-q', '--config',
   ]);
-  const flagsWithValue = new Set(['--app', '--entry', '--out', '--assets', '--html', '--port', '--config']);
+  const flagsWithValue = new Set(['--app', '--entry', '--out', '--assets', '--html', '--config']);
 
   const commandArg = getPositionalCommand(args, flagsWithValue);
   if (commandArg) {
@@ -188,14 +185,16 @@ export function parseArgs(args: string[]): CLIOptions {
       case '--html':
         options.htmlTemplate = args[++i];
         break;
-      case '--compare':
-        options.compare = true;
-        break;
-      case '--port':
-        options.analyzerPort = parseInt(args[++i] || '4300', 10) || 4300;
-        break;
       case '--config':
         options.configPath = args[++i];
+        break;
+      case '--verbose':
+      case '-V':
+        options.logLevel = 'verbose';
+        break;
+      case '--quiet':
+      case '-q':
+        options.logLevel = 'silent';
         break;
       case '--help':
       case '-h':
@@ -232,7 +231,6 @@ Commands:
   build       Build the application
   dev         Start development server with watch mode
   serve       Build and serve the application
-  analyze     Interactive bundle analysis with treemap & dep graph
 
 Options:
   --prod, -p          Production build (default: development)
@@ -243,8 +241,8 @@ Options:
   --assets <dir>      Assets directory (default: ./src/assets)
   --html <path>       HTML template file (default: ./index.html)
   --config <path>     Path to thane config file (default: ./thane.config.json or .jsonc)
-  --compare           Compare dev and prod builds (analyze only)
-  --port <number>     Analyzer server port (default: 4300)
+  --verbose, -V       Verbose output (show debug info)
+  --quiet, -q         Suppress all non-error output
   --help, -h          Show this help message
   --version, -v       Show version number
 
@@ -252,9 +250,7 @@ Examples:
   thane dev                    Start dev server
   thane build --prod           Production build
   thane serve --prod --gzip    Production build with gzip and server
-  thane analyze                Analyze dev bundle
-  thane analyze --prod         Analyze prod bundle
-  thane analyze --compare      Compare dev vs prod bundles
+  thane build --verbose        Build with detailed logging
 `);
 }
 
@@ -301,19 +297,8 @@ export async function cliMain(): Promise<void> {
   const args = process.argv.slice(2);
   const cliOptions = resolveCLIOptions(args);
 
-  if (cliOptions.command === 'analyze') {
-    const buildConfig = createBuildConfig(cliOptions);
-    await runAnalyzer({
-      entryPoints: buildConfig.entryPoints,
-      outDir: buildConfig.outDir,
-      isProd: cliOptions.prod,
-      compare: cliOptions.compare,
-      port: cliOptions.analyzerPort,
-      inputHTMLFilePath: buildConfig.inputHTMLFilePath,
-      assetsInputDir: buildConfig.assetsInputDir,
-    });
-    return;
-  }
+  // Wire log level from CLI flags
+  logger.setLevel(cliOptions.logLevel);
 
   const buildConfig = createBuildConfig(cliOptions);
   await runBuild(buildConfig);

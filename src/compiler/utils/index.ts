@@ -2,7 +2,7 @@
  * Compiler utilities index
  */
 
-export { consoleColors, ansi } from './colors.js';
+export { consoleColors, ansi, supportsColor } from './colors.js';
 export { logger, Logger } from './logger.js';
 
 export { safeReadFile, collectFilesRecursively, getContentType, createBuildContext } from './file-utils.js';
@@ -43,6 +43,6 @@ export { sourceCache } from './cache.js';
 
 export { shouldSkipPath, hasSignalPatterns, createLoaderResult, extendsComponentQuick } from './plugin-helper.js';
 
-export { PLUGIN_NAME, BIND_FN, generateSelectorHTML } from './constants.js';
+export { PLUGIN_NAME, BIND_FN, BROWSER_TARGETS, generateSelectorHTML } from './constants.js';
 
 export * from './html-parser/index.js';

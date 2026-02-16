@@ -54,8 +54,8 @@ declare global {
 // Export types
 export type { Signal, ComponentRoot } from './types.js';
 
-// Export signal
-export { signal } from './signal.js';
+// Export signal and reactive primitives
+export { signal, batch, computed, effect } from './signal.js';
 
 // Export component
 export { 

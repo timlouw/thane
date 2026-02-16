@@ -246,7 +246,12 @@ const KEY_MAP: Record<string, string[]> = {
 /**
  * Compile key modifier names into a JS guard expression.
  * Returns `null` if no valid key modifiers are present.
- * @example compileKeyGuard(['enter', 'tab']) => "e.key !== 'Enter' || e.key !== 'Tab'"
+ *
+ * The guard uses `&&` so that the early-return fires only when the pressed
+ * key matches **none** of the listed keys.  With `||` the condition was a
+ * tautology (always true) whenever more than one key was listed.
+ *
+ * @example compileKeyGuard(['enter', 'tab']) => "e.key !== 'Enter' && e.key !== 'Tab'"
  */
 const compileKeyGuard = (modifiers: string[]): string | null => {
   const checks = modifiers
@@ -256,7 +261,7 @@ const compileKeyGuard = (modifiers: string[]): string | null => {
       return keys.length === 1 ? `e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(e.key)`;
     })
     .filter(Boolean);
-  return checks.length > 0 ? checks.join(' || ') : null;
+  return checks.length > 0 ? checks.join(' && ') : null;
 };
 
 /**

@@ -1,4 +1,5 @@
 import { defineComponent, signal, registerGlobalStyles } from 'thane';
+import { batch, computed, effect } from 'thane';
 import { ChildCounter } from './child-counter.js';
 import { StyledChild } from './styled-child.js';
 import { CssImportChild } from './css-import-child.js';
@@ -146,6 +147,81 @@ export const ContractApp = defineComponent('contract-app', () => {
   const signalPropB = signal(20);
   const incSignalPropA = () => signalPropA(signalPropA() + 1);
   const incSignalPropB = () => signalPropB(signalPropB() + 1);
+
+  // ── computed() test signals ──
+  const compFirst = signal('John');
+  const compLast = signal('Doe');
+  const compFull = computed(() => `${compFirst()} ${compLast()}`);
+  const compA = signal(3);
+  const compB = signal(4);
+  const compSum = computed(() => compA() + compB());
+
+  // Display proxy signals — compiler only generates reactive bindings for signal(),
+  // so computed results are piped through regular signals for template reactivity.
+  const compFullDisplay = signal('John Doe');
+  const compSumDisplay = signal(7);
+  compFull.subscribe((v) => compFullDisplay(v), true);
+  compSum.subscribe((v) => compSumDisplay(v), true);
+
+  const setCompFirst = () => compFirst('Jane');
+  const setCompLast = () => compLast('Smith');
+  const incCompA = () => compA(compA() + 1);
+
+  // ── batch() test signals ──
+  const batchX = signal(1);
+  const batchY = signal(10);
+  const batchLog = signal('');
+  // Track how many times the combined display is updated
+  const batchNotifyCount = signal(0);
+  // Subscribe to batchX — each notification bumps the counter
+  batchX.subscribe(() => batchNotifyCount(batchNotifyCount() + 1), true);
+
+  const batchBoth = () => {
+    batch(() => {
+      batchX(batchX() + 1);
+      batchY(batchY() + 1);
+      batchLog('batched');
+    });
+  };
+  const batchNested = () => {
+    batch(() => {
+      batchX(100);
+      batch(() => {
+        batchY(200);
+      });
+      batchLog('nested');
+    });
+  };
+
+  // ── effect() test signals ──
+  const effectSource = signal(0);
+  // Display signals initialized with compile-time-correct values
+  // (effect runs during setup but template bakes in compile-time initial values)
+  const effectLog = signal('effect-0');
+  const effectRuns = signal(0);
+  let effectRunCount = 0;
+
+  const disposeEffect = effect(() => {
+    const val = effectSource();
+    effectRunCount++;
+    effectRuns(effectRunCount);
+    effectLog(`effect-${val}`);
+  });
+
+  const incEffectSource = () => effectSource(effectSource() + 1);
+  const stopEffect = () => disposeEffect();
+
+  // ── subscriber exception handling test ──
+  const excSource = signal(0);
+  const excBefore = signal('');
+  const excAfter = signal('');
+  // These subscribe WITHOUT skipInitial — but the template bakes in
+  // compile-time initial values, so we only test post-interaction state.
+  excSource.subscribe((v) => excBefore(`before-${v}`), true);
+  excSource.subscribe(() => { throw new Error('boom'); }, true);
+  excSource.subscribe((v) => excAfter(`after-${v}`), true);
+
+  const triggerExc = () => excSource(excSource() + 1);
 
   return {
     template: html`
@@ -325,6 +401,42 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="prop-b-source">${signalPropB()}</p>
 
           ${PropParent({ valueA: signalPropA, valueB: signalPropB })}
+        </section>
+
+        <section data-testid="computed-section">
+          <button data-testid="comp-set-first" @click=${setCompFirst}>setFirst</button>
+          <button data-testid="comp-set-last" @click=${setCompLast}>setLast</button>
+          <button data-testid="comp-inc-a" @click=${incCompA}>compA++</button>
+          <p data-testid="comp-full">${compFullDisplay()}</p>
+          <p data-testid="comp-first">${compFirst()}</p>
+          <p data-testid="comp-last">${compLast()}</p>
+          <p data-testid="comp-sum">${compSumDisplay()}</p>
+          <p data-testid="comp-a">${compA()}</p>
+          <p data-testid="comp-b">${compB()}</p>
+        </section>
+
+        <section data-testid="batch-section">
+          <button data-testid="batch-both" @click=${batchBoth}>batchBoth</button>
+          <button data-testid="batch-nested" @click=${batchNested}>batchNested</button>
+          <p data-testid="batch-x">${batchX()}</p>
+          <p data-testid="batch-y">${batchY()}</p>
+          <p data-testid="batch-log">${batchLog()}</p>
+          <p data-testid="batch-notify">${batchNotifyCount()}</p>
+        </section>
+
+        <section data-testid="effect-section">
+          <button data-testid="effect-inc" @click=${incEffectSource}>effectSource++</button>
+          <button data-testid="effect-stop" @click=${stopEffect}>stopEffect</button>
+          <p data-testid="effect-source">${effectSource()}</p>
+          <p data-testid="effect-log">${effectLog()}</p>
+          <p data-testid="effect-runs">${effectRuns()}</p>
+        </section>
+
+        <section data-testid="exc-section">
+          <button data-testid="exc-trigger" @click=${triggerExc}>triggerExc</button>
+          <p data-testid="exc-source">${excSource()}</p>
+          <p data-testid="exc-before">${excBefore()}</p>
+          <p data-testid="exc-after">${excAfter()}</p>
         </section>
       </main>
     `,

@@ -223,27 +223,19 @@ export function createKeyedReconciler<T>(
     if (newLength === 0) { clearAll(); return; }
     if (oldLength === 0) { bulkCreate(newItems); return; }
 
-    // Fast path: single item removed
+    // Fast path: single item removed — build new-key set, find missing old key
     if (oldLength === newLength + 1) {
+      for (let i = 0; i < newLength; i++) _keySet.add(keyFn(newItems[i]!, i));
       let removedIdx = -1;
-      for (let i = 0; i < newLength; i++) {
-        const newKey = keyFn(newItems[i]!, i);
-        const oldKey = keyFn(managedItems[i]!.value!, i);
-        if (newKey !== oldKey) { removedIdx = i; break; }
+      let removedKey: string | number | undefined;
+      for (let i = 0; i < oldLength; i++) {
+        const key = keyFn(managedItems[i]!.value!, i);
+        if (!_keySet.has(key)) { removedIdx = i; removedKey = key; break; }
       }
-      if (removedIdx === -1) removedIdx = oldLength - 1;
-
-      const removedManaged = managedItems[removedIdx]!;
-      const removedKey = keyFn(removedManaged.value!, removedIdx);
-
-      let isActualRemoval = true;
-      for (let i = removedIdx; i < newLength; i++) {
-        if (keyFn(newItems[i]!, i) === removedKey) { isActualRemoval = false; break; }
-      }
-
-      if (isActualRemoval) {
-        removeItem(removedManaged);
-        keyMap.delete(removedKey);
+      _keySet.clear();
+      if (removedIdx !== -1) {
+        removeItem(managedItems[removedIdx]!);
+        keyMap.delete(removedKey!);
         managedItems.splice(removedIdx, 1);
         return;
       }
@@ -296,8 +288,8 @@ export function createKeyedReconciler<T>(
           if (wanted === currentEl) currentEl = currentEl?.nextElementSibling || null;
           else container.insertBefore(wanted, currentEl);
         }
-        managedItems.length = 0;
-        for (let i = 0; i < newLength; i++) managedItems.push(newManagedItems[i]!);
+        managedItems.length = newLength;
+        for (let i = 0; i < newLength; i++) managedItems[i] = newManagedItems[i]!;
         return;
       }
     }
@@ -312,7 +304,6 @@ export function createKeyedReconciler<T>(
     }
 
     // General keyed reconciliation
-    _keySet.clear();
     for (let i = 0; i < newLength; i++) _keySet.add(keyFn(newItems[i]!, i));
 
     const kept: ManagedItem<T>[] = [];
@@ -323,8 +314,8 @@ export function createKeyedReconciler<T>(
       else { removeItem(managed); keyMap.delete(key); }
     }
     _keySet.clear();
-    managedItems.length = 0;
-    for (let i = 0; i < kept.length; i++) managedItems.push(kept[i]!);
+    managedItems.length = kept.length;
+    for (let i = 0; i < kept.length; i++) managedItems[i] = kept[i]!;
 
     const newManagedItems: ManagedItem<T>[] = [];
     for (let i = 0; i < newLength; i++) {
@@ -348,8 +339,8 @@ export function createKeyedReconciler<T>(
       if (wanted === currentEl) currentEl = currentEl?.nextElementSibling || null;
       else container.insertBefore(wanted, currentEl);
     }
-    managedItems.length = 0;
-    for (let i = 0; i < newLength; i++) managedItems.push(newManagedItems[i]!);
+    managedItems.length = newLength;
+    for (let i = 0; i < newLength; i++) managedItems[i] = newManagedItems[i]!;
   };
 
   return { reconcile, clearAll };

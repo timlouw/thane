@@ -4,8 +4,11 @@
 
 import { readdir } from 'node:fs/promises';
 import { join, extname } from 'node:path';
-import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
+import { brotliCompress, constants as zlibConstants } from 'node:zlib';
+import { promisify } from 'node:util';
 import { consoleColors } from '../../utils/index.js';
+
+const brotliCompressAsync = promisify(brotliCompress);
 
 export const gzipDistFiles = async (distDir: string, isProd?: boolean): Promise<void> => {
   const brotliQuality = isProd ? 11 : 4;
@@ -21,7 +24,7 @@ export const gzipDistFiles = async (distDir: string, isProd?: boolean): Promise<
     await Bun.write(gzipPath, gzipped);
 
     // Brotli compression using node:zlib (Bun doesn't have a native brotli API yet)
-    const brotlied = brotliCompressSync(content, {
+    const brotlied = await brotliCompressAsync(content, {
       params: {
         [zlibConstants.BROTLI_PARAM_MODE]: zlibConstants.BROTLI_MODE_TEXT,
         [zlibConstants.BROTLI_PARAM_QUALITY]: brotliQuality,

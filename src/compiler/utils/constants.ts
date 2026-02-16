@@ -34,4 +34,7 @@ export const BIND_FN = {
   REGISTER_COMPONENT: '__registerComponent',
 } as const;
 
+/** Shared browser targets used by the esbuild build runner. */
+export const BROWSER_TARGETS = ['es2022', 'chrome94', 'firefox93', 'safari15', 'edge94'] as const;
+
 export const generateSelectorHTML = (selector: string): string => `<${selector}></${selector}>`;

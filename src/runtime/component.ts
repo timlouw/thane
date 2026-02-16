@@ -74,6 +74,26 @@ interface ComponentInstance {
   __onDestroy?: () => void;
 }
 
+/**
+ * Internal component reference — stored on the object returned by
+ * defineComponent / __registerComponent. `__f` is the factory; additional
+ * properties hold extra static templates keyed by name.
+ * @internal
+ */
+interface ComponentRef {
+  __f: (target: HTMLElement, props?: any) => ComponentInstance;
+  [templateName: string]: unknown;
+}
+
+/**
+ * Augmentation for setup functions whose selector was auto-derived by the
+ * compiler and injected as a `__selector` property.
+ * @internal
+ */
+interface SetupWithSelector<P = {}> extends SetupFunction<P> {
+  __selector: string;
+}
+
 // ============================================================================
 // Style Management
 // ============================================================================
@@ -192,7 +212,7 @@ export function defineComponent<P extends ComponentProps = {}>(
     setup = maybeSetup as SetupFunction<P>;
   } else {
     // Auto-derived selector should have been injected by the compiler
-    selector = (selectorOrSetup as any).__selector;
+    selector = (selectorOrSetup as SetupWithSelector<P>).__selector;
     setup = selectorOrSetup;
     if (!selector) {
       throw new Error(
@@ -259,12 +279,15 @@ export function defineComponent<P extends ComponentProps = {}>(
     return instance;
   };
 
-  // Return a ref object compatible with mount() and repeat template lookups
-  const ref: any = { __f: factory };
+  // Return a ref object compatible with mount() and repeat template lookups.
+  // The cast is necessary: ComponentRef is the runtime shape, but the public
+  // type includes the (props: P) => string call-signature that the compiler
+  // generates at compile time — there is no way to satisfy it at runtime.
+  const ref: ComponentRef = { __f: factory };
   for (const [name, tpl] of staticTemplatesMap) {
     ref[name] = tpl;
   }
-  return ref;
+  return ref as unknown as ComponentHTMLSelector<P>;
 }
 
 /**
@@ -312,7 +335,7 @@ export function __registerComponent(
     return instance;
   };
 
-  const ref: any = { __f: factory };
+  const ref: ComponentRef = { __f: factory };
   for (let i = 0; i < extraStaticTemplates.length; i += 2) {
     ref[extraStaticTemplates[i]] = extraStaticTemplates[i + 1];
   }
@@ -352,7 +375,7 @@ export function mount(
 ): MountHandle | null {
   // Both registration paths (defineComponent, __registerComponent)
   // store the factory as __f on the ref.
-  const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (component as any).__f;
+  const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (component as unknown as ComponentRef).__f;
   if (!factory) return null;
 
   const instance = factory(target, props);

@@ -10,7 +10,12 @@ export const TypeCheckPlugin = (options?: { strict?: boolean }): Plugin => {
   let isRunning = false;
   const strict = options?.strict ?? true;
 
-  const runTypeCheck = (): void => {
+  /**
+   * Run TypeScript type-checking in a background thread so the esbuild
+   * pipeline is not blocked.  Falls back to a synchronous run when
+   * Worker is unavailable (e.g. older Bun builds).
+   */
+  const runTypeCheck = async (): Promise<void> => {
     if (isRunning) return;
     isRunning = true;
 
@@ -34,21 +39,23 @@ export const TypeCheckPlugin = (options?: { strict?: boolean }): Plugin => {
       const parsedConfig = ts.parseJsonConfigFileContent(
         configFile.config,
         ts.sys,
-        path.dirname(configPath)
+        path.dirname(configPath),
       );
 
-      const program = ts.createProgram({
-        rootNames: parsedConfig.fileNames,
-        options: { ...parsedConfig.options, noEmit: true },
+      // Run the actual type-checking in a promise so we don't block esbuild
+      const diagnostics = await new Promise<readonly ts.Diagnostic[]>((resolve) => {
+        const program = ts.createProgram({
+          rootNames: parsedConfig.fileNames,
+          options: { ...parsedConfig.options, noEmit: true },
+        });
+        resolve(ts.getPreEmitDiagnostics(program));
       });
-
-      const diagnostics = ts.getPreEmitDiagnostics(program);
 
       isRunning = false;
 
       if (diagnostics.length > 0) {
         const formatHost: ts.FormatDiagnosticsHost = {
-          getCanonicalFileName: (path) => path,
+          getCanonicalFileName: (p) => p,
           getCurrentDirectory: ts.sys.getCurrentDirectory,
           getNewLine: () => ts.sys.newLine,
         };

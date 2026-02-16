@@ -4,7 +4,7 @@
 
 export interface CLIOptions {
   /** Command to execute */
-  command: 'build' | 'dev' | 'serve' | 'analyze';
+  command: 'build' | 'dev' | 'serve';
   /** Production mode */
   prod: boolean;
   /** Enable gzip/brotli compression */
@@ -21,10 +21,8 @@ export interface CLIOptions {
   htmlTemplate?: string | undefined;
   /** Start dev server after build */
   serve: boolean;
-  /** Compare dev and prod builds (analyze command) */
-  compare: boolean;
-  /** Port for analyzer server */
-  analyzerPort: number;
+  /** Logging verbosity: 'silent' | 'normal' | 'verbose' */
+  logLevel: import('../types.js').LogLevel;
   /** Optional config file path passed via --config */
   configPath?: string | undefined;
 }
@@ -47,10 +45,6 @@ export interface ThaneBuildOptions {
   assetsDir?: string | undefined;
   /** HTML template file */
   htmlTemplate?: string | undefined;
-  /** Port for analyzer server */
-  analyzerPort?: number | undefined;
-  /** Compare dev/prod in analyze mode */
-  compare?: boolean | undefined;
 }
 
 /**
@@ -67,7 +61,6 @@ export interface ThaneConfigFile extends ThaneBuildOptions {
     build?: ThaneBuildOptions | undefined;
     dev?: ThaneBuildOptions | undefined;
     serve?: ThaneBuildOptions | undefined;
-    analyze?: ThaneBuildOptions | undefined;
   } | undefined;
 }
 

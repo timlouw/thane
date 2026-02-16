@@ -4,7 +4,7 @@
 
 import { build, context, type BuildOptions } from 'esbuild';
 import type { BuildConfig } from './types.js';
-import { consoleColors, createBuildContext } from '../utils/index.js';
+import { consoleColors, createBuildContext, BROWSER_TARGETS } from '../utils/index.js';
 
 // Import plugins
 import { TypeCheckPlugin } from '../plugins/tsc-type-checker/tsc-type-checker.js';
@@ -66,7 +66,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     entryPoints: config.entryPoints,
     bundle: true,
     platform: 'browser',
-    target: ['es2022', 'chrome94', 'firefox93', 'safari15', 'edge94'],
+    target: [...BROWSER_TARGETS],
     outdir: config.outDir,
     treeShaking: true,
     logLevel: 'error',

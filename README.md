@@ -94,13 +94,13 @@ HTML templates are pre-compiled into static `<template>` elements with direct DO
 <td width="33%" valign="top">
 
 ### ⚡ Fine-Grained Reactivity
-Signal-based subscriptions at the individual binding level. Only the exact text node, attribute, or style that changed is updated.
+Signal-based subscriptions at the individual binding level. Only the exact text node, attribute, or style that changed is updated. Derived values via `computed()` and batched updates via `batch()`.
 
 </td>
 <td width="33%" valign="top">
 
 ### 🪶 Tiny Runtime
-~3 KB min+gzip. Most logic runs at compile time. The runtime is just `signal()`, `defineComponent()`, and a keyed reconciler.
+~3 KB min+gzip. Most logic runs at compile time. The runtime is just `signal()`, `computed()`, `effect()`, `defineComponent()`, and a keyed reconciler.
 
 </td>
 </tr>
@@ -135,7 +135,7 @@ bun add thane
 ```
 
 ```typescript
-import { defineComponent, signal, mount } from 'thane';
+import { defineComponent, signal, computed, batch, effect, mount } from 'thane';
 
 export const MyCounter = defineComponent(() => {
   const count = signal(0);
@@ -180,6 +180,74 @@ name.subscribe((value) => console.log('changed:', value));
 ```
 
 Inside templates, signal reads (`${count()}`) are automatically detected by the compiler and wired to surgical DOM updates.
+
+</details>
+
+<details open>
+<summary><h3>Computed Signals</h3></summary>
+
+Derived values that automatically track their signal dependencies and update when any dependency changes.
+
+```typescript
+import { signal, computed } from 'thane';
+
+const firstName = signal('John');
+const lastName = signal('Doe');
+const fullName = computed(() => `${firstName()} ${lastName()}`);
+
+fullName(); // → 'John Doe'
+firstName('Jane');
+fullName(); // → 'Jane Doe'
+```
+
+Computed signals are read-only — calling them returns the derived value. They can be used in templates just like regular signals.
+
+</details>
+
+<details>
+<summary><h3>Batching</h3></summary>
+
+Batch multiple signal updates so subscriber notifications fire only once after the batch completes. Useful for updating several related signals without triggering intermediate re-renders.
+
+```typescript
+import { signal, batch } from 'thane';
+
+const firstName = signal('John');
+const lastName = signal('Doe');
+
+// Subscribers fire once with final values, not twice
+batch(() => {
+  firstName('Jane');
+  lastName('Smith');
+});
+```
+
+Batches can be nested — notifications flush when the outermost batch ends.
+
+</details>
+
+<details>
+<summary><h3>Effects</h3></summary>
+
+Side-effect functions that automatically track which signals they read and re-run when any of those signals change. Returns a dispose function.
+
+```typescript
+import { signal, effect } from 'thane';
+
+const name = signal('world');
+
+const dispose = effect(() => {
+  console.log(`Hello, ${name()}!`);
+});
+// Logs: "Hello, world!"
+
+name('Thane');
+// Logs: "Hello, Thane!"
+
+dispose(); // Stop the effect
+```
+
+Effects are tree-shakable — if your app never imports `effect`, the code is eliminated at build time.
 
 </details>
 
@@ -261,6 +329,8 @@ The compiler optimizes `repeat()` into keyed reconciliation with template clonin
 
 Supported modifiers: `.prevent` · `.stop` · `.self` · `.enter` · `.esc` · `.space` · `.tab` · `.up` · `.down` · `.left` · `.right`
 
+Multiple key modifiers can be combined: `@keydown.ctrl.shift.enter=${handleShortcut}`
+
 </details>
 
 <br />
@@ -278,7 +348,7 @@ Supported modifiers: `.prevent` · `.stop` · `.self` · `.enter` · `.esc` · `
 | **Codegen** | Each binding becomes a direct DOM operation: `commentNode.nextSibling.data = value`, `el.setAttribute()`, `el.addEventListener()`, `signal.subscribe()`. |
 | **Inject** | The compiled initializer and static `<template>` element replace the original tagged template literal. |
 
-**Runtime (~3 KB):** `signal()` · `defineComponent()` · `createKeyedReconciler()` — no virtual DOM, no diffing, no template compiler.
+**Runtime (~3 KB):** `signal()` · `computed()` · `effect()` · `batch()` · `defineComponent()` · `createKeyedReconciler()` — no virtual DOM, no diffing, no template compiler.
 
 <br />
 
@@ -331,7 +401,6 @@ The compiler automatically selects the optimal rendering strategy for `repeat()`
 thane dev --entry ./src/main.ts --out ./dist       # Dev server + watch
 thane build --prod --entry ./src/main.ts --out ./dist   # Production build
 thane serve --prod --entry ./src/main.ts --out ./dist   # Preview production
-thane analyze --entry ./src/main.ts --out ./dist   # Bundle analysis
 ```
 
 Default paths (when flags are omitted):
@@ -351,8 +420,8 @@ Default paths (when flags are omitted):
 | `--prod, -p` | Production mode (minification + tree-shaking) |
 | `--gzip` | Enable gzip compression (production only) |
 | `--app` | Application name (default: `client`) |
-| `--compare` | Compare dev and prod builds (analyze only) |
-| `--port` | Analyzer server port (default: `4300`) |
+| `--verbose, -V` | Verbose output (show debug info) |
+| `--quiet, -q` | Suppress all non-error output |
 
 ### Config file
 
@@ -372,8 +441,7 @@ Example config:
   "htmlTemplate": "./index.html",
   "prod": false,
   "commands": {
-    "build": { "prod": true },
-    "analyze": { "compare": true, "analyzerPort": 4300 }
+    "build": { "prod": true }
   }
 }
 ```
@@ -389,7 +457,7 @@ Precedence is:
 
 ## 🧪 Testing
 
-All features are validated by **69 end-to-end browser tests** across Chromium, Firefox, and WebKit, plus **95 unit tests** covering signals, reactivity, and lint rules.
+All features are validated by **end-to-end browser tests** across Chromium, Firefox, and WebKit, plus **158+ unit tests** covering signals, computed, batch, effect, reactivity, and lint rules.
 
 ```bash
 bun run test          # Unit tests

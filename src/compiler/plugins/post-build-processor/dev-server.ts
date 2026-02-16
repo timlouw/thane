@@ -2,10 +2,13 @@
  * Post-Build Processor — HTTP dev server with live reload
  */
 
-import { join, extname } from 'node:path';
-import { brotliCompressSync, constants as zlibConstants } from 'node:zlib';
+import { join, extname, resolve } from 'node:path';
+import { brotliCompress, constants as zlibConstants } from 'node:zlib';
+import { promisify } from 'node:util';
 import type { Server } from 'bun';
 import { consoleColors, ansi, getContentType, logger } from '../../utils/index.js';
+
+const brotliCompressAsync = promisify(brotliCompress);
 
 const injectLiveReloadScript = (html: string): string => {
   const script = `<script>new EventSource('/__live-reload').onmessage=()=>location.reload()</script>`;
@@ -67,6 +70,9 @@ export class DevServer {
   start(port: number = this.serverPort): void {
     const { distDir, isProd, useGzip } = this.options;
 
+    // Pre-resolve the canonical dist root for path-traversal checks
+    const canonicalDistDir = resolve(distDir);
+
     const compressAndRespond = async (filePath: string, req: Request, contentType: string, cacheControl: string): Promise<Response> => {
       const acceptEncoding = req.headers.get('accept-encoding') ?? '';
       const canCompress = useGzip && !contentType.startsWith('image/') && !contentType.startsWith('video/') && !contentType.startsWith('audio/');
@@ -83,7 +89,7 @@ export class DevServer {
 
         if (acceptEncoding.includes('br')) {
           headers['Content-Encoding'] = 'br';
-          const compressed = brotliCompressSync(raw, {
+          const compressed = await brotliCompressAsync(raw, {
             params: {
               [zlibConstants.BROTLI_PARAM_MODE]: zlibConstants.BROTLI_MODE_TEXT,
               [zlibConstants.BROTLI_PARAM_QUALITY]: brotliQuality,
@@ -107,8 +113,15 @@ export class DevServer {
         fetch: async (req: Request) => {
           const url = new URL(req.url);
           const requestedUrl = url.pathname;
-          const requestedPath = join(distDir, requestedUrl);
-          const indexPath = join(distDir, 'index.html');
+
+          // Path-traversal guard: resolve the requested path and ensure it
+          // stays within the dist directory.
+          const requestedPath = resolve(canonicalDistDir, '.' + requestedUrl);
+          if (!requestedPath.startsWith(canonicalDistDir)) {
+            return new Response('Forbidden', { status: 403 });
+          }
+
+          const indexPath = join(canonicalDistDir, 'index.html');
           const hasFileExtension = extname(requestedUrl).length > 0;
 
           if (requestedUrl === '/__live-reload') {
