@@ -167,8 +167,13 @@ export function createKeyedReconciler<T>(
   container: ParentNode & Element,
   anchor: Element,
   createItemFn: (item: T, index: number, refNode: Node) => ManagedItem<T>,
-  keyFn: KeyFn<T>,
+  keyFnOrProp: KeyFn<T> | string,
 ) {
+  // Resolve key accessor once: string property name → direct access, function → use as-is
+  const keyFn: KeyFn<T> = typeof keyFnOrProp === 'string'
+    ? (item: T) => (item as any)[keyFnOrProp] as string | number
+    : keyFnOrProp;
+
   const containerParent = container.parentNode;
   const containerNextSibling = container.nextSibling;
 

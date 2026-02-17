@@ -26,6 +26,22 @@ import type { ChildMountInfo } from '../component-precompiler/component-precompi
 const NAME = PLUGIN_NAME.REACTIVE;
 
 // ============================================================================
+// Key Function Inlining
+// ============================================================================
+
+/**
+ * Detect simple `(param) => param.prop` trackBy patterns and extract the
+ * property name. When matched, the codegen emits just the property name
+ * string instead of the full arrow function, letting the runtime use a
+ * direct property access (avoiding per-call function invocation overhead).
+ */
+const _simpleKeyFnRe = /^\s*\(?\s*(\w+)\s*\)?\s*=>\s*\1\.(\w+)\s*$/;
+const extractKeyProperty = (trackByFn: string): string | null => {
+  const m = _simpleKeyFnRe.exec(trackByFn);
+  return m ? m[2]! : null;
+};
+
+// ============================================================================
 // Navigation Helper
 // ============================================================================
 
@@ -939,7 +955,8 @@ export const generateInitBindingsFunction = (
         const useDelegation = delegatedEventsByType.size > 0;
         
         // Always use createKeyedReconciler — when no trackBy, inject (_, i) => i
-        const keyFnExpr = rep.trackByFn || '(_, i) => i';
+        const _keyProp = rep.trackByFn ? extractKeyProperty(rep.trackByFn) : null;
+        const keyFnExpr = _keyProp ? `'${_keyProp}'` : (rep.trackByFn || '(_, i) => i');
 
         const repMountLines = generateMountLines(rep.id, '        ', {
           itemVar: rep.itemVar,
@@ -1045,7 +1062,8 @@ export const generateInitBindingsFunction = (
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           }
           const innerIndexVar = nr.indexVar || '_idx';
-          const innerKeyFn = nr.trackByFn || '(_, i) => i';
+          const _innerKeyProp = nr.trackByFn ? extractKeyProperty(nr.trackByFn) : null;
+          const innerKeyFn = _innerKeyProp ? `'${_innerKeyProp}'` : (nr.trackByFn || '(_, i) => i');
           lines.push(`        const _nrTc_${nr.id} = ${ap.staticPrefix}${innerTplId}.content.firstElementChild;`);
           lines.push(`        const _nrRc_${nr.id} = ${BIND_FN.KEYED_RECONCILER}(_nrC_${nr.id}, _nrA_${nr.id},`);
           lines.push(`          (_nrItem, ${innerIndexVar}, _nrRef) => {`);
@@ -1239,7 +1257,8 @@ export const generateInitBindingsFunction = (
         lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
 
-        let keyFnArg = rep.trackByFn || '(_, i) => i';
+        const _fbKeyProp = rep.trackByFn ? extractKeyProperty(rep.trackByFn) : null;
+        let keyFnArg = _fbKeyProp ? `'${_fbKeyProp}'` : (rep.trackByFn || '(_, i) => i');
 
         lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
         lines.push(`      (item, ${indexVar}, _ref) => {`);
