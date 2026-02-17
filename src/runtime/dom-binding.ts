@@ -137,6 +137,8 @@ interface ManagedItem<T> {
   update?: ((newValue: T) => void) | undefined;
   /** Cached value for direct update path (no signal) */
   value?: T | undefined;
+  /** Cached key — avoids re-calling keyFn on old items */
+  key?: string | number | undefined;
 }
 
 /**
@@ -209,8 +211,10 @@ export function createKeyedReconciler<T>(
       const item = items[i]!;
       const idx = startIndex + i;
       const managed = createItemFn(item, idx, anchor);
+      const key = keyFn(item, idx);
+      managed.key = key;
       managedItems[base + i] = managed;
-      keyMap.set(keyFn(item, idx), managed);
+      keyMap.set(key, managed);
     }
 
     if (containerParent) containerParent.insertBefore(container, containerNextSibling);
@@ -227,15 +231,22 @@ export function createKeyedReconciler<T>(
     if (oldLength === newLength + 1) {
       for (let i = 0; i < newLength; i++) _keySet.add(keyFn(newItems[i]!, i));
       let removedIdx = -1;
-      let removedKey: string | number | undefined;
-      for (let i = 0; i < oldLength; i++) {
-        const key = keyFn(managedItems[i]!.value!, i);
-        if (!_keySet.has(key)) { removedIdx = i; removedKey = key; break; }
+      for (let i = 0; i < newLength; i++) {
+        const newKey = keyFn(newItems[i]!, i);
+        if (newKey !== managedItems[i]!.key) { removedIdx = i; break; }
       }
-      _keySet.clear();
-      if (removedIdx !== -1) {
-        removeItem(managedItems[removedIdx]!);
-        keyMap.delete(removedKey!);
+      if (removedIdx === -1) removedIdx = oldLength - 1;
+
+      const removedManaged = managedItems[removedIdx]!;
+
+      let isActualRemoval = true;
+      for (let i = removedIdx; i < newLength; i++) {
+        if (keyFn(newItems[i]!, i) === removedManaged.key) { isActualRemoval = false; break; }
+      }
+
+      if (isActualRemoval) {
+        removeItem(removedManaged);
+        keyMap.delete(removedManaged.key!);
         managedItems.splice(removedIdx, 1);
         return;
       }
@@ -307,9 +318,8 @@ export function createKeyedReconciler<T>(
     const kept: ManagedItem<T>[] = [];
     for (let i = 0; i < oldLength; i++) {
       const managed = managedItems[i]!;
-      const key = keyFn(managed.value!, i);
-      if (_keySet.has(key)) kept.push(managed);
-      else { removeItem(managed); keyMap.delete(key); }
+      if (_keySet.has(managed.key!)) kept.push(managed);
+      else { removeItem(managed); keyMap.delete(managed.key!); }
     }
     _keySet.clear();
     managedItems.length = kept.length;
@@ -326,6 +336,7 @@ export function createKeyedReconciler<T>(
       } else {
         const refNode = i < managedItems.length ? managedItems[i]!.el : anchor;
         const managed = createItemFn(newItem, i, refNode);
+        managed.key = key;
         keyMap.set(key, managed);
         newManagedItems.push(managed);
       }
