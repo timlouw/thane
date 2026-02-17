@@ -232,9 +232,8 @@ export function createKeyedReconciler<T>(
     if (newLength === 0) { clearAll(); return; }
     if (oldLength === 0) { bulkCreate(newItems); return; }
 
-    // Fast path: single item removed — build new-key set, find missing old key
+    // Fast path: single item removed — find missing old key by linear scan
     if (oldLength === newLength + 1) {
-      for (let i = 0; i < newLength; i++) _keySet.add(keyFn(newItems[i]!, i));
       let removedIdx = -1;
       for (let i = 0; i < newLength; i++) {
         const newKey = keyFn(newItems[i]!, i);

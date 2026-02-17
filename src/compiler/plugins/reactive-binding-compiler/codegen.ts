@@ -793,9 +793,7 @@ export const generateInitBindingsFunction = (
     const hasNestedConditionals = rep.nestedConditionals.length > 0;
     const hasItemEvents = rep.itemEvents.length > 0;
     
-    const canUseOptimized = true;
-    
-    if (canUseOptimized) {
+    {
       // Use optimized template-based approach
       // Collect directive anchor IDs for path computation (Step 14/15)
       const directiveAnchorIds: string[] = [
