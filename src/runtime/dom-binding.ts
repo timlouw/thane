@@ -241,27 +241,25 @@ export function createKeyedReconciler<T>(
       }
     }
 
-    // Fast path: reorder with same keys
+    // Fast path: reorder with same keys (fused allKeysExist + update in single pass)
     if (oldLength === newLength) {
       let allKeysExist = true;
-      for (let i = 0; i < newLength && allKeysExist; i++) {
-        if (!keyMap.has(keyFn(newItems[i]!, i))) allKeysExist = false;
+      let mismatchCount = 0, mismatch1 = -1, mismatch2 = -1;
+
+      for (let i = 0; i < newLength; i++) {
+        const newItem = newItems[i]!;
+        const existing = keyMap.get(keyFn(newItem, i));
+        if (!existing) { allKeysExist = false; break; }
+        if (existing.value !== newItem) { existing.value = newItem; existing.update!(newItem); }
+        if (managedItems[i] !== existing) {
+          mismatchCount++;
+          if (mismatchCount === 1) mismatch1 = i;
+          else if (mismatchCount === 2) mismatch2 = i;
+          if (mismatchCount > 2) break;
+        }
       }
 
       if (allKeysExist) {
-        let mismatchCount = 0, mismatch1 = -1, mismatch2 = -1;
-
-        for (let i = 0; i < newLength; i++) {
-          const newItem = newItems[i]!;
-          const existing = keyMap.get(keyFn(newItem, i))!;
-          if (existing.value !== newItem) { existing.value = newItem; existing.update!(newItem); }
-          if (managedItems[i] !== existing) {
-            mismatchCount++;
-            if (mismatchCount === 1) mismatch1 = i;
-            else if (mismatchCount === 2) mismatch2 = i;
-            if (mismatchCount > 2) break;
-          }
-        }
 
         if (mismatchCount === 0) return;
 
