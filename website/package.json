@@ -1,0 +1,16 @@
+{
+  "name": "thane-website",
+  "version": "1.0.0",
+  "description": "Official Thane framework website — built with Thane",
+  "author": "Tim Louw",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "thane dev --entry ./main.ts --out ./dist --html ./index.html",
+    "build": "thane build --prod --entry ./main.ts --out ./dist --html ./index.html",
+    "preview": "thane serve --prod --entry ./main.ts --out ./dist --html ./index.html"
+  },
+  "dependencies": {
+    "thane": "file:./thane-0.0.92.tgz"
+  }
+}

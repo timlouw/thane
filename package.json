@@ -24,7 +24,7 @@
     "url": "https://github.com/timlouw/thane/issues"
   },
   "engines": {
-    "bun": ">=1.0.0"
+    "bun": "\u003e=1.0.0"
   },
   "main": "dist/runtime/index.js",
   "types": "dist/runtime/index.d.ts",
@@ -60,7 +60,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "bun test ./src",
-    "e2e:build": "bun run build && bun ./dist/compiler/cli/thane.js build --entry ./e2e/contract-app/main.ts --out ./dist/e2e --html ./e2e/contract-app/index.html --assets ./e2e/contract-app/assets",
+    "e2e:build": "bun run build \u0026\u0026 bun ./dist/compiler/cli/thane.js build --entry ./e2e/contract-app/main.ts --out ./dist/e2e --html ./e2e/contract-app/index.html --assets ./e2e/contract-app/assets",
     "e2e:serve": "bun ./e2e/server.ts",
     "e2e:test": "playwright test -c ./e2e/playwright.config.ts",
     "e2e:test:headed": "playwright test -c ./e2e/playwright.config.ts --headed --workers=1",
