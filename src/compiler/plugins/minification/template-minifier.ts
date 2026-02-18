@@ -1,21 +1,16 @@
-/** Block-level elements for whitespace removal between adjacent block tags */
-const BLOCK_ELEMENTS = 'div|p|section|article|header|footer|main|nav|aside|ul|ol|li|table|tr|td|th|thead|tbody|tfoot|form|fieldset|h[1-6]';
-
 export const minifyHTML = (html: string): string => {
   return (
     html
       .replace(/\s+/g, ' ')
-      .replace(/>\s+</g, '> <')
-      .replace(
-        new RegExp(`(<\\/(?:${BLOCK_ELEMENTS})>) (<(?:${BLOCK_ELEMENTS}|template|!))`, 'gi'),
-        '$1$2',
-      )
-      .replace(new RegExp(`(<(?:${BLOCK_ELEMENTS})[^>]*>) `, 'gi'), '$1')
-      .replace(new RegExp(` (<\\/(?:${BLOCK_ELEMENTS})>)`, 'gi'), '$1')
+      .replace(/>\s+</g, '><')
+      // Strip non-binding HTML comments (preserve <!--bN-->, <!--iN-->, <!--[if]-->, and <!----> boundary)
+      .replace(/<!--(?!b\d)(?!i\d)(?!\[)(?!--)[\s\S]*?-->/g, '')
+      // Repair: aggressive strip may have merged binding markers with boundary comments;
+      // re-insert the placeholder text node that nextSibling.data relies on
+      .replace(/(<!--[ib]\d+-->)(<!---->)/g, '$1 $2')
+      .replace(/\s+>/g, '>')
       .replace(/^\s+</g, '<')
       .replace(/>\s+$/g, '>')
-      .replace(/<!--(?!b\d)(?!\[)[\s\S]*?-->/g, '')
-      .replace(/\s{2,}/g, ' ')
       .trim()
   );
 };

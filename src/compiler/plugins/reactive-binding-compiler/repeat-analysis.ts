@@ -159,34 +159,17 @@ export const generateStaticRepeatTemplate = (
   // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
   staticHtml = staticHtml.replace(/\s*id="[ib]\d+"/g, '');
   
-  // Ensure comment markers have an isolated text node after them.
-  // After stripping ${...}, a comment marker like <!--i0--> needs a placeholder
-  // text node for commentNode.nextSibling.data to work. We also add a boundary
-  // comment <!----> to prevent the placeholder from merging with following static text.
-  // <!--i0--> → <!--i0--> <!---->  (space placeholder + boundary)
+  // Aggressively strip whitespace BEFORE inserting comment marker placeholders.
+  // - Collapse runs to single space
+  // - Remove all inter-element whitespace (><)
+  // - Strip trailing whitespace before > in opening tags (<a > → <a>)
+  // Sole-content elements become empty (<td></td>) — textContent handles this at runtime.
+  staticHtml = staticHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
+  
+  // Insert comment marker placeholders AFTER stripping (so they survive intact).
+  // Mixed-content text bindings need: <!--iN--> + text node + <!----> boundary
+  // for commentNode.nextSibling.data to work at runtime.
   staticHtml = staticHtml.replace(/(<!--[ib]\d+-->)/g, '$1 <!---->');
-  
-  // Ensure elements with sole-content text bindings have a text node child.
-  // After stripping ${...}, elements like <td></td> or <a></a> become empty.
-  // We need a text node so that .firstChild.nodeValue works at runtime.
-  // Insert a single space as a placeholder text node.
-  for (const elementId of bindingsByElement.keys()) {
-    const bindings = bindingsByElement.get(elementId)!;
-    const hasTextBinding = bindings.some(b => b.type === 'text');
-    if (hasTextBinding) {
-      // Find elements that are now empty after stripping expressions
-      // Match patterns like <tag>  </tag> or <tag></tag> (empty or whitespace-only content)
-      // We insert a space to ensure .firstChild is a text node
-      staticHtml = staticHtml.replace(
-        /(<(?:td|th|span|a|p|div|h[1-6]|li|label|button|em|strong|b|i|small|code|pre|dd|dt|figcaption|summary|time|abbr|cite|q|s|u|mark|sub|sup|var|samp|kbd)(?:\s[^>]*)?>)\s*(<\/(?:td|th|span|a|p|div|h[1-6]|li|label|button|em|strong|b|i|small|code|pre|dd|dt|figcaption|summary|time|abbr|cite|q|s|u|mark|sub|sup|var|samp|kbd)>)/gi,
-        '$1 $2'
-      );
-      break; // Only need to run this once
-    }
-  }
-  
-  // Clean up whitespace
-  staticHtml = staticHtml.replace(/\s+/g, ' ').trim();
   
   // Build element bindings array (sorted by path for consistent indexing)
   const elementBindingsArray: StaticTemplateInfo['elementBindings'] = [];
@@ -793,7 +776,7 @@ export const processItemTemplateRecursively = (
     state.idCounter = nestedProcessed.nextId;
     let processedEmptyTemplate: string | undefined;
     if (binding.emptyTemplate) {
-      processedEmptyTemplate = binding.emptyTemplate.replace(/\s+/g, ' ').trim();
+      processedEmptyTemplate = binding.emptyTemplate.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
     }
 
     repeatBlocks.push({

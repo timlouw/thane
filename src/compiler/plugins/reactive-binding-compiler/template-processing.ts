@@ -363,7 +363,7 @@ export const processHtmlTemplateWithConditionals = (
     state.idCounter = itemTemplateProcessed.nextId;
     let processedEmptyTemplate: string | undefined;
     if (binding.emptyTemplate) {
-      processedEmptyTemplate = binding.emptyTemplate.replace(/\s+/g, ' ').trim();
+      processedEmptyTemplate = binding.emptyTemplate.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
     }
 
     repeatBlocks.push({

@@ -854,9 +854,10 @@ export const generateInitBindingsFunction = (
           for (const binding of eb.bindings) {
             const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             if (binding.type === 'text') {
-              // Sole-content text bindings: parent element has a single text node child
-              fillStatements.push(`${varName}.firstChild.nodeValue = ${expr}`);
-              updateStatements.push(`${varName}.firstChild.nodeValue = ${expr}`);
+              // Sole-content text bindings: textContent is optimal — works on empty elements,
+              // no placeholder text node needed, lets templates be aggressively stripped
+              fillStatements.push(`${varName}.textContent = ${expr}`);
+              updateStatements.push(`${varName}.textContent = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
               fillStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
               updateStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
@@ -1055,7 +1056,7 @@ export const generateInitBindingsFunction = (
             const innerEscaped = (innerStaticInfo.staticHtml || nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, '')).replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           } else {
-            const fallbackHtml = nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, '').replace(/\s+/g, ' ').trim();
+            const fallbackHtml = nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, '').replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
             const innerEscaped = fallbackHtml.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           }
@@ -1235,7 +1236,7 @@ export const generateInitBindingsFunction = (
         if (!staticInfo.staticHtml) {
           templateHtml = templateHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
           templateHtml = templateHtml.replace(/\s*id="[ib]\d+"/g, '');
-          templateHtml = templateHtml.replace(/\s+/g, ' ').trim();
+          templateHtml = templateHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
         }
         
         const templateId = `__tpl_${rep.id}`;
