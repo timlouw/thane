@@ -2,7 +2,16 @@ import path from 'node:path';
 import type { Plugin } from 'esbuild';
 import ts from 'typescript';
 import type { PageSelectorInfo, RouteObject } from '../../types.js';
-import { extractPageSelector, safeReadFile, sourceCache, logger, PLUGIN_NAME, PROP, generateSelectorHTML, createLoaderResult } from '../../utils/index.js';
+import {
+  extractPageSelector,
+  safeReadFile,
+  sourceCache,
+  logger,
+  PLUGIN_NAME,
+  PROP,
+  generateSelectorHTML,
+  createLoaderResult,
+} from '../../utils/index.js';
 
 const NAME = PLUGIN_NAME.ROUTES;
 
@@ -16,7 +25,10 @@ const resolvePagePath = (importPath: string, routesFilePath: string): string => 
   return resolvedPath;
 };
 
-const extractRouteImports = async (sourceFile: ts.SourceFile, routesFilePath: string): Promise<Map<string, PageSelectorInfo>> => {
+const extractRouteImports = async (
+  sourceFile: ts.SourceFile,
+  routesFilePath: string,
+): Promise<Map<string, PageSelectorInfo>> => {
   const pageSelectors = new Map<string, PageSelectorInfo>();
 
   const processArrowFunction = async (node: ts.ArrowFunction) => {
@@ -132,7 +144,10 @@ export const RoutesPrecompilerPlugin: Plugin = {
             const selectorHtml = generateSelectorHTML(selectorInfo.selector);
             const injection = `${routeObj.needsComma ? ',' : ''}\n    selector: '${selectorHtml}'`;
 
-            modifiedSource = modifiedSource.substring(0, routeObj.lastPropEnd) + injection + modifiedSource.substring(routeObj.lastPropEnd);
+            modifiedSource =
+              modifiedSource.substring(0, routeObj.lastPropEnd) +
+              injection +
+              modifiedSource.substring(routeObj.lastPropEnd);
           }
         }
 

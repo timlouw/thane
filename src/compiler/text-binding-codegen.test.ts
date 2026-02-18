@@ -192,7 +192,7 @@ mount(App);
     // Two comment markers means two nextSibling.data assignments in fill and update
     const nextSiblingMatches = js.match(/nextSibling\.data/g);
     expect(nextSiblingMatches).toBeTruthy();
-    // At minimum: 2 fill + 2 update = 4 
+    // At minimum: 2 fill + 2 update = 4
     expect(nextSiblingMatches!.length).toBeGreaterThan(3);
   });
 

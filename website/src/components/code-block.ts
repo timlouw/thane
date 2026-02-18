@@ -17,10 +17,7 @@ type CodeBlockProps = {
 
 function highlightSyntax(el: Element): void {
   const text = el.textContent || '';
-  let h = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  let h = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // Comments (line & block)
   h = h.replace(/(\/\/.*?)$/gm, '<span class="hl-cmt">$1</span>');
@@ -40,7 +37,7 @@ function highlightSyntax(el: Element): void {
   // Keywords
   h = h.replace(
     /\b(const|let|var|function|return|import|export|from|if|else|for|while|new|this|class|extends|type|interface|true|false|null|undefined|void|async|await|default|as|of|in)\b/g,
-    '<span class="hl-kw">$1</span>'
+    '<span class="hl-kw">$1</span>',
   );
 
   // Type names (PascalCase)
@@ -74,7 +71,7 @@ export const CodeBlock = defineComponent<CodeBlockProps>('code-block', ({ root, 
               ${whenElse(
                 copied(),
                 html`<span class="copied-text">Copied!</span>`,
-                html`<span class="copy-text">Copy</span>`
+                html`<span class="copy-text">Copy</span>`,
               )}
             </button>
           </div>
@@ -124,7 +121,9 @@ export const CodeBlock = defineComponent<CodeBlockProps>('code-block', ({ root, 
         background: var(--bg-surface);
       }
 
-      .copied-text { color: var(--success); }
+      .copied-text {
+        color: var(--success);
+      }
 
       pre {
         margin: 0;

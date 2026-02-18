@@ -2,7 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import ts from 'typescript';
 import type { Plugin } from 'esbuild';
-import { logger, collectFilesRecursively, sourceCache, extractComponentDefinitions, extractPageSelector } from '../../utils/index.js';
+import {
+  logger,
+  collectFilesRecursively,
+  sourceCache,
+  extractComponentDefinitions,
+  extractPageSelector,
+} from '../../utils/index.js';
 import type { ComponentDefinition, BuildContext } from '../../types.js';
 
 const NAME = 'html-bootstrap';
@@ -67,7 +73,12 @@ const parseMountTarget = (targetNode: ts.Node, sourceFile: ts.SourceFile): Mount
     const findDeclaration = (node: ts.Node): void => {
       if (foundId) return;
 
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === varName && node.initializer) {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.name.text === varName &&
+        node.initializer
+      ) {
         let initExpr = node.initializer;
         if (ts.isAsExpression(initExpr)) {
           initExpr = initExpr.expression;
@@ -251,8 +262,9 @@ export const HTMLBootstrapInjectorPlugin = (options: HTMLBootstrapInjectorOption
     build.onStart(async () => {
       bootstrapConfig = null;
       const { entryPoints } = options;
-      const mainEntry = entryPoints.find((ep: string) => ep.includes('main.ts') || ep.includes('main-')) 
-        ?? entryPoints.find((ep: string) => !ep.includes('router.ts'));
+      const mainEntry =
+        entryPoints.find((ep: string) => ep.includes('main.ts') || ep.includes('main-')) ??
+        entryPoints.find((ep: string) => !ep.includes('router.ts'));
       if (!mainEntry) {
         logger.info(NAME, 'No entry point found, skipping bootstrap injection');
         return;

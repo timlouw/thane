@@ -124,12 +124,20 @@ mount(Counter);`;
 
 function buildIframeHTML(code: string): string {
   const safe = code.replace(/<\/script/gi, '<\\/script');
-  return '<!DOCTYPE html><html><head>' +
-    '<style>' + IFRAME_STYLES + '</style>' +
-    '<script>' + PLAYGROUND_RUNTIME + '<\/script>' +
+  return (
+    '<!DOCTYPE html><html><head>' +
+    '<style>' +
+    IFRAME_STYLES +
+    '</style>' +
+    '<script>' +
+    PLAYGROUND_RUNTIME +
+    '<\/script>' +
     '</head><body><div id="app"></div>' +
-    '<script>' + safe + '<\/script>' +
-    '</body></html>';
+    '<script>' +
+    safe +
+    '<\/script>' +
+    '</body></html>'
+  );
 }
 
 export const PlaygroundEditor = defineComponent<PlaygroundEditorProps>('playground-editor', ({ root, props }) => {
@@ -179,7 +187,9 @@ export const PlaygroundEditor = defineComponent<PlaygroundEditorProps>('playgrou
             <span class="pg-dot green"></span>
             <span class="pg-title">playground.ts</span>
             <button class="pg-run-btn" @click=${runCode}>
-              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
               Run
             </button>
           </div>
@@ -242,9 +252,15 @@ export const PlaygroundEditor = defineComponent<PlaygroundEditorProps>('playgrou
         border-radius: 50%;
       }
 
-      .red { background: #ff5f57; }
-      .yellow { background: #febc2e; }
-      .green { background: #28c840; }
+      .red {
+        background: #ff5f57;
+      }
+      .yellow {
+        background: #febc2e;
+      }
+      .green {
+        background: #28c840;
+      }
 
       .pg-title {
         color: var(--text-muted);

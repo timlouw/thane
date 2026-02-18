@@ -1,6 +1,6 @@
 /**
  * AST Utilities for Thane Compiler
- * 
+ *
  * Provides helpers for working with TypeScript AST (Abstract Syntax Tree).
  */
 
@@ -68,10 +68,7 @@ export const pascalToKebab = (name: string): string => {
  * Returns null if not a bare function call.
  */
 export const getBareSignalGetterName = (node: ts.CallExpression): string | null => {
-  if (
-    ts.isIdentifier(node.expression) &&
-    node.arguments.length === 0
-  ) {
+  if (ts.isIdentifier(node.expression) && node.arguments.length === 0) {
     return node.expression.text;
   }
   return null;
@@ -100,7 +97,7 @@ export const extractStaticValue = (arg: ts.Expression): string | number | boolea
 
 /**
  * Find all signal property declarations and their initial values.
- * Supports both class property pattern (this._count = signal(0)) 
+ * Supports both class property pattern (this._count = signal(0))
  * and variable pattern (const count = signal(0)).
  */
 export const findSignalInitializers = (sourceFile: ts.SourceFile): Map<string, string | number | boolean> => {
@@ -109,11 +106,11 @@ export const findSignalInitializers = (sourceFile: ts.SourceFile): Map<string, s
   const visit = (node: ts.Node) => {
     // Class property pattern: private _count = signal(0)
     if (
-      ts.isPropertyDeclaration(node) && 
-      node.name && 
-      ts.isIdentifier(node.name) && 
-      node.initializer && 
-      ts.isCallExpression(node.initializer) && 
+      ts.isPropertyDeclaration(node) &&
+      node.name &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
       isSignalCall(node.initializer)
     ) {
       const args = node.initializer.arguments;
@@ -127,10 +124,11 @@ export const findSignalInitializers = (sourceFile: ts.SourceFile): Map<string, s
     }
 
     // Variable pattern: const count = signal(0)
-    if (ts.isVariableDeclaration(node) && 
-      ts.isIdentifier(node.name) && 
-      node.initializer && 
-      ts.isCallExpression(node.initializer) && 
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
       isSignalCall(node.initializer)
     ) {
       const args = node.initializer.arguments;
@@ -157,8 +155,8 @@ export const findSignalInitializers = (sourceFile: ts.SourceFile): Map<string, s
  * Find a class that extends a specific base class
  */
 export const findClassExtending = (
-  sourceFile: ts.SourceFile, 
-  baseClassName: string
+  sourceFile: ts.SourceFile,
+  baseClassName: string,
 ): ts.ClassExpression | ts.ClassDeclaration | null => {
   let foundClass: ts.ClassExpression | ts.ClassDeclaration | null = null;
 
@@ -228,31 +226,27 @@ export const hasHtmlTemplates = (source: string): boolean => {
  */
 export const extractTemplateContent = (
   template: ts.TaggedTemplateExpression | ts.TemplateLiteral,
-  sourceFile?: ts.SourceFile
+  sourceFile?: ts.SourceFile,
 ): string => {
   // Handle TaggedTemplateExpression - get the template property
-  const templateLiteral = ts.isTaggedTemplateExpression(template) 
-    ? template.template 
-    : template;
-    
+  const templateLiteral = ts.isTaggedTemplateExpression(template) ? template.template : template;
+
   if (ts.isNoSubstitutionTemplateLiteral(templateLiteral)) {
     return templateLiteral.text;
   }
-  
+
   // For template expressions with substitutions, we need to reconstruct
   if (ts.isTemplateExpression(templateLiteral)) {
     let content = templateLiteral.head.text;
     for (const span of templateLiteral.templateSpans) {
       // Use sourceFile.getText if available for more accurate representation
-      const exprText = sourceFile 
-        ? span.expression.getText(sourceFile)
-        : span.expression.getText();
+      const exprText = sourceFile ? span.expression.getText(sourceFile) : span.expression.getText();
       content += '${' + exprText + '}';
       content += span.literal.text;
     }
     return content;
   }
-  
+
   return '';
 };
 
@@ -322,7 +316,12 @@ export const extractPageSelector = (sourceFile: ts.SourceFile): string | null =>
       const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
       if (hasExport) {
         for (const decl of node.declarationList.declarations) {
-          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isCallExpression(decl.initializer) && isDefineComponentCall(decl.initializer)) {
+          if (
+            ts.isIdentifier(decl.name) &&
+            decl.initializer &&
+            ts.isCallExpression(decl.initializer) &&
+            isDefineComponentCall(decl.initializer)
+          ) {
             const exportName = decl.name.text;
             const firstArg = decl.initializer.arguments[0];
             if (firstArg && ts.isStringLiteral(firstArg)) {
@@ -368,7 +367,7 @@ export const toKebabCase = (str: string): string => {
 
 /**
  * Rename all occurrences of an identifier in a JS expression using the TS AST.
- * 
+ *
  * Unlike `\bname\b` regex, this only renames actual identifier tokens — it will
  * never match inside string literals, template literals, or property-access
  * chains that happen to contain the same text.
@@ -412,7 +411,7 @@ export const renameIdentifierInExpression = (expression: string, oldName: string
 
 /**
  * Check whether an expression references a given identifier (AST-based).
- * 
+ *
  * Unlike `\bname\b` regex, this only matches actual identifier tokens.
  */
 export const expressionReferencesIdentifier = (expression: string, identifierName: string): boolean => {
@@ -438,10 +437,10 @@ export const expressionReferencesIdentifier = (expression: string, identifierNam
 
 /**
  * Detect component-level signal call expressions in a JS expression.
- * 
+ *
  * In class mode, these look like `this._signal()`.
  * In closure mode, these look like `_signal()` (bare calls with no dot-prefix).
- * 
+ *
  * Returns the set of signal names found.
  */
 export const findComponentSignalCalls = (expression: string, classStyle: boolean): Set<string> => {
@@ -463,10 +462,7 @@ export const findComponentSignalCalls = (expression: string, classStyle: boolean
         }
       } else {
         // Closure mode: _signalName() — bare identifier call, not a method call
-        if (
-          ts.isIdentifier(node.expression) &&
-          node.expression.text.startsWith('_')
-        ) {
+        if (ts.isIdentifier(node.expression) && node.expression.text.startsWith('_')) {
           // Ensure it's not a method call like obj._signal()
           const parent = node.parent;
           const isBareCall = !(parent && ts.isPropertyAccessExpression(parent));
@@ -484,16 +480,18 @@ export const findComponentSignalCalls = (expression: string, classStyle: boolean
 
 /**
  * Parse an arrow function expression and return its parameter list and body.
- * 
+ *
  * Unlike regex-based parsing, this correctly handles:
  * - Destructured parameters: `({a, b}) => a + b`
  * - Default values: `(x = 10) => x`
  * - Multi-line bodies: `(x) => { ... }`
  * - Nested parentheses: `(x) => fn(x, y)`
- * 
+ *
  * Returns null if the expression is not an arrow function.
  */
-export const parseArrowFunction = (expression: string): {
+export const parseArrowFunction = (
+  expression: string,
+): {
   params: string;
   body: string;
   isBlockBody: boolean;
@@ -506,7 +504,7 @@ export const parseArrowFunction = (expression: string): {
   const visit = (node: ts.Node) => {
     if (result) return;
     if (ts.isArrowFunction(node)) {
-      const params = node.parameters.map(p => p.getText(sf)).join(', ');
+      const params = node.parameters.map((p) => p.getText(sf)).join(', ');
       const body = node.body.getText(sf);
       const isBlockBody = ts.isBlock(node.body);
       result = { params, body, isBlockBody };
@@ -538,8 +536,10 @@ export const isThisMethodReference = (expression: string): boolean => {
       // Ensure this is the top-level expression (not nested inside another expr)
       // The structure is: ExpressionStatement > ParenthesizedExpression > PropertyAccessExpression
       if (
-        node.parent && ts.isParenthesizedExpression(node.parent) &&
-        node.parent.parent && ts.isExpressionStatement(node.parent.parent)
+        node.parent &&
+        ts.isParenthesizedExpression(node.parent) &&
+        node.parent.parent &&
+        ts.isExpressionStatement(node.parent.parent)
       ) {
         found = true;
       }

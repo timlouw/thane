@@ -198,7 +198,10 @@ export const PlaygroundPage = defineComponent('playground-page', ({ root }) => {
         <div class="container">
           <div class="pg-page-header">
             <h1>Playground</h1>
-            <p>Experiment with Thane components in a sandboxed environment. Edit the code and click Run (or wait for auto-reload) to see your changes.</p>
+            <p
+              >Experiment with Thane components in a sandboxed environment. Edit the code and click Run (or wait for
+              auto-reload) to see your changes.</p
+            >
           </div>
 
           <div class="example-bar">
@@ -208,13 +211,18 @@ export const PlaygroundPage = defineComponent('playground-page', ({ root }) => {
             <button class="example-btn ${greetingActive()}" @click=${() => activeExample('greeting')}>Greeting</button>
           </div>
 
-          <div class="pg-main">
-            ${PlaygroundEditor({ initialCode: COUNTER_EXAMPLE })}
-          </div>
+          <div class="pg-main"> ${PlaygroundEditor({ initialCode: COUNTER_EXAMPLE })} </div>
 
           <div class="pg-note">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-            <p>The playground uses a lightweight mini-runtime in a sandboxed iframe. Event handling and reactivity work via full re-render on signal change. For surgical DOM updates, use the full Thane compiler.</p>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            <p
+              >The playground uses a lightweight mini-runtime in a sandboxed iframe. Event handling and reactivity work
+              via full re-render on signal change. For surgical DOM updates, use the full Thane compiler.</p
+            >
           </div>
         </div>
       </div>

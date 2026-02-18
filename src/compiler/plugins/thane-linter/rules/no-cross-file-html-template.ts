@@ -74,8 +74,8 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
             diagnostics.push(
               createWarning(
                 `Imported variable '${importName}' is used inside an html\`\` template. ` +
-                'The compiler cannot resolve imported template variables at compile time. ' +
-                'Define the template fragment in the same file as a const variable instead.',
+                  'The compiler cannot resolve imported template variables at compile time. ' +
+                  'Define the template fragment in the same file as a const variable instead.',
                 { file: filePath, line: line + 1, column: character + 1 },
                 ErrorCode.NO_CROSS_FILE_HTML_TEMPLATE,
               ),

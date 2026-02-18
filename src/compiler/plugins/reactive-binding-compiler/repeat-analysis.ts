@@ -1,6 +1,6 @@
 /**
  * Repeat directive analysis for reactive binding compiler
- * 
+ *
  * Handles processing of repeat() item templates, text binding context analysis,
  * and static repeat template generation for optimized rendering.
  */
@@ -17,9 +17,7 @@ import type {
   SimpleBinding,
 } from './types.js';
 import { isSimpleBinding } from './types.js';
-import {
-  processSubTemplateWithNesting,
-} from './template-processing.js';
+import { processSubTemplateWithNesting } from './template-processing.js';
 import {
   parseHtmlTemplate,
   walkElements,
@@ -27,10 +25,7 @@ import {
   injectIdIntoFirstElement,
   type HtmlElement,
 } from '../../utils/html-parser/index.js';
-import {
-  renameIdentifierInExpression,
-  expressionReferencesIdentifier,
-} from '../../utils/index.js';
+import { renameIdentifierInExpression, expressionReferencesIdentifier } from '../../utils/index.js';
 import {
   collectConditionalBlocks,
   collectWhenElseBlocks,
@@ -66,7 +61,7 @@ export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason)
 
 /**
  * Generate a static template and element paths for optimized repeat rendering
- * 
+ *
  * This transforms a dynamic template like:
  *   <tr data-id="${item.id}"><td><span>${item.label}</span></td></tr>
  * Into a static template:
@@ -83,14 +78,14 @@ export const generateStaticRepeatTemplate = (
 ): StaticTemplateInfo => {
   // Parse the template to get element structure
   const parsed = parseHtmlTemplate(itemTemplate);
-  
+
   if (parsed.roots.length !== 1) {
     // Multiple root elements - cannot use optimized path
     return { staticHtml: '', elementBindings: [], canUseOptimized: false, skipReason: 'multi-root' };
   }
-  
+
   const rootEl = parsed.roots[0]!;
-  
+
   // Build a map of element ID to bindings (only element-navigable bindings)
   // Comment-marker bindings (textBindingMode === 'commentMarker') are handled
   // separately via TreeWalker and are not included here.
@@ -102,27 +97,27 @@ export const generateStaticRepeatTemplate = (
     }
     bindingsByElement.get(binding.elementId)!.push(binding);
   }
-  
+
   // Compute path for each element with bindings
   const elementPaths = new Map<string, number[]>();
-  
+
   const findElementPath = (el: HtmlElement, targetId: string, currentPath: number[]): number[] | null => {
     // Check if this element has the target ID
     const elId = el.attributes.get('id')?.value;
     if (elId === targetId) {
       return currentPath;
     }
-    
+
     // Search children
     for (let i = 0; i < el.children.length; i++) {
       const child = el.children[i]!;
       const childPath = findElementPath(child, targetId, [...currentPath, i]);
       if (childPath) return childPath;
     }
-    
+
     return null;
   };
-  
+
   // Find path for each element with bindings
   for (const elementId of bindingsByElement.keys()) {
     // Check if root element matches
@@ -136,17 +131,17 @@ export const generateStaticRepeatTemplate = (
       }
     }
   }
-  
+
   // Check if all bindings have paths
   for (const elementId of bindingsByElement.keys()) {
     if (!elementPaths.has(elementId)) {
       return { staticHtml: '', elementBindings: [], canUseOptimized: false, skipReason: 'path-not-found' };
     }
   }
-  
+
   // Generate static HTML by removing dynamic expressions
   let staticHtml = itemTemplate;
-  
+
   // Strip ALL remaining ${...} template expressions from the static HTML.
   // By this point, component-level signal bindings have already been replaced
   // with <!--bN-->value comment markers, and event bindings have been
@@ -154,23 +149,23 @@ export const generateStaticRepeatTemplate = (
   // which are handled at runtime via the element binding paths — so they must
   // all be removed from the static template.
   staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
-  
+
   // Remove inline id attributes that were only added for bindings
   // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
   staticHtml = staticHtml.replace(/\s*id="[ib]\d+"/g, '');
-  
+
   // Aggressively strip whitespace BEFORE inserting comment marker placeholders.
   // - Collapse runs to single space
   // - Remove all inter-element whitespace (><)
   // - Strip trailing whitespace before > in opening tags (<a > → <a>)
   // Sole-content elements become empty (<td></td>) — textContent handles this at runtime.
   staticHtml = staticHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
-  
+
   // Insert comment marker placeholders AFTER stripping (so they survive intact).
   // Mixed-content text bindings need: <!--iN--> + text node + <!----> boundary
   // for commentNode.nextSibling.data to work at runtime.
   staticHtml = staticHtml.replace(/(<!--[ib]\d+-->)/g, '$1 <!---->');
-  
+
   // Build element bindings array (sorted by path for consistent indexing)
   const elementBindingsArray: StaticTemplateInfo['elementBindings'] = [];
   const sortedIds = [...bindingsByElement.keys()].sort((a, b) => {
@@ -183,22 +178,22 @@ export const generateStaticRepeatTemplate = (
     }
     return 0;
   });
-  
+
   for (const elementId of sortedIds) {
     const bindings = bindingsByElement.get(elementId)!;
     const path = elementPaths.get(elementId)!;
-    
+
     elementBindingsArray.push({
       id: elementId,
       path,
-      bindings: bindings.map(b => ({
+      bindings: bindings.map((b) => ({
         type: b.type as 'text' | 'attr',
         property: b.property,
         expression: b.expression,
       })),
     });
   }
-  
+
   // Compute event element paths (if any)
   let eventElementPaths: Map<string, number[]> | undefined;
   if (itemEvents && itemEvents.length > 0) {
@@ -216,7 +211,7 @@ export const generateStaticRepeatTemplate = (
       }
     }
   }
-  
+
   // Compute paths for signal binding elements (Step 13)
   let signalElementBindings: StaticTemplateInfo['signalElementBindings'];
   let signalCommentBindings: StaticTemplateInfo['signalCommentBindings'];
@@ -283,18 +278,18 @@ export const generateStaticRepeatTemplate = (
 /**
  * Analyze if a text binding at a given position is the sole content of its parent element.
  * This determines whether we can use textContent (no wrapper needed) or need a comment marker.
- * 
+ *
  * @param templateContent The full template HTML
  * @param bindingStart Start position of the ${...} expression
- * @param bindingEnd End position of the ${...} expression  
+ * @param bindingEnd End position of the ${...} expression
  * @returns Object with analysis results
  */
 export const analyzeTextBindingContext = (
   templateContent: string,
   bindingStart: number,
   bindingEnd: number,
-): { 
-  isSoleContent: boolean; 
+): {
+  isSoleContent: boolean;
   parentTagStart: number;
   parentTagNameEnd: number;
   parentCloseTagStart: number;
@@ -304,7 +299,7 @@ export const analyzeTextBindingContext = (
   let parentTagNameEnd = -1;
   let tagDepth = 0;
   let i = bindingStart - 1;
-  
+
   // Scan backwards to find the parent element's opening tag
   // Skip over ${...} expressions to avoid confusion with > inside handlers
   while (i >= 0) {
@@ -354,22 +349,22 @@ export const analyzeTextBindingContext = (
     }
     i--;
   }
-  
+
   if (parentTagStart === -1) {
     return { isSoleContent: false, parentTagStart: -1, parentTagNameEnd: -1, parentCloseTagStart: -1 };
   }
-  
+
   // Find the closing tag after this binding
   let parentCloseTagStart = -1;
   tagDepth = 0;
   i = bindingEnd;
-  
+
   while (i < templateContent.length) {
     if (templateContent[i] === '<') {
       const remaining = templateContent.substring(i);
       const closeMatch = remaining.match(/^<\/[\w-]+>/);
       const openMatch = remaining.match(/^<[\w-][^>]*>/);
-      
+
       if (closeMatch) {
         if (tagDepth === 0) {
           parentCloseTagStart = i;
@@ -388,11 +383,11 @@ export const analyzeTextBindingContext = (
     }
     i++;
   }
-  
+
   if (parentCloseTagStart === -1) {
     return { isSoleContent: false, parentTagStart, parentTagNameEnd, parentCloseTagStart: -1 };
   }
-  
+
   // Now check if the binding is the sole content
   // Get content between parent open tag end and binding start
   // Must skip > inside ${...} expressions within attributes
@@ -406,8 +401,12 @@ export const analyzeTextBindingContext = (
         parentOpenTagEnd += 2;
         continue;
       }
-      if (ch === '{' && inExpr > 0) { inExpr++; }
-      if (ch === '}' && inExpr > 0) { inExpr--; }
+      if (ch === '{' && inExpr > 0) {
+        inExpr++;
+      }
+      if (ch === '}' && inExpr > 0) {
+        inExpr--;
+      }
       if (ch === '>' && inExpr === 0) {
         parentOpenTagEnd++;
         break;
@@ -417,25 +416,25 @@ export const analyzeTextBindingContext = (
   }
   const contentBefore = templateContent.substring(parentOpenTagEnd, bindingStart);
   const contentAfter = templateContent.substring(bindingEnd, parentCloseTagStart);
-  
+
   // Check if there's only whitespace before and after
   const onlyWhitespaceBefore = /^\s*$/.test(contentBefore);
   const onlyWhitespaceAfter = /^\s*$/.test(contentAfter);
-  
+
   // Also check that there are no other elements or bindings
   const hasOtherElementsBefore = /<[^>]+>/.test(contentBefore);
   const hasOtherElementsAfter = /<[^>]+>/.test(contentAfter);
   const hasOtherBindingsBefore = /\$\{[^}]+\}/.test(contentBefore);
   const hasOtherBindingsAfter = /\$\{[^}]+\}/.test(contentAfter);
-  
-  const isSoleContent = 
-    onlyWhitespaceBefore && 
-    onlyWhitespaceAfter && 
-    !hasOtherElementsBefore && 
+
+  const isSoleContent =
+    onlyWhitespaceBefore &&
+    onlyWhitespaceAfter &&
+    !hasOtherElementsBefore &&
     !hasOtherElementsAfter &&
     !hasOtherBindingsBefore &&
     !hasOtherBindingsAfter;
-  
+
   return { isSoleContent, parentTagStart, parentTagNameEnd, parentCloseTagStart };
 };
 
@@ -462,10 +461,13 @@ interface ItemAttrMatch {
 }
 
 /** Range with start/end for overlap checking */
-interface Range { start: number; end: number }
+interface Range {
+  start: number;
+  end: number;
+}
 
 /**
- * Classify parsed bindings into item events, component events, signal bindings, 
+ * Classify parsed bindings into item events, component events, signal bindings,
  * and text-binding spans. Mutates the provided output arrays and maps.
  */
 const classifyParsedBindings = (
@@ -540,9 +542,10 @@ const classifyParsedBindings = (
         }
       }
 
-      const bindingId = binding.type === 'text'
-        ? textBindingSpans.get(binding.expressionStart)!.spanId
-        : elementIdMap.get(binding.element)!;
+      const bindingId =
+        binding.type === 'text'
+          ? textBindingSpans.get(binding.expressionStart)!.spanId
+          : elementIdMap.get(binding.element)!;
       signalBindings.push({
         id: bindingId,
         signalName: binding.signalName,
@@ -584,20 +587,22 @@ const collectItemTextBindings = (
     if (!refsItem && !refsIndex) continue;
 
     // Check if we're inside an attribute — use parser element positions instead of regex
-    const isInAttr = parsed.bindings.some(
-      (b) => b.type === 'event' && b.expressionStart <= matchStart && b.expressionEnd >= matchEnd
-    ) || (() => {
-      // Check if this position falls inside any element's attribute value
-      let inAttr = false;
-      walkElements(parsed.roots, (el) => {
-        for (const [, attr] of el.attributes) {
-          if (matchStart >= attr.valueStart && matchEnd <= attr.end) {
-            inAttr = true;
+    const isInAttr =
+      parsed.bindings.some(
+        (b) => b.type === 'event' && b.expressionStart <= matchStart && b.expressionEnd >= matchEnd,
+      ) ||
+      (() => {
+        // Check if this position falls inside any element's attribute value
+        let inAttr = false;
+        walkElements(parsed.roots, (el) => {
+          for (const [, attr] of el.attributes) {
+            if (matchStart >= attr.valueStart && matchEnd <= attr.end) {
+              inAttr = true;
+            }
           }
-        }
-      });
-      return inAttr;
-    })();
+        });
+        return inAttr;
+      })();
 
     if (!isInAttr) {
       const expression = innerExpr;
@@ -736,7 +741,7 @@ export const processItemTemplateRecursively = (
       const condItemBindings: ItemBinding[] = [];
       let transformedHtml = html;
       const matches = [...html.matchAll(exprPattern)].filter(
-        m => m[1] !== undefined && expressionReferencesIdentifier(m[1].trim(), itemVar)
+        (m) => m[1] !== undefined && expressionReferencesIdentifier(m[1].trim(), itemVar),
       );
       if (matches.length > 0) {
         let offset = 0;
@@ -748,8 +753,14 @@ export const processItemTemplateRecursively = (
           const transformedExpr = renameIdentifierInExpression(innerExpr, itemVar, `${itemVar}$()`);
           // Use comment marker instead of span wrapper
           const replacement = `<!--${itemBindingId}-->\${${transformedExpr}}`;
-          transformedHtml = transformedHtml.substring(0, matchStart) + replacement + transformedHtml.substring(matchEnd);
-          condItemBindings.push({ elementId: itemBindingId, expression: innerExpr, type: 'text', textBindingMode: 'commentMarker' });
+          transformedHtml =
+            transformedHtml.substring(0, matchStart) + replacement + transformedHtml.substring(matchEnd);
+          condItemBindings.push({
+            elementId: itemBindingId,
+            expression: innerExpr,
+            type: 'text',
+            textBindingMode: 'commentMarker',
+          });
           offset += replacement.length - match[0].length;
         }
       }
@@ -772,11 +783,21 @@ export const processItemTemplateRecursively = (
 
     const nestedSignalNames = binding.signalNames || [binding.signalName];
     const nestedRepeatId = `b${state.idCounter++}`;
-    const nestedProcessed = processItemTemplateRecursively(binding.itemTemplate, binding.itemVar, binding.indexVar, signalInitializers, state.idCounter);
+    const nestedProcessed = processItemTemplateRecursively(
+      binding.itemTemplate,
+      binding.itemVar,
+      binding.indexVar,
+      signalInitializers,
+      state.idCounter,
+    );
     state.idCounter = nestedProcessed.nextId;
     let processedEmptyTemplate: string | undefined;
     if (binding.emptyTemplate) {
-      processedEmptyTemplate = binding.emptyTemplate.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
+      processedEmptyTemplate = binding.emptyTemplate
+        .replace(/\s+/g, ' ')
+        .replace(/>\s+</g, '><')
+        .replace(/\s+>/g, '>')
+        .trim();
     }
 
     repeatBlocks.push({
@@ -807,16 +828,39 @@ export const processItemTemplateRecursively = (
   const allRanges = [...conditionalRanges, ...whenElseRanges, ...repeatRanges];
   const textBindingSpans = new Map<number, { spanId: string; exprEnd: number; signalName: string }>();
   classifyParsedBindings(
-    parsed, itemVar, indexVar, allRanges,
-    conditionalElementSet, elementsInsideConditionals, state,
-    itemEvents, signalBindings, eventBindings, elementIdMap, textBindingSpans,
+    parsed,
+    itemVar,
+    indexVar,
+    allRanges,
+    conditionalElementSet,
+    elementsInsideConditionals,
+    state,
+    itemEvents,
+    signalBindings,
+    eventBindings,
+    elementIdMap,
+    textBindingSpans,
   );
   // Find ${...} expressions that reference the item variable (text bindings)
-  const itemTextMatches = collectItemTextBindings(templateContent, itemVar, indexVar, allRanges, parsed, state, itemBindings);
+  const itemTextMatches = collectItemTextBindings(
+    templateContent,
+    itemVar,
+    indexVar,
+    allRanges,
+    parsed,
+    state,
+    itemBindings,
+  );
   // Find attribute bindings that reference item/index variables using the parsed HTML tree
   const itemAttrMatches = collectItemAttrBindings(
-    parsed, itemVar, indexVar, allRanges,
-    conditionalElementSet, elementsInsideConditionals, state, itemBindings,
+    parsed,
+    itemVar,
+    indexVar,
+    allRanges,
+    conditionalElementSet,
+    elementsInsideConditionals,
+    state,
+    itemBindings,
   );
 
   const edits: TemplateEdit[] = [
@@ -837,14 +881,14 @@ export const processItemTemplateRecursively = (
       replacement: `<!--${spanId}-->\${${templateContent.substring(exprPos + 2, exprEnd - 1)}}`,
     });
   }
-  
+
   // Track which parent elements need IDs for sole-content text bindings
   const parentElementIds = new Map<number, string>(); // tagStart -> id
-  
+
   for (const textMatch of itemTextMatches) {
     const { start, end, expr, id, isSoleContent, parentTagStart, parentTagNameEnd: _parentTagNameEnd } = textMatch;
     const transformedExpr = renameIdentifierInExpression(expr, itemVar, `${itemVar}$()`);
-    
+
     if (isSoleContent && parentTagStart >= 0) {
       // For sole content: just output the expression (no wrapper)
       // The parent element will get the ID
@@ -853,7 +897,7 @@ export const processItemTemplateRecursively = (
         end,
         replacement: `\${${transformedExpr}}`,
       });
-      
+
       // Track that we need to add ID to parent element
       if (!parentElementIds.has(parentTagStart)) {
         parentElementIds.set(parentTagStart, id);
@@ -867,20 +911,20 @@ export const processItemTemplateRecursively = (
         replacement: `<!--${id}-->\${${transformedExpr}}`,
       });
       // Mark the binding as comment-marker-based so codegen uses nextSibling.data
-      const binding = itemBindings.find(b => b.elementId === id && b.type === 'text');
+      const binding = itemBindings.find((b) => b.elementId === id && b.type === 'text');
       if (binding) {
         binding.textBindingMode = 'commentMarker';
       }
     }
   }
-  
+
   // Add IDs to parent elements for sole-content text bindings
   // First, build a map of tagStart -> existing elementId from the element ID map
   const tagStartToExistingId = new Map<number, string>();
   for (const [element, existingId] of elementIdMap) {
     tagStartToExistingId.set(element.tagStart, existingId);
   }
-  
+
   for (const [tagStart, id] of parentElementIds) {
     // Check if this element already has an ID assigned (e.g., from event processing)
     const existingId = tagStartToExistingId.get(tagStart);
@@ -894,18 +938,18 @@ export const processItemTemplateRecursively = (
       // No need to inject an ID — buildElementIdEdits will handle it
       continue;
     }
-    
+
     // Find the end of the tag name to inject the ID attribute
     let tagNameEnd = tagStart + 1;
     while (tagNameEnd < templateContent.length && /[\w-]/.test(templateContent[tagNameEnd]!)) {
       tagNameEnd++;
     }
-    
+
     // Check if element already has an id attribute
     const openTagEnd = templateContent.indexOf('>', tagStart);
     const tagContent = templateContent.substring(tagStart, openTagEnd + 1);
     const hasExistingId = /\sid=["']/.test(tagContent);
-    
+
     if (!hasExistingId) {
       edits.push({
         start: tagNameEnd,
@@ -918,7 +962,7 @@ export const processItemTemplateRecursively = (
     // and THANE406 linter rule bans user id attributes in templates anyway.
   }
   const elementIdByTagStart = new Map<number, string>();
-  
+
   for (const itemAttr of itemAttrMatches) {
     let tagStart = itemAttr.start;
     while (tagStart > 0 && templateContent[tagStart] !== '<') {
@@ -938,11 +982,11 @@ export const processItemTemplateRecursively = (
     if (indexVar) {
       transformedExpr = renameIdentifierInExpression(transformedExpr, indexVar, indexVar);
     }
-    const binding = itemBindings.find(b => b.elementId === id);
+    const binding = itemBindings.find((b) => b.elementId === id);
     if (binding) {
       binding.elementId = elementId;
     }
-    
+
     edits.push({
       start,
       end,

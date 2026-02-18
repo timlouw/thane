@@ -156,12 +156,10 @@ export interface ExpressionBinding extends BindingBase {
 export type BindingInfo = SimpleBinding | ExpressionBinding;
 
 /** Type guard: narrows BindingInfo to ExpressionBinding */
-export const isExpressionBinding = (b: BindingInfo): b is ExpressionBinding =>
-  'expression' in b;
+export const isExpressionBinding = (b: BindingInfo): b is ExpressionBinding => 'expression' in b;
 
 /** Type guard: narrows BindingInfo to SimpleBinding */
-export const isSimpleBinding = (b: BindingInfo): b is SimpleBinding =>
-  !('expression' in b);
+export const isSimpleBinding = (b: BindingInfo): b is SimpleBinding => !('expression' in b);
 
 /**
  * Information about a static repeat template with DOM navigation paths
@@ -202,11 +200,11 @@ export interface StaticTemplateInfo {
 }
 
 /** Reasons why a repeat block cannot use the optimized template-based rendering */
-export type RepeatOptimizationSkipReason = 
-  | 'no-bindings'           // No item bindings at all
-  | 'signal-bindings'       // Has component signal bindings inside
-  | 'nested-repeat'         // Has repeat() inside repeat()
-  | 'nested-conditional'    // Has when() or whenElse() inside
-  | 'mixed-bindings'        // Item binding expressions contain component signal refs
-  | 'multi-root'            // Template has multiple root elements
-  | 'path-not-found';       // Element path couldn't be computed
+export type RepeatOptimizationSkipReason =
+  | 'no-bindings' // No item bindings at all
+  | 'signal-bindings' // Has component signal bindings inside
+  | 'nested-repeat' // Has repeat() inside repeat()
+  | 'nested-conditional' // Has when() or whenElse() inside
+  | 'mixed-bindings' // Item binding expressions contain component signal refs
+  | 'multi-root' // Template has multiple root elements
+  | 'path-not-found'; // Element path couldn't be computed

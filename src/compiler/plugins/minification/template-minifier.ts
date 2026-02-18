@@ -16,18 +16,16 @@ export const minifyHTML = (html: string): string => {
 };
 
 export const minifyCSS = (css: string): string => {
-  return (
-    css
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/\s+/g, ' ')
-      .replace(/([{;:,])\s+/g, '$1')
-      .replace(/\s+([};:,])/g, '$1')
-      .replace(/\s*([>+~])\s*/g, '$1')
-      .replace(/\)\s+\{/g, '){')
-      .replace(/:\s+/g, ':')
-      .replace(/\s{2,}/g, ' ')
-      .trim()
-  );
+  return css
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/([{;:,])\s+/g, '$1')
+    .replace(/\s+([};:,])/g, '$1')
+    .replace(/\s*([>+~])\s*/g, '$1')
+    .replace(/\)\s+\{/g, '){')
+    .replace(/:\s+/g, ':')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 };
 
 export const minifyTemplatesInSource = (source: string): string => {
@@ -118,7 +116,7 @@ const extractTemplateLiteral = (source: string, startIndex: number): { content: 
       braceDepth = 1;
       while (i < source.length && braceDepth > 0) {
         const innerChar = source[i]!;
-        
+
         if (innerChar === '\\' && i + 1 < source.length) {
           content += innerChar + source[i + 1]!;
           i += 2;

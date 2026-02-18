@@ -8,17 +8,12 @@
  * calling with an arg sets the value and notifies subscribers.
  */
 export type Signal<T> = {
-  (): T;                                                    // Get value
-  (newValue: T): T;                                         // Set value
-  subscribe: (
-    callback: (value: T) => void, 
-    skipInitial?: boolean
-  ) => () => void;                                          // Returns unsubscribe
+  (): T; // Get value
+  (newValue: T): T; // Set value
+  subscribe: (callback: (value: T) => void, skipInitial?: boolean) => () => void; // Returns unsubscribe
 };
 
 /**
  * The root element for component rendering.
  */
 export type ComponentRoot = HTMLElement;
-
-

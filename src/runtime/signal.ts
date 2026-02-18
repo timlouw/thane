@@ -21,20 +21,16 @@ import type { Signal } from './types.js';
  * @internal
  */
 type SignalInternal<T> = Signal<T> & {
-  _v: T;                          // current value
-  _s: ((val: T) => void)[];       // subscribers (may contain nulls mid-notification)
-  _nc: number;                    // notification depth counter (0 = idle)
+  _v: T; // current value
+  _s: ((val: T) => void)[]; // subscribers (may contain nulls mid-notification)
+  _nc: number; // notification depth counter (0 = idle)
 };
 
 /**
  * Shared subscribe function — assigned to every signal, uses `this` to access
  * the signal's internal state (_v for value, _s for subscribers array).
  */
-function sharedSubscribe<T>(
-  this: SignalInternal<T>,
-  callback: (val: T) => void,
-  skipInitial?: boolean,
-): () => void {
+function sharedSubscribe<T>(this: SignalInternal<T>, callback: (val: T) => void, skipInitial?: boolean): () => void {
   this._s.push(callback);
 
   // Call with current value unless skipInitial is true
@@ -234,7 +230,11 @@ export function computed<T>(derivation: () => T): Signal<T> {
   // re-evaluation, which matters for deeply nested component trees where
   // computed values re-evaluate frequently.
   const deps = new Set<Signal<unknown>>();
-  const tracker = { _track: (sig: Signal<unknown>) => { deps.add(sig); } };
+  const tracker = {
+    _track: (sig: Signal<unknown>) => {
+      deps.add(sig);
+    },
+  };
 
   const recompute = () => {
     // Unsubscribe from old dependencies
@@ -298,7 +298,11 @@ export function effect(fn: () => void): () => void {
 
   // Reusable tracking objects — same optimization as computed().
   const deps = new Set<Signal<unknown>>();
-  const tracker = { _track: (sig: Signal<unknown>) => { deps.add(sig); } };
+  const tracker = {
+    _track: (sig: Signal<unknown>) => {
+      deps.add(sig);
+    },
+  };
 
   const run = () => {
     if (disposed) return;

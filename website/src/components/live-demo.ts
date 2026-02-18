@@ -29,17 +29,14 @@ const COUNTER_SOURCE = `export const Counter = defineComponent(() => {
 });`;
 
 function highlightSource(el: Element, code: string): void {
-  let h = code
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  let h = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   h = h.replace(/(\/\/.*?)$/gm, '<span class="hl-cmt">$1</span>');
   h = h.replace(/('(?:[^'\\]|\\.)*')/g, '<span class="hl-str">$1</span>');
   h = h.replace(/("(?:[^"\\]|\\.)*")/g, '<span class="hl-str">$1</span>');
   h = h.replace(
     /\b(const|let|var|function|return|import|export|from|if|else|new|this|class|type)\b/g,
-    '<span class="hl-kw">$1</span>'
+    '<span class="hl-kw">$1</span>',
   );
   h = h.replace(/\b([A-Z][a-zA-Z0-9]+)\b/g, '<span class="hl-type">$1</span>');
   h = h.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-num">$1</span>');
@@ -65,9 +62,7 @@ export const LiveDemo = defineComponent('live-demo', ({ root }) => ({
           <span class="preview-label">Live Preview</span>
           <span class="preview-badge">interactive</span>
         </div>
-        <div class="preview-content">
-          ${CounterDemo({})}
-        </div>
+        <div class="preview-content"> ${CounterDemo({})} </div>
       </div>
     </div>
   `,
@@ -101,9 +96,15 @@ export const LiveDemo = defineComponent('live-demo', ({ root }) => ({
       border-radius: 50%;
     }
 
-    .red { background: #ff5f57; }
-    .yellow { background: #febc2e; }
-    .green { background: #28c840; }
+    .red {
+      background: #ff5f57;
+    }
+    .yellow {
+      background: #febc2e;
+    }
+    .green {
+      background: #28c840;
+    }
 
     .panel-filename {
       color: var(--text-muted);
@@ -159,7 +160,9 @@ export const LiveDemo = defineComponent('live-demo', ({ root }) => ({
         border-right: none;
         border-bottom: 1px solid var(--border-color);
       }
-      pre { max-height: 250px; }
+      pre {
+        max-height: 250px;
+      }
     }
   `,
   onMount: () => {

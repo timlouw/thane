@@ -58,8 +58,8 @@ export const applySelectorsToSource = (source: string, selectorMap: SelectorMap)
   // Sort by length descending so longer selectors match before shorter prefixes
   escapedEntries.sort((a, b) => b.original.length - a.original.length);
 
-  const alternatives = escapedEntries.map(e => e.escaped).join('|');
-  const lookup = new Map(escapedEntries.map(e => [e.original, e.minified]));
+  const alternatives = escapedEntries.map((e) => e.escaped).join('|');
+  const lookup = new Map(escapedEntries.map((e) => [e.original, e.minified]));
 
   // Combined pattern covers all four replacement contexts in one pass:
   //   1. <selector(\s|>|/)   — HTML open tags

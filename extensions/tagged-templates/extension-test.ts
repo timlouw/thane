@@ -59,7 +59,7 @@ declare function toml(s: TemplateStringsArray, ...v: any[]): string;
 declare function regex(s: TemplateStringsArray, ...v: any[]): string;
 declare function powershell(s: TemplateStringsArray, ...v: any[]): string;
 
-const name = "World";
+const name = 'World';
 const count = 42;
 
 // =============================================================================
@@ -68,22 +68,22 @@ const count = 42;
 const htmlExample = html`
   <!DOCTYPE html>
   <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Hello ${name}</title>
-  </head>
-  <body>
-    <div class="container" id="main">
-      <h1>Welcome, ${name}!</h1>
-      <p>You have <strong>${count}</strong> items.</p>
-      <ul>
-        <li><a href="/home">Home</a></li>
-        <li><a href="/about">About</a></li>
-      </ul>
-      <input type="text" placeholder="Search..." disabled />
-      <!-- This is a comment -->
-    </div>
-  </body>
+    <head>
+      <meta charset="UTF-8" />
+      <title>Hello ${name}</title>
+    </head>
+    <body>
+      <div class="container" id="main">
+        <h1>Welcome, ${name}!</h1>
+        <p>You have <strong>${count}</strong> items.</p>
+        <ul>
+          <li><a href="/home">Home</a></li>
+          <li><a href="/about">About</a></li>
+        </ul>
+        <input type="text" placeholder="Search..." disabled />
+        <!-- This is a comment -->
+      </div>
+    </body>
   </html>
 `;
 
@@ -118,8 +118,12 @@ const cssExample = css`
   }
 
   @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 `;
 

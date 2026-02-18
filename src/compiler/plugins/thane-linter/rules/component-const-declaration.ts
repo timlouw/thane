@@ -44,8 +44,8 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
             diagnostics.push(
               createError(
                 `Component declaration must use 'const', not '${keyword}'. ` +
-                'Reassigning a component variable breaks the compiler\'s static analysis ' +
-                'and can cause selector collisions.',
+                  "Reassigning a component variable breaks the compiler's static analysis " +
+                  'and can cause selector collisions.',
                 { file: filePath, line: line + 1, column: character + 1 },
                 ErrorCode.COMPONENT_CONST_DECLARATION,
               ),

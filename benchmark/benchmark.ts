@@ -1,8 +1,48 @@
-import { defineComponent, signal } from "thane";
+import { defineComponent, signal } from 'thane';
 
-const adjectives = ['pretty', 'large', 'big', 'small', 'tall', 'short', 'long', 'handsome', 'plain', 'quaint', 'clean', 'elegant', 'easy', 'angry', 'crazy', 'helpful', 'mushy', 'odd', 'unsightly', 'adorable', 'important', 'inexpensive', 'cheap', 'expensive', 'fancy'];
+const adjectives = [
+  'pretty',
+  'large',
+  'big',
+  'small',
+  'tall',
+  'short',
+  'long',
+  'handsome',
+  'plain',
+  'quaint',
+  'clean',
+  'elegant',
+  'easy',
+  'angry',
+  'crazy',
+  'helpful',
+  'mushy',
+  'odd',
+  'unsightly',
+  'adorable',
+  'important',
+  'inexpensive',
+  'cheap',
+  'expensive',
+  'fancy',
+];
 const colours = ['red', 'yellow', 'blue', 'green', 'pink', 'brown', 'purple', 'brown', 'white', 'black', 'orange'];
-const nouns = ['table', 'chair', 'house', 'bbq', 'desk', 'car', 'pony', 'cookie', 'sandwich', 'burger', 'pizza', 'mouse', 'keyboard'];
+const nouns = [
+  'table',
+  'chair',
+  'house',
+  'bbq',
+  'desk',
+  'car',
+  'pony',
+  'cookie',
+  'sandwich',
+  'burger',
+  'pizza',
+  'mouse',
+  'keyboard',
+];
 
 const pick = (arr: string[]) => arr[Math.round(Math.random() * 1000) % arr.length]!;
 const buildLabel = () => `${pick(adjectives)} ${pick(colours)} ${pick(nouns)}`;
@@ -74,7 +114,7 @@ export const Benchmark = defineComponent('bench-mark', () => {
 
   const remove = (id: number) => {
     const data = rows();
-    const idx = data.findIndex(d => d.id === id);
+    const idx = data.findIndex((d) => d.id === id);
     if (idx !== -1) {
       rows(data.slice(0, idx).concat(data.slice(idx + 1)));
     }
@@ -91,22 +131,32 @@ export const Benchmark = defineComponent('bench-mark', () => {
             <div class="col-md-6">
               <div class="row">
                 <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="run" @click=${run}>Create 1,000 rows</button>
+                  <button type="button" class="btn btn-primary btn-block" id="run" @click=${run}
+                    >Create 1,000 rows</button
+                  >
                 </div>
                 <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="runlots" @click=${runLots}>Create 10,000 rows</button>
+                  <button type="button" class="btn btn-primary btn-block" id="runlots" @click=${runLots}
+                    >Create 10,000 rows</button
+                  >
                 </div>
                 <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="add" @click=${add}>Append 1,000 rows</button>
+                  <button type="button" class="btn btn-primary btn-block" id="add" @click=${add}
+                    >Append 1,000 rows</button
+                  >
                 </div>
                 <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="update" @click=${update}>Update every 10th row</button>
+                  <button type="button" class="btn btn-primary btn-block" id="update" @click=${update}
+                    >Update every 10th row</button
+                  >
                 </div>
                 <div class="col-sm-6 smallpad">
                   <button type="button" class="btn btn-primary btn-block" id="clear" @click=${clear}>Clear</button>
                 </div>
                 <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="swaprows" @click=${swapRows}>Swap Rows</button>
+                  <button type="button" class="btn btn-primary btn-block" id="swaprows" @click=${swapRows}
+                    >Swap Rows</button
+                  >
                 </div>
               </div>
             </div>

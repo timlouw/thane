@@ -51,9 +51,7 @@ const resolvePosition = (
   templateStart: number,
   offsetInTemplate: number,
 ): { line: number; column: number } => {
-  const { line, character } = sourceFile.getLineAndCharacterOfPosition(
-    templateStart + offsetInTemplate,
-  );
+  const { line, character } = sourceFile.getLineAndCharacterOfPosition(templateStart + offsetInTemplate);
   return { line: line + 1, column: character + 1 };
 };
 
@@ -77,7 +75,7 @@ const scanText = (
     diagnostics.push(
       createWarning(
         `Element ID "${idValue}" may conflict with compiler-reserved IDs (pattern: b0, b1, ...). ` +
-        'Consider using a different ID to avoid binding collisions.',
+          'Consider using a different ID to avoid binding collisions.',
         { file: filePath, line, column },
         ErrorCode.NO_ELEMENT_ID,
       ),
@@ -95,22 +93,10 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
       if (ts.isNoSubstitutionTemplateLiteral(template)) {
         scanText(template.text, template.getStart() + 1, sourceFile, filePath, diagnostics);
       } else if (ts.isTemplateExpression(template)) {
-        scanText(
-          template.head.text,
-          template.head.getStart() + 1,
-          sourceFile,
-          filePath,
-          diagnostics,
-        );
+        scanText(template.head.text, template.head.getStart() + 1, sourceFile, filePath, diagnostics);
 
         for (const span of template.templateSpans) {
-          scanText(
-            span.literal.text,
-            span.literal.getStart() + 1,
-            sourceFile,
-            filePath,
-            diagnostics,
-          );
+          scanText(span.literal.text, span.literal.getStart() + 1, sourceFile, filePath, diagnostics);
         }
       }
     }

@@ -21,12 +21,12 @@ import { PostBuildPlugin } from '../plugins/post-build-processor/post-build-proc
 export async function runBuild(config: BuildConfig): Promise<void> {
   const startTime = performance.now();
   const environment = config.isProd ? 'prod' : 'dev';
-  
+
   console.info(consoleColors.blue, `Running ${environment} build...`);
-  
+
   // Create shared build context (single filesystem scan)
   const buildContext = await createBuildContext();
-  
+
   // Create plugins with config
   const basePlugins = [
     TypeCheckPlugin({ ...(config.strictTypeCheck != null && { strict: config.strictTypeCheck }) }),
@@ -37,7 +37,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     GlobalCSSBundlerPlugin({ minify: config.isProd }),
     HTMLBootstrapInjectorPlugin({ entryPoints: config.entryPoints, buildContext }),
   ];
-  
+
   const postBuildOptions = {
     distDir: config.outDir,
     inputHTMLFilePath: config.inputHTMLFilePath,
@@ -49,7 +49,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     useGzip: config.useGzip,
     buildContext,
   };
-  
+
   const prodPlugins = [
     ...basePlugins,
     MinificationPlugin(buildContext),
@@ -57,11 +57,8 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     PostBuildPlugin(postBuildOptions),
   ];
 
-  const devPlugins = [
-    ...basePlugins,
-    PostBuildPlugin(postBuildOptions),
-  ];
-  
+  const devPlugins = [...basePlugins, PostBuildPlugin(postBuildOptions)];
+
   const baseEsbuildConfig: BuildOptions = {
     entryPoints: config.entryPoints,
     bundle: true,

@@ -27,25 +27,25 @@ const colors = {
  */
 export class Logger {
   private level: LogLevel;
-  
+
   constructor(level: LogLevel = 'normal') {
     this.level = level;
   }
-  
+
   /**
    * Set log level
    */
   setLevel(level: LogLevel): void {
     this.level = level;
   }
-  
+
   /**
    * Get current log level
    */
   getLevel(): LogLevel {
     return this.level;
   }
-  
+
   /**
    * Log an error (always shown unless silent)
    * Supports: error(message), error(tag, message), error(tag, message, error)
@@ -54,7 +54,7 @@ export class Logger {
     let tag = '[thane]';
     let message: string;
     let error: Error | unknown | undefined;
-    
+
     if (messageOrError === undefined) {
       message = messageOrTag;
     } else if (typeof messageOrError === 'string') {
@@ -65,34 +65,34 @@ export class Logger {
       message = messageOrTag;
       error = messageOrError;
     }
-    
+
     console.error(`${colors.red}${tag} ${message}${colors.reset}`);
     if (error) {
       console.error(error);
     }
   }
-  
+
   /**
    * Log a warning (shown in normal and verbose)
    * Supports: warn(message), warn(tag, message)
    */
   warn(messageOrTag: string, message?: string): void {
     if (this.level === 'silent') return;
-    
+
     if (message === undefined) {
       console.warn(`${colors.yellow}[thane] ${messageOrTag}${colors.reset}`);
     } else {
       console.warn(`${colors.yellow}[${messageOrTag}] ${message}${colors.reset}`);
     }
   }
-  
+
   /**
    * Log an info message (shown in normal and verbose)
    * Supports: info(message), info(tag, message), info(tag, message, extra)
    */
   info(messageOrTag: string, message?: string, extra?: string): void {
     if (this.level === 'silent') return;
-    
+
     if (message === undefined) {
       console.log(`${colors.cyan}[thane]${colors.reset} ${messageOrTag}`);
     } else if (extra === undefined) {
@@ -101,7 +101,7 @@ export class Logger {
       console.log(`${colors.cyan}[${messageOrTag}]${colors.reset} ${message} ${extra}`);
     }
   }
-  
+
   /**
    * Log a success message (shown in normal and verbose)
    */
@@ -109,7 +109,7 @@ export class Logger {
     if (this.level === 'silent') return;
     console.log(`${colors.green}[thane]${colors.reset} ${message}`);
   }
-  
+
   /**
    * Log a verbose/debug message (only shown in verbose)
    */
@@ -117,13 +117,13 @@ export class Logger {
     if (this.level !== 'verbose') return;
     console.log(`${colors.dim}[thane] ${message}${colors.reset}`);
   }
-  
+
   /**
    * Log a diagnostic
    */
   diagnostic(diagnostic: Diagnostic): void {
     const formatted = formatDiagnostic(diagnostic);
-    
+
     if (diagnostic.severity === 'error') {
       console.error(formatted);
     } else if (diagnostic.severity === 'warning') {
@@ -136,14 +136,14 @@ export class Logger {
       }
     }
   }
-  
+
   /**
    * Log multiple diagnostics
    */
   diagnostics(diagnostics: Diagnostic[]): void {
-    diagnostics.forEach(d => this.diagnostic(d));
+    diagnostics.forEach((d) => this.diagnostic(d));
   }
-  
+
   /**
    * Start a timed operation
    */
@@ -152,7 +152,7 @@ export class Logger {
       console.time(`${colors.dim}[thane] ${label}${colors.reset}`);
     }
   }
-  
+
   /**
    * End a timed operation
    */
@@ -161,7 +161,7 @@ export class Logger {
       console.timeEnd(`${colors.dim}[thane] ${label}${colors.reset}`);
     }
   }
-  
+
   /**
    * Create a sub-section (verbose only)
    */
@@ -170,7 +170,7 @@ export class Logger {
       console.log(`\n${colors.magenta}${title}${colors.reset}`);
     }
   }
-  
+
   /**
    * Log a blank line (normal and verbose)
    */

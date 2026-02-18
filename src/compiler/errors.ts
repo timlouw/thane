@@ -14,21 +14,21 @@ export enum ErrorCode {
   MALFORMED_ATTRIBUTE = 'THANE003',
   UNCLOSED_EXPRESSION = 'THANE004',
   INVALID_DIRECTIVE = 'THANE005',
-  
+
   // Type errors
   TYPE_ERROR = 'THANE100',
   MISSING_SIGNAL = 'THANE101',
   INVALID_COMPONENT = 'THANE102',
-  
+
   // Build errors
   FILE_NOT_FOUND = 'THANE200',
   BUILD_FAILED = 'THANE201',
   PLUGIN_ERROR = 'THANE202',
-  
+
   // Runtime errors
   INVALID_SELECTOR = 'THANE300',
   DUPLICATE_COMPONENT = 'THANE301',
-  
+
   // Lint rules
   NO_DEFAULT_EXPORT_COMPONENT = 'THANE400',
   COMPONENT_PROPERTY_ORDER = 'THANE401',
@@ -51,7 +51,7 @@ export function createDiagnostic(
   severity: DiagnosticSeverity,
   message: string,
   location?: SourceLocation,
-  code?: string
+  code?: string,
 ): Diagnostic {
   return {
     severity,
@@ -64,33 +64,21 @@ export function createDiagnostic(
 /**
  * Create an error diagnostic
  */
-export function createError(
-  message: string,
-  location?: SourceLocation,
-  code?: string
-): Diagnostic {
+export function createError(message: string, location?: SourceLocation, code?: string): Diagnostic {
   return createDiagnostic('error', message, location, code);
 }
 
 /**
  * Create a warning diagnostic
  */
-export function createWarning(
-  message: string,
-  location?: SourceLocation,
-  code?: string
-): Diagnostic {
+export function createWarning(message: string, location?: SourceLocation, code?: string): Diagnostic {
   return createDiagnostic('warning', message, location, code);
 }
 
 /**
  * Create an info diagnostic
  */
-export function createInfo(
-  message: string,
-  location?: SourceLocation,
-  code?: string
-): Diagnostic {
+export function createInfo(message: string, location?: SourceLocation, code?: string): Diagnostic {
   return createDiagnostic('info', message, location, code);
 }
 
@@ -99,27 +87,26 @@ export function createInfo(
  */
 export function formatDiagnostic(diagnostic: Diagnostic): string {
   const { severity, message, location, code } = diagnostic;
-  
+
   let result = '';
-  
+
   // Add severity prefix with color
-  const prefix = severity === 'error' ? 'error' : 
-                 severity === 'warning' ? 'warning' : 'info';
+  const prefix = severity === 'error' ? 'error' : severity === 'warning' ? 'warning' : 'info';
   result += `[${prefix}]`;
-  
+
   // Add error code if present
   if (code) {
     result += ` ${code}:`;
   }
-  
+
   // Add location if present (file:line:col format for VS Code clickability)
   if (location) {
     result += ` ${location.file}:${location.line}:${location.column}`;
   }
-  
+
   // Add message
   result += `\n  ${message}`;
-  
+
   return result;
 }
 
@@ -134,19 +121,19 @@ export function formatDiagnostics(diagnostics: Diagnostic[]): string {
  * Check if diagnostics contain any errors
  */
 export function hasErrors(diagnostics: Diagnostic[]): boolean {
-  return diagnostics.some(d => d.severity === 'error');
+  return diagnostics.some((d) => d.severity === 'error');
 }
 
 /**
  * Get only error diagnostics
  */
 export function getErrors(diagnostics: Diagnostic[]): Diagnostic[] {
-  return diagnostics.filter(d => d.severity === 'error');
+  return diagnostics.filter((d) => d.severity === 'error');
 }
 
 /**
  * Get only warning diagnostics
  */
 export function getWarnings(diagnostics: Diagnostic[]): Diagnostic[] {
-  return diagnostics.filter(d => d.severity === 'warning');
+  return diagnostics.filter((d) => d.severity === 'warning');
 }

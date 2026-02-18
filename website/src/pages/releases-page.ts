@@ -12,15 +12,37 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
           <h1>Releases</h1>
           <p>Track Thane's development progress. All releases are published on GitHub and npm.</p>
           <div class="releases-links">
-            <a href="https://github.com/timlouw/thane/releases" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+            <a
+              href="https://github.com/timlouw/thane/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-secondary"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path
+                  d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"
+                />
+              </svg>
               All GitHub Releases
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M7 17L17 7M17 7H7M17 7V17" />
+              </svg>
             </a>
-            <a href="https://www.npmjs.com/package/thane" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
-              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323l13.837.019-.009 13.836h-3.464l.01-10.382h-3.456L12.04 19.17H5.113z"/></svg>
+            <a
+              href="https://www.npmjs.com/package/thane"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-secondary"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+                <path
+                  d="M1.763 0C.786 0 0 .786 0 1.763v20.474C0 23.214.786 24 1.763 24h20.474c.977 0 1.763-.786 1.763-1.763V1.763C24 .786 23.214 0 22.237 0zM5.13 5.323l13.837.019-.009 13.836h-3.464l.01-10.382h-3.456L12.04 19.17H5.113z"
+                />
+              </svg>
               View on npm
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M7 17L17 7M17 7H7M17 7V17" />
+              </svg>
             </a>
           </div>
         </div>
@@ -36,7 +58,9 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
             <h3 class="release-title">Hardening &amp; Reactive Primitives</h3>
             <ul class="release-changes">
               <li class="change-added">Added <code>computed()</code> — derived signals with auto-tracking</li>
-              <li class="change-added">Added <code>batch()</code> — deferred subscriber notifications with nested support</li>
+              <li class="change-added"
+                >Added <code>batch()</code> — deferred subscriber notifications with nested support</li
+              >
               <li class="change-added">Added <code>effect()</code> — auto-tracking side effects with dispose</li>
               <li class="change-added">Added <code>--verbose</code> / <code>--quiet</code> CLI flags</li>
               <li class="change-added">Added comprehensive CLI unit tests</li>
@@ -50,9 +74,16 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
               <li class="change-improved">ANSI colors now respect <code>NO_COLOR</code> and non-TTY environments</li>
               <li class="change-improved">Eliminated <code>as any</code> casts from component.ts</li>
             </ul>
-            <a href="https://github.com/timlouw/thane/releases/tag/v0.0.101" target="_blank" rel="noopener noreferrer" class="release-link">
+            <a
+              href="https://github.com/timlouw/thane/releases/tag/v0.0.101"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="release-link"
+            >
               View on GitHub
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M7 17L17 7M17 7H7M17 7V17" />
+              </svg>
             </a>
           </article>
 
@@ -64,10 +95,14 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
             <time class="release-date">January 2026</time>
             <h3 class="release-title">Initial Public Release</h3>
             <ul class="release-changes">
-              <li class="change-added">Core runtime: <code>signal()</code>, <code>defineComponent()</code>, <code>mount()</code></li>
+              <li class="change-added"
+                >Core runtime: <code>signal()</code>, <code>defineComponent()</code>, <code>mount()</code></li
+              >
               <li class="change-added">Compile-time template optimization with static template cloning</li>
               <li class="change-added">Fine-grained signal subscriptions at the binding level</li>
-              <li class="change-added">Built-in directives: <code>when()</code>, <code>whenElse()</code>, <code>repeat()</code></li>
+              <li class="change-added"
+                >Built-in directives: <code>when()</code>, <code>whenElse()</code>, <code>repeat()</code></li
+              >
               <li class="change-added">CSS auto-scoping via class-based isolation</li>
               <li class="change-added">Keyed reconciliation for <code>repeat()</code> with DOM reuse</li>
               <li class="change-added">CLI with dev server, production builds, and preview</li>
@@ -75,9 +110,16 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
               <li class="change-added">12 compile-time lint rules</li>
               <li class="change-added">E2E test suite across Chromium, Firefox, and WebKit</li>
             </ul>
-            <a href="https://github.com/timlouw/thane/releases" target="_blank" rel="noopener noreferrer" class="release-link">
+            <a
+              href="https://github.com/timlouw/thane/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="release-link"
+            >
               View on GitHub
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M7 17L17 7M17 7H7M17 7V17"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+                <path d="M7 17L17 7M17 7H7M17 7V17" />
+              </svg>
             </a>
           </article>
         </div>
@@ -85,7 +127,11 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
         <div class="releases-cta">
           <p>Want to stay up to date? Star the repo on GitHub to get notified of new releases.</p>
           <a href="https://github.com/timlouw/thane" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
-            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M12 .587l3.668 7.568 8.332 1.151-6.064 5.828 1.48 8.279-7.416-3.967-7.417 3.967 1.481-8.279-6.064-5.828 8.332-1.151z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+              <path
+                d="M12 .587l3.668 7.568 8.332 1.151-6.064 5.828 1.48 8.279-7.416-3.967-7.417 3.967 1.481-8.279-6.064-5.828 8.332-1.151z"
+              />
+            </svg>
             Star on GitHub
           </a>
         </div>
@@ -203,9 +249,15 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
       font-size: 14px;
     }
 
-    .change-added::before { content: '✅'; }
-    .change-fixed::before { content: '🔧'; }
-    .change-improved::before { content: '⚡'; }
+    .change-added::before {
+      content: '✅';
+    }
+    .change-fixed::before {
+      content: '🔧';
+    }
+    .change-improved::before {
+      content: '⚡';
+    }
 
     .release-changes code {
       font-size: 12.5px;
@@ -242,8 +294,12 @@ export const ReleasesPage = defineComponent('releases-page', () => ({
     }
 
     @media (max-width: 640px) {
-      .release-card { padding: 20px; }
-      .releases-header h1 { font-size: 2rem; }
+      .release-card {
+        padding: 20px;
+      }
+      .releases-header h1 {
+        font-size: 2rem;
+      }
     }
   `,
 }));

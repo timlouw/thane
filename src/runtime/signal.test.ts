@@ -173,12 +173,9 @@ describe('Signal Batching', () => {
     const s = signal(5);
     let updateCount = 0;
 
-    s.subscribe(
-      () => {
-        updateCount++;
-      },
-      true
-    ); // skipInitial
+    s.subscribe(() => {
+      updateCount++;
+    }, true); // skipInitial
 
     expect(updateCount).toBe(0);
 
@@ -192,12 +189,9 @@ describe('Signal Batching', () => {
     const s = signal(0);
     const values: number[] = [];
 
-    s.subscribe(
-      (val) => {
-        values.push(val);
-      },
-      true
-    );
+    s.subscribe((val) => {
+      values.push(val);
+    }, true);
 
     s(1);
     s(2);
@@ -213,12 +207,9 @@ describe('Signal Batching', () => {
     const s = signal(0);
     let lastValue = 0;
 
-    s.subscribe(
-      (val) => {
-        lastValue = val;
-      },
-      true
-    );
+    s.subscribe((val) => {
+      lastValue = val;
+    }, true);
 
     for (let i = 1; i <= 100; i++) {
       s(i);
@@ -236,12 +227,9 @@ describe('Chained Signal Updates', () => {
     const s1 = signal(1);
     const s2 = signal(0);
 
-    s1.subscribe(
-      (val) => {
-        s2(val * 2);
-      },
-      true
-    );
+    s1.subscribe((val) => {
+      s2(val * 2);
+    }, true);
 
     s1(5);
     await flushMicrotasks();
@@ -254,13 +242,10 @@ describe('Chained Signal Updates', () => {
     const doubled = signal(0);
     const tripled = signal(0);
 
-    source.subscribe(
-      (val) => {
-        doubled(val * 2);
-        tripled(val * 3);
-      },
-      true
-    );
+    source.subscribe((val) => {
+      doubled(val * 2);
+      tripled(val * 3);
+    }, true);
 
     source(5);
     await flushMicrotasks();
@@ -314,12 +299,9 @@ describe('Signal Performance', () => {
     const s = signal(0);
     let updateCount = 0;
 
-    s.subscribe(
-      () => {
-        updateCount++;
-      },
-      true
-    );
+    s.subscribe(() => {
+      updateCount++;
+    }, true);
 
     for (let i = 1; i <= 1000; i++) {
       s(i);
@@ -336,12 +318,9 @@ describe('Signal Performance', () => {
     const results: number[] = [];
 
     signals.forEach((s, i) => {
-      s.subscribe(
-        (val) => {
-          results[i] = val;
-        },
-        true
-      );
+      s.subscribe((val) => {
+        results[i] = val;
+      }, true);
     });
 
     signals.forEach((s, i) => s(i * 2));
@@ -369,12 +348,9 @@ describe('Signal Performance', () => {
     const s = signal(false);
     let lastValue = false;
 
-    s.subscribe(
-      (val) => {
-        lastValue = val;
-      },
-      true
-    );
+    s.subscribe((val) => {
+      lastValue = val;
+    }, true);
 
     for (let i = 0; i < 1000; i++) {
       s(!s());
@@ -476,7 +452,9 @@ describe('batch()', () => {
     const s = signal(0);
     const values: number[] = [];
 
-    s.subscribe((v) => { values.push(v); }, true);
+    s.subscribe((v) => {
+      values.push(v);
+    }, true);
 
     expect(() => {
       batch(() => {

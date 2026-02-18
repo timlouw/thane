@@ -62,7 +62,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
             diagnostics.push(
               createError(
                 `Component re-exports are not supported. Define the component in this file instead: ` +
-                `export const ${exportedName} = defineComponent(...)`,
+                  `export const ${exportedName} = defineComponent(...)`,
                 { file: filePath, line: line + 1, column: character + 1 },
                 ErrorCode.NO_ALIASED_COMPONENT_EXPORT,
               ),
@@ -77,8 +77,8 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
           diagnostics.push(
             createError(
               `Aliased component export is not supported: '${localName}' exported as '${exportedName}'. ` +
-              'The compiler derives the selector from the declaration name, not the exported name. ' +
-              `Use 'export const ${exportedName} = defineComponent(...)' instead.`,
+                'The compiler derives the selector from the declaration name, not the exported name. ' +
+                `Use 'export const ${exportedName} = defineComponent(...)' instead.`,
               { file: filePath, line: line + 1, column: character + 1 },
               ErrorCode.NO_ALIASED_COMPONENT_EXPORT,
             ),
@@ -94,7 +94,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
           diagnostics.push(
             createError(
               `Deferred component export is not supported. The compiler requires the export keyword ` +
-              `on the declaration: export const ${exportedName} = defineComponent(...)`,
+                `on the declaration: export const ${exportedName} = defineComponent(...)`,
               { file: filePath, line: line + 1, column: character + 1 },
               ErrorCode.NO_ALIASED_COMPONENT_EXPORT,
             ),

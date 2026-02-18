@@ -1,6 +1,6 @@
 /**
  * DOM Binding utilities for Thane runtime
- * 
+ *
  * Handles conditional rendering and repeat directives.
  */
 
@@ -97,30 +97,41 @@ const bindConditional = (
 };
 
 export const __bindIf = (
-  root: ComponentRoot, 
-  signal: Signal<any>, 
-  id: string, 
-  template: string, 
+  root: ComponentRoot,
+  signal: Signal<any>,
+  id: string,
+  template: string,
   initNested: (contentEl?: Element) => (() => void)[],
   anchorEl?: Element | null,
 ): (() => void) =>
   bindConditional(
-    root, id, template, initNested,
+    root,
+    id,
+    template,
+    initNested,
     (update) => [signal.subscribe(update, true)],
     () => Boolean(signal()),
     anchorEl,
   );
 
 export const __bindIfExpr = (
-  root: ComponentRoot, 
-  signals: Signal<any>[], 
-  evalExpr: () => boolean, 
-  id: string, 
-  template: string, 
+  root: ComponentRoot,
+  signals: Signal<any>[],
+  evalExpr: () => boolean,
+  id: string,
+  template: string,
   initNested: (contentEl?: Element) => (() => void)[],
   anchorEl?: Element | null,
 ): (() => void) =>
-  bindConditional(root, id, template, initNested, (update) => signals.map((s) => s.subscribe(update, true)), evalExpr, anchorEl);
+  bindConditional(
+    root,
+    id,
+    template,
+    initNested,
+    (update) => signals.map((s) => s.subscribe(update, true)),
+    evalExpr,
+    anchorEl,
+  );
 
 // ─────────────────────────────────────────────────────────────
 //  Shared Reconciler
@@ -170,9 +181,8 @@ export function createKeyedReconciler<T>(
   keyFnOrProp: KeyFn<T> | string,
 ) {
   // Resolve key accessor once: string property name → direct access, function → use as-is
-  const keyFn: KeyFn<T> = typeof keyFnOrProp === 'string'
-    ? (item: T) => (item as any)[keyFnOrProp] as string | number
-    : keyFnOrProp;
+  const keyFn: KeyFn<T> =
+    typeof keyFnOrProp === 'string' ? (item: T) => (item as any)[keyFnOrProp] as string | number : keyFnOrProp;
 
   const containerParent = container.parentNode;
   const containerNextSibling = container.nextSibling;
@@ -229,15 +239,24 @@ export function createKeyedReconciler<T>(
     const newLength = newItems?.length ?? 0;
     const oldLength = managedItems.length;
 
-    if (newLength === 0) { clearAll(); return; }
-    if (oldLength === 0) { bulkCreate(newItems); return; }
+    if (newLength === 0) {
+      clearAll();
+      return;
+    }
+    if (oldLength === 0) {
+      bulkCreate(newItems);
+      return;
+    }
 
     // Fast path: single item removed — find missing old key by linear scan
     if (oldLength === newLength + 1) {
       let removedIdx = -1;
       for (let i = 0; i < newLength; i++) {
         const newKey = keyFn(newItems[i]!, i);
-        if (newKey !== managedItems[i]!.key) { removedIdx = i; break; }
+        if (newKey !== managedItems[i]!.key) {
+          removedIdx = i;
+          break;
+        }
       }
       if (removedIdx === -1) removedIdx = oldLength - 1;
 
@@ -245,7 +264,10 @@ export function createKeyedReconciler<T>(
 
       let isActualRemoval = true;
       for (let i = removedIdx; i < newLength; i++) {
-        if (keyFn(newItems[i]!, i) === removedManaged.key) { isActualRemoval = false; break; }
+        if (keyFn(newItems[i]!, i) === removedManaged.key) {
+          isActualRemoval = false;
+          break;
+        }
       }
 
       if (isActualRemoval) {
@@ -259,13 +281,21 @@ export function createKeyedReconciler<T>(
     // Fast path: reorder with same keys (fused allKeysExist + update in single pass)
     if (oldLength === newLength) {
       let allKeysExist = true;
-      let mismatchCount = 0, mismatch1 = -1, mismatch2 = -1;
+      let mismatchCount = 0,
+        mismatch1 = -1,
+        mismatch2 = -1;
 
       for (let i = 0; i < newLength; i++) {
         const newItem = newItems[i]!;
         const existing = keyMap.get(keyFn(newItem, i));
-        if (!existing) { allKeysExist = false; break; }
-        if (existing.value !== newItem) { existing.value = newItem; existing.update!(newItem); }
+        if (!existing) {
+          allKeysExist = false;
+          break;
+        }
+        if (existing.value !== newItem) {
+          existing.value = newItem;
+          existing.update!(newItem);
+        }
         if (managedItems[i] !== existing) {
           mismatchCount++;
           if (mismatchCount === 1) mismatch1 = i;
@@ -275,19 +305,26 @@ export function createKeyedReconciler<T>(
       }
 
       if (allKeysExist) {
-
         if (mismatchCount === 0) return;
 
         if (mismatchCount === 2) {
-          const m1 = managedItems[mismatch1]!, m2 = managedItems[mismatch2]!;
-          const k1 = keyFn(newItems[mismatch1]!, mismatch1), k2 = keyFn(newItems[mismatch2]!, mismatch2);
+          const m1 = managedItems[mismatch1]!,
+            m2 = managedItems[mismatch2]!;
+          const k1 = keyFn(newItems[mismatch1]!, mismatch1),
+            k2 = keyFn(newItems[mismatch2]!, mismatch2);
           if (keyMap.get(k1) === m2 && keyMap.get(k2) === m1) {
-            const el1 = m1.el, el2 = m2.el;
-            const next1 = el1.nextSibling, next2 = el2.nextSibling;
+            const el1 = m1.el,
+              el2 = m2.el;
+            const next1 = el1.nextSibling,
+              next2 = el2.nextSibling;
             if (next1 === el2) container.insertBefore(el2, el1);
             else if (next2 === el1) container.insertBefore(el1, el2);
-            else { container.insertBefore(el2, next1); container.insertBefore(el1, next2); }
-            managedItems[mismatch1] = m2; managedItems[mismatch2] = m1;
+            else {
+              container.insertBefore(el2, next1);
+              container.insertBefore(el1, next2);
+            }
+            managedItems[mismatch1] = m2;
+            managedItems[mismatch2] = m1;
             return;
           }
         }
@@ -312,7 +349,11 @@ export function createKeyedReconciler<T>(
       const firstNewKey = keyFn(newItems[0]!, 0);
       if (!keyMap.has(firstNewKey)) {
         const lastNewKey = keyFn(newItems[newLength - 1]!, newLength - 1);
-        if (!keyMap.has(lastNewKey)) { clearAll(); bulkCreate(newItems); return; }
+        if (!keyMap.has(lastNewKey)) {
+          clearAll();
+          bulkCreate(newItems);
+          return;
+        }
       }
     }
 
@@ -323,7 +364,10 @@ export function createKeyedReconciler<T>(
     for (let i = 0; i < oldLength; i++) {
       const managed = managedItems[i]!;
       if (_keySet.has(managed.key!)) kept.push(managed);
-      else { removeItem(managed); keyMap.delete(managed.key!); }
+      else {
+        removeItem(managed);
+        keyMap.delete(managed.key!);
+      }
     }
     _keySet.clear();
     managedItems.length = kept.length;
@@ -335,7 +379,10 @@ export function createKeyedReconciler<T>(
       const key = keyFn(newItem, i);
       const existing = keyMap.get(key);
       if (existing) {
-        if (existing.value !== newItem) { existing.value = newItem; existing.update!(newItem); }
+        if (existing.value !== newItem) {
+          existing.value = newItem;
+          existing.update!(newItem);
+        }
         newManagedItems.push(existing);
       } else {
         const refNode = i < managedItems.length ? managedItems[i]!.el : anchor;
@@ -346,7 +393,8 @@ export function createKeyedReconciler<T>(
       }
     }
 
-    let currentEl: Element | null = newManagedItems[0]?.el.previousElementSibling?.nextElementSibling || container.firstElementChild;
+    let currentEl: Element | null =
+      newManagedItems[0]?.el.previousElementSibling?.nextElementSibling || container.firstElementChild;
     for (let i = 0; i < newLength; i++) {
       const wanted = newManagedItems[i]!.el;
       if (wanted === currentEl) currentEl = currentEl?.nextElementSibling || null;

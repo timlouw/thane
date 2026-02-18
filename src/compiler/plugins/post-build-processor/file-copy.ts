@@ -49,38 +49,43 @@ export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string,
       clearTimeout(existingTimer);
     }
 
-    debounceTimers.set(filename, setTimeout(async () => {
-      debounceTimers.delete(filename);
+    debounceTimers.set(
+      filename,
+      setTimeout(async () => {
+        debounceTimers.delete(filename);
 
-      const srcPath = path.join(src, filename);
-      const destPath = path.join(dest, filename);
+        const srcPath = path.join(src, filename);
+        const destPath = path.join(dest, filename);
 
-      try {
-        if (eventType === 'change') {
-          const stat = await fs.promises.lstat(srcPath).catch(() => null);
-          if (stat?.isDirectory()) {
-            await recursivelyCopyAssetsIntoDist(srcPath, destPath);
-          } else if (stat) {
-            await fs.promises.copyFile(srcPath, destPath);
-          }
-        } else if (eventType === 'rename') {
-          const stat = await fs.promises.lstat(srcPath).catch(() => null);
-          if (stat) {
-            if (stat.isDirectory()) {
+        try {
+          if (eventType === 'change') {
+            const stat = await fs.promises.lstat(srcPath).catch(() => null);
+            if (stat?.isDirectory()) {
               await recursivelyCopyAssetsIntoDist(srcPath, destPath);
-            } else {
+            } else if (stat) {
               await fs.promises.copyFile(srcPath, destPath);
             }
-          } else {
-            await fs.promises.rm(destPath, { recursive: true, force: true }).catch(() => {});
+          } else if (eventType === 'rename') {
+            const stat = await fs.promises.lstat(srcPath).catch(() => null);
+            if (stat) {
+              if (stat.isDirectory()) {
+                await recursivelyCopyAssetsIntoDist(srcPath, destPath);
+              } else {
+                await fs.promises.copyFile(srcPath, destPath);
+              }
+            } else {
+              await fs.promises.rm(destPath, { recursive: true, force: true }).catch(() => {});
+            }
           }
+          onUpdate?.();
+        } catch (error) {
+          // Race conditions during rapid file changes
+          logger.verbose(
+            `[file-copy] Watcher error for ${filename}: ${error instanceof Error ? error.message : error}`,
+          );
         }
-        onUpdate?.();
-      } catch (error) {
-        // Race conditions during rapid file changes
-        logger.verbose(`[file-copy] Watcher error for ${filename}: ${error instanceof Error ? error.message : error}`);
-      }
-    }, DEBOUNCE_MS));
+      }, DEBOUNCE_MS),
+    );
   });
 };
 

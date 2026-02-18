@@ -1,6 +1,6 @@
 /**
  * Template processing for reactive binding compiler
- * 
+ *
  * Handles processing of HTML templates with conditionals, including
  * evaluation of conditional expressions, element HTML processing,
  * and sub-template nesting.
@@ -8,13 +8,7 @@
 
 import ts from 'typescript';
 import vm from 'node:vm';
-import type {
-  ConditionalBlock,
-  WhenElseBlock,
-  RepeatBlock,
-  BindingInfo,
-  EventBinding,
-} from './types.js';
+import type { ConditionalBlock, WhenElseBlock, RepeatBlock, BindingInfo, EventBinding } from './types.js';
 import { processItemTemplate } from './repeat-analysis.js';
 import { logger, PLUGIN_NAME } from '../../utils/index.js';
 import {
@@ -51,17 +45,32 @@ const NAME = PLUGIN_NAME.REACTIVE;
  * in a locked-down sandbox. This supports the full range of JS operators and
  * expressions without exposing eval() or the Node.js runtime.
  */
-const _evalSandbox = vm.createContext(Object.freeze({
-  // Only expose safe, side-effect-free globals
-  Boolean, Number, String, Array, Object,
-  Math, JSON, parseInt, parseFloat, isNaN, isFinite,
-  undefined, NaN, Infinity,
-  true: true, false: false, null: null,
-}));
+const _evalSandbox = vm.createContext(
+  Object.freeze({
+    // Only expose safe, side-effect-free globals
+    Boolean,
+    Number,
+    String,
+    Array,
+    Object,
+    Math,
+    JSON,
+    parseInt,
+    parseFloat,
+    isNaN,
+    isFinite,
+    undefined,
+    NaN,
+    Infinity,
+    true: true,
+    false: false,
+    null: null,
+  }),
+);
 
 /**
  * Safely evaluate a conditional expression at compile time.
- * 
+ *
  * Replaces all `signalName()` references with their initial values,
  * transpiles the expression from TypeScript to JavaScript, then evaluates
  * it in a constrained VM sandbox with no access to Node.js APIs.
@@ -97,7 +106,10 @@ export const safeEvaluateCondition = (
 /**
  * Replace ${signalName()} expressions with their initial values
  */
-export const replaceExpressionsWithValues = (html: string, signalInitializers: Map<string, string | number | boolean>): string => {
+export const replaceExpressionsWithValues = (
+  html: string,
+  signalInitializers: Map<string, string | number | boolean>,
+): string => {
   return html.replace(/\$\{(\w+)\(\)\}/g, (_match, signalName) => {
     const value = signalInitializers.get(signalName);
     return value !== undefined ? String(value) : '';
@@ -195,13 +207,13 @@ export const processConditionalElementHtml = (
         // Scan backwards from the when attr to find the opening '<'
         let openTagStart = whenAttrIdx - 1;
         while (openTagStart >= 0 && html[openTagStart] !== '<') openTagStart--;
-        
+
         if (openTagStart >= 0) {
           // Extract the tag name
           let tagNameEndPos = openTagStart + 1;
           while (tagNameEndPos < html.length && /[\w-]/.test(html[tagNameEndPos]!)) tagNameEndPos++;
           const tagName = html.substring(openTagStart + 1, tagNameEndPos);
-          
+
           // Find the closing tag for this element
           const closeTag = `</${tagName}>`;
           const openTagEndIdx = html.indexOf('>', whenAttrIdx);
@@ -226,7 +238,10 @@ export const processConditionalElementHtml = (
               }
             }
             if (closeTagStart !== -1) {
-              html = html.substring(0, openTagStart) + `<template id="${nestedCond.id}"></template>` + html.substring(closeTagStart + closeTag.length);
+              html =
+                html.substring(0, openTagStart) +
+                `<template id="${nestedCond.id}"></template>` +
+                html.substring(closeTagStart + closeTag.length);
               continue;
             }
           }
@@ -248,7 +263,12 @@ export const processConditionalElementHtml = (
 /**
  * Add IDs to nested elements within a conditional block
  */
-export const addIdsToNestedElements = (processedHtml: string, rootElement: HtmlElement, elementIdMap: Map<HtmlElement, string>, _originalHtml: string): string => {
+export const addIdsToNestedElements = (
+  processedHtml: string,
+  rootElement: HtmlElement,
+  elementIdMap: Map<HtmlElement, string>,
+  _originalHtml: string,
+): string => {
   let result = processedHtml;
   walkElements([rootElement], (el) => {
     if (el === rootElement) return; // Root already has ID
@@ -262,14 +282,14 @@ export const addIdsToNestedElements = (processedHtml: string, rootElement: HtmlE
     while (searchPos < result.length) {
       const tagPos = result.indexOf(openTag, searchPos);
       if (tagPos === -1) break;
-      
+
       // Verify the character after the tag name is whitespace or '>' (not a longer tag name)
       const afterTag = result[tagPos + openTag.length];
       if (afterTag !== ' ' && afterTag !== '>' && afterTag !== '/' && afterTag !== '\n' && afterTag !== '\t') {
         searchPos = tagPos + 1;
         continue;
       }
-      
+
       // Check if this tag already has an id attribute
       const tagEnd = result.indexOf('>', tagPos);
       if (tagEnd === -1) break;
@@ -278,7 +298,7 @@ export const addIdsToNestedElements = (processedHtml: string, rootElement: HtmlE
         // Element already has an id — reuse it as the binding anchor
         break;
       }
-      
+
       // Inject the ID after the tag name
       result = result.substring(0, tagPos + openTag.length) + ` id="${id}"` + result.substring(tagPos + openTag.length);
       break; // Only inject into the first matching unid'd tag
@@ -363,11 +383,21 @@ export const processHtmlTemplateWithConditionals = (
 
     const signalNames = binding.signalNames || [binding.signalName];
     const repeatId = `b${state.idCounter++}`;
-    const itemTemplateProcessed = processItemTemplate(binding.itemTemplate, binding.itemVar, binding.indexVar, state.idCounter, signalInitializers);
+    const itemTemplateProcessed = processItemTemplate(
+      binding.itemTemplate,
+      binding.itemVar,
+      binding.indexVar,
+      state.idCounter,
+      signalInitializers,
+    );
     state.idCounter = itemTemplateProcessed.nextId;
     let processedEmptyTemplate: string | undefined;
     if (binding.emptyTemplate) {
-      processedEmptyTemplate = binding.emptyTemplate.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
+      processedEmptyTemplate = binding.emptyTemplate
+        .replace(/\s+/g, ' ')
+        .replace(/>\s+</g, '><')
+        .replace(/\s+>/g, '>')
+        .trim();
     }
 
     repeatBlocks.push({
@@ -413,7 +443,8 @@ export const processHtmlTemplateWithConditionals = (
       });
 
       // Expression text binding (e.g. ${count() + 1}) vs bare signal (e.g. ${count()})
-      const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+      const isExpressionBinding =
+        binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
 
       if (isExpressionBinding) {
         expressionBindingSpans.set(binding.expressionStart, {
@@ -422,18 +453,22 @@ export const processHtmlTemplateWithConditionals = (
         });
       }
 
-      bindings.push(isExpressionBinding ? {
-        id: spanId,
-        signalNames: binding.signalNames!,
-        expression: binding.jsExpression!,
-        type: 'text' as const,
-        isInsideConditional: false,
-      } : {
-        id: spanId,
-        signalName: binding.signalName,
-        type: 'text' as const,
-        isInsideConditional: false,
-      });
+      bindings.push(
+        isExpressionBinding
+          ? {
+              id: spanId,
+              signalNames: binding.signalNames!,
+              expression: binding.jsExpression!,
+              type: 'text' as const,
+              isInsideConditional: false,
+            }
+          : {
+              id: spanId,
+              signalName: binding.signalName,
+              type: 'text' as const,
+              isInsideConditional: false,
+            },
+      );
       continue;
     }
     if (!elementIdMap.has(binding.element)) {
@@ -441,7 +476,8 @@ export const processHtmlTemplateWithConditionals = (
     }
     const elementId = elementIdMap.get(binding.element)!;
 
-    const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+    const isExpressionBinding =
+      binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
     if (isExpressionBinding) {
       inlineExpressionReplacements.set(binding.expressionStart, {
         exprEnd: binding.expressionEnd,
@@ -573,7 +609,8 @@ export const processSubTemplateWithNesting = (
         signalName: binding.signalName,
       });
 
-      const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+      const isExpressionBinding =
+        binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
       if (isExpressionBinding) {
         expressionBindingSpans.set(binding.expressionStart, {
           spanId,
@@ -581,20 +618,24 @@ export const processSubTemplateWithNesting = (
         });
       }
 
-      bindings.push(isExpressionBinding ? {
-        id: spanId,
-        signalNames: binding.signalNames!,
-        expression: binding.jsExpression!,
-        type: 'text' as const,
-        isInsideConditional: true,
-        conditionalId: parentId,
-      } : {
-        id: spanId,
-        signalName: binding.signalName,
-        type: 'text' as const,
-        isInsideConditional: true,
-        conditionalId: parentId,
-      });
+      bindings.push(
+        isExpressionBinding
+          ? {
+              id: spanId,
+              signalNames: binding.signalNames!,
+              expression: binding.jsExpression!,
+              type: 'text' as const,
+              isInsideConditional: true,
+              conditionalId: parentId,
+            }
+          : {
+              id: spanId,
+              signalName: binding.signalName,
+              type: 'text' as const,
+              isInsideConditional: true,
+              conditionalId: parentId,
+            },
+      );
       continue;
     }
 
@@ -602,23 +643,28 @@ export const processSubTemplateWithNesting = (
       elementIdMap.set(binding.element, `b${state.idCounter++}`);
     }
     const elementId = elementIdMap.get(binding.element)!;
-    const isExpressionBinding = binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
-    bindings.push(isExpressionBinding ? {
-      id: elementId,
-      signalNames: binding.signalNames!,
-      expression: binding.jsExpression!,
-      type: binding.type as 'text' | 'style' | 'attr',
-      ...(binding.property ? { property: binding.property } : {}),
-      isInsideConditional: true,
-      conditionalId: parentId,
-    } : {
-      id: elementId,
-      signalName: binding.signalName,
-      type: binding.type as 'text' | 'style' | 'attr',
-      ...(binding.property ? { property: binding.property } : {}),
-      isInsideConditional: true,
-      conditionalId: parentId,
-    });
+    const isExpressionBinding =
+      binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+    bindings.push(
+      isExpressionBinding
+        ? {
+            id: elementId,
+            signalNames: binding.signalNames!,
+            expression: binding.jsExpression!,
+            type: binding.type as 'text' | 'style' | 'attr',
+            ...(binding.property ? { property: binding.property } : {}),
+            isInsideConditional: true,
+            conditionalId: parentId,
+          }
+        : {
+            id: elementId,
+            signalName: binding.signalName,
+            type: binding.type as 'text' | 'style' | 'attr',
+            ...(binding.property ? { property: binding.property } : {}),
+            isInsideConditional: true,
+            conditionalId: parentId,
+          },
+    );
   }
 
   // ── Build edits and apply ──
@@ -629,7 +675,13 @@ export const processSubTemplateWithNesting = (
   const edits: TemplateEdit[] = [
     ...buildConditionalEdits(conditionals),
     ...buildWhenElseEdits(whenElseBlocks, false),
-    ...buildSignalReplacementEdits(templateContent, signalInitializers, allRanges, textBindingSpans, expressionBindingSpans),
+    ...buildSignalReplacementEdits(
+      templateContent,
+      signalInitializers,
+      allRanges,
+      textBindingSpans,
+      expressionBindingSpans,
+    ),
     ...buildElementIdEdits(elementIdMap, allRanges),
   ];
 
@@ -667,7 +719,11 @@ export const generateProcessedHtml = (
   const edits: TemplateEdit[] = [
     ...buildConditionalEdits(conditionals),
     ...buildWhenElseEdits(whenElseBlocks, true, injectIdIntoFirstElement),
-    ...repeatBlocks.map((rep) => ({ start: rep.startIndex, end: rep.endIndex, replacement: `<template id="${rep.id}"></template>` })),
+    ...repeatBlocks.map((rep) => ({
+      start: rep.startIndex,
+      end: rep.endIndex,
+      replacement: `<template id="${rep.id}"></template>`,
+    })),
     ...buildSignalReplacementEdits(
       originalHtml,
       signalInitializers,
@@ -681,7 +737,9 @@ export const generateProcessedHtml = (
   // Event binding edits — remove @event attributes (no more data-evt- attributes)
   for (const binding of parsed.bindings) {
     if (binding.type === 'event' && binding.eventName) {
-      const eventBinding = eventBindings.find((eb) => eb.eventName === binding.eventName && eb.startIndex === binding.expressionStart);
+      const eventBinding = eventBindings.find(
+        (eb) => eb.eventName === binding.eventName && eb.startIndex === binding.expressionStart,
+      );
       if (eventBinding) {
         edits.push({ start: binding.expressionStart, end: binding.expressionEnd, replacement: '' });
       }

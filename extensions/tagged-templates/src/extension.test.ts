@@ -14,12 +14,7 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import {
-  escapeRegex,
-  embeddedBlockScope,
-  resolveTagMappings,
-  generateGrammar,
-} from './grammar-utils.js';
+import { escapeRegex, embeddedBlockScope, resolveTagMappings, generateGrammar } from './grammar-utils.js';
 
 // ─────────────────────────────────────────────────────────────
 //  Tests

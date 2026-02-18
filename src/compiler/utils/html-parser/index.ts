@@ -1,6 +1,6 @@
 /**
  * HTML Parser — Public API
- * 
+ *
  * Re-exports all types and functions from the split parser modules.
  * Import from this file (or the parent utils/index) for the public API.
  */
@@ -24,7 +24,12 @@ export { VOID_ELEMENTS, decodeHtmlEntities } from './types.js';
 export { parseHtmlTemplate } from './parser-core.js';
 
 // Binding detection
-export { parseWhenElseExpression, parseRepeatExpression, findBindingsInText, findBindingsInAttributes } from './binding-detection.js';
+export {
+  parseWhenElseExpression,
+  parseRepeatExpression,
+  findBindingsInText,
+  findBindingsInAttributes,
+} from './binding-detection.js';
 
 // Utilities
 export {

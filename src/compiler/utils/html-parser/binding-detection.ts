@@ -1,6 +1,6 @@
 /**
  * HTML Parser — Binding detection
- * 
+ *
  * Finds signal bindings, events, when/whenElse/repeat directives in parsed HTML.
  */
 
@@ -11,7 +11,7 @@ import { parseArrowFunction } from '../ast-utils.js';
 
 /**
  * Shared argument parser for both whenElse and repeat expressions.
- * 
+ *
  * Parses a comma-separated argument list from a `${directive(` call,
  * handling nested template literals and balanced parentheses.
  *
@@ -19,10 +19,7 @@ import { parseArrowFunction } from '../ast-utils.js';
  * @param startPos - position right after the opening paren of the directive
  * @returns parsed args and end position, or null if parsing fails
  */
-function parseDirectiveArgs(
-  text: string,
-  startPos: number,
-): { args: string[]; end: number } | null {
+function parseDirectiveArgs(text: string, startPos: number): { args: string[]; end: number } | null {
   let pos = startPos;
   let parenDepth = 1;
 
@@ -101,12 +98,12 @@ function extractHtmlTemplateContent(arg: string): string {
   if (htmlMatch && htmlMatch[1] !== undefined) {
     return htmlMatch[1];
   }
-  
+
   const plainMatch = arg.match(/^`([\s\S]*)`$/);
   if (plainMatch && plainMatch[1] !== undefined) {
     return plainMatch[1];
   }
-  
+
   return arg;
 }
 
@@ -123,7 +120,9 @@ function extractSignalsFromExpression(expression: string): string[] {
   return signals;
 }
 
-function findTemplateExpressions(value: string): Array<{ start: number; end: number; expression: string; full: string }> {
+function findTemplateExpressions(
+  value: string,
+): Array<{ start: number; end: number; expression: string; full: string }> {
   const results: Array<{ start: number; end: number; expression: string; full: string }> = [];
   let searchPos = 0;
 
@@ -245,7 +244,7 @@ export function parseRepeatExpression(
   const parsed = parseDirectiveArgs(text, argsStart);
   if (!parsed) return null;
 
-  const filteredArgs = parsed.args.filter(a => a.trim() !== '');
+  const filteredArgs = parsed.args.filter((a) => a.trim() !== '');
 
   if (filteredArgs.length < 2 || filteredArgs.length > 4) {
     return null;
@@ -282,7 +281,10 @@ export function parseRepeatExpression(
     const trimmed = arg3.trim();
     const parsed2 = parseArrowFunction(trimmed);
     if (!parsed2) {
-      logger.warn('html-parser', `trackBy function should be an arrow function returning a key property, e.g., (item) => item.id`);
+      logger.warn(
+        'html-parser',
+        `trackBy function should be an arrow function returning a key property, e.g., (item) => item.id`,
+      );
     }
     trackByFn = trimmed;
   }
@@ -301,7 +303,12 @@ export function parseRepeatExpression(
   };
 }
 
-export function findBindingsInText(text: string, textStart: number, parent: HtmlElement | null, bindings: BindingInfo[]): void {
+export function findBindingsInText(
+  text: string,
+  textStart: number,
+  parent: HtmlElement | null,
+  bindings: BindingInfo[],
+): void {
   if (!parent) return;
 
   const complexExprPositions: Array<{ start: number; end: number }> = [];
@@ -393,7 +400,7 @@ export function findBindingsInText(text: string, textStart: number, parent: Html
     if (dollarIdx === -1) break;
 
     // Skip if inside a whenElse/repeat/bare-signal range
-    const isInsideSkipRange = allSkipRanges.some(r => dollarIdx >= r.start && dollarIdx < r.end);
+    const isInsideSkipRange = allSkipRanges.some((r) => dollarIdx >= r.start && dollarIdx < r.end);
     if (isInsideSkipRange) {
       searchPos = dollarIdx + 2;
       continue;

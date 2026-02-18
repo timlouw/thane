@@ -13,7 +13,7 @@ serve({
   port,
   development: false,
   routes: {
-    '/*': async req => {
+    '/*': async (req) => {
       const pathname = new URL(req.url).pathname;
       const clean = pathname === '/' ? '/index.html' : pathname;
       const filePath = join(root, clean);

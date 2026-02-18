@@ -1,16 +1,11 @@
 /**
  * Shared template processing utilities
- * 
+ *
  * Extracted from template-processing.ts and repeat-analysis.ts to
  * eliminate ~300 lines of near-identical conditional/whenElse/edit logic.
  */
 
-import type {
-  ConditionalBlock,
-  WhenElseBlock,
-  BindingInfo,
-  EventBinding,
-} from './types.js';
+import type { ConditionalBlock, WhenElseBlock, BindingInfo, EventBinding } from './types.js';
 import {
   findElementsWithWhenDirective,
   walkElements,
@@ -46,10 +41,10 @@ export interface TemplateEdit {
 /**
  * Shared conditional processing: find all when() directives in parsed HTML,
  * build ConditionalBlock entries, and collect nested bindings/events.
- * 
+ *
  * Supports an optional `onConditionalHtml` callback for item-template contexts
  * that need to transform the conditional HTML (e.g., wrapping item expressions).
- * 
+ *
  * Returns the collected conditionals and associated binding/event arrays.
  */
 export const collectConditionalBlocks = (
@@ -130,7 +125,11 @@ export const collectConditionalBlocks = (
         }
         elementId = state.elementIdMap.get(binding.element)!;
       }
-      const isExpr = binding.type === 'text' && binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+      const isExpr =
+        binding.type === 'text' &&
+        binding.jsExpression !== undefined &&
+        binding.signalNames &&
+        binding.signalNames.length > 0;
       if (isExpr) {
         nestedBindings.push({
           id: elementId,
@@ -185,7 +184,11 @@ export const collectConditionalBlocks = (
             }
             nestedElementId = state.elementIdMap.get(binding.element)!;
           }
-          const isExpr = binding.type === 'text' && binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+          const isExpr =
+            binding.type === 'text' &&
+            binding.jsExpression !== undefined &&
+            binding.signalNames &&
+            binding.signalNames.length > 0;
           if (isExpr) {
             nestedNestedBindings.push({
               id: nestedElementId,
@@ -207,7 +210,16 @@ export const collectConditionalBlocks = (
           }
         }
 
-        const nestedProcessedResult = processConditionalElementHtml(nestedCondEl, templateContent, signalInitializers, state.elementIdMap, nestedCondId, undefined, state.eventIdCounter, nestedTextBindingCommentIds);
+        const nestedProcessedResult = processConditionalElementHtml(
+          nestedCondEl,
+          templateContent,
+          signalInitializers,
+          state.elementIdMap,
+          nestedCondId,
+          undefined,
+          state.eventIdCounter,
+          nestedTextBindingCommentIds,
+        );
         const primarySignal = nestedSignalNames[0];
         if (!primarySignal) continue;
 
@@ -229,7 +241,11 @@ export const collectConditionalBlocks = (
     }
 
     const processedCondResult = processConditionalElementHtml(
-      condEl, templateContent, signalInitializers, state.elementIdMap, conditionalId,
+      condEl,
+      templateContent,
+      signalInitializers,
+      state.elementIdMap,
+      conditionalId,
       opts?.handleNestedConditionals ? nestedConditionals : undefined,
       state.eventIdCounter,
       textBindingCommentIds,
@@ -277,7 +293,10 @@ export const collectWhenElseBlocks = (
   parsed: ParsedTemplate,
   signalInitializers: Map<string, string | number | boolean>,
   state: IdState,
-  processSubTemplate: (template: string, parentId: string) => {
+  processSubTemplate: (
+    template: string,
+    parentId: string,
+  ) => {
     processedContent: string;
     bindings: BindingInfo[];
     conditionals: ConditionalBlock[];
@@ -327,7 +346,10 @@ export const collectWhenElseBlocks = (
 // buildRangeOverlapChecker
 // ============================================================================
 
-export interface Range { start: number; end: number }
+export interface Range {
+  start: number;
+  end: number;
+}
 
 /**
  * Build a fast predicate for checking whether a position falls inside any of
@@ -351,10 +373,7 @@ export const buildRangeOverlapChecker = (ranges: Range[]): ((start: number, end?
  * and apply them to the source template. Edits are applied in reverse order
  * to preserve positions.
  */
-export const applyTemplateEdits = (
-  source: string,
-  edits: TemplateEdit[],
-): string => {
+export const applyTemplateEdits = (source: string, edits: TemplateEdit[]): string => {
   edits.sort((a, b) => b.start - a.start);
   let result = source;
   for (const edit of edits) {
@@ -389,12 +408,16 @@ export const buildWhenElseEdits = (
   injectIdFn?: (html: string, id: string) => string,
 ): TemplateEdit[] => {
   return whenElseBlocks.map((we) => {
-    const thenReplacement = we.initialValue 
-      ? (injectIds && injectIdFn ? injectIdFn(we.thenTemplate, we.thenId) : we.thenTemplate)
+    const thenReplacement = we.initialValue
+      ? injectIds && injectIdFn
+        ? injectIdFn(we.thenTemplate, we.thenId)
+        : we.thenTemplate
       : `<template id="${we.thenId}"></template>`;
-    const elseReplacement = we.initialValue 
-      ? `<template id="${we.elseId}"></template>` 
-      : (injectIds && injectIdFn ? injectIdFn(we.elseTemplate, we.elseId) : we.elseTemplate);
+    const elseReplacement = we.initialValue
+      ? `<template id="${we.elseId}"></template>`
+      : injectIds && injectIdFn
+        ? injectIdFn(we.elseTemplate, we.elseId)
+        : we.elseTemplate;
     return {
       start: we.startIndex,
       end: we.endIndex,

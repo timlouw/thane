@@ -59,7 +59,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
       diagnostics.push(
         createError(
           `Only one defineComponent() is allowed per file. Found ${locations.length} calls — ` +
-          'the compiler processes only one component per file. Split additional components into separate files.',
+            'the compiler processes only one component per file. Split additional components into separate files.',
           { file: filePath, line: loc.line + 1, column: loc.character + 1 },
           ErrorCode.SINGLE_COMPONENT_PER_FILE,
         ),

@@ -36,11 +36,7 @@ export const TypeCheckPlugin = (options?: { strict?: boolean }): Plugin => {
         return;
       }
 
-      const parsedConfig = ts.parseJsonConfigFileContent(
-        configFile.config,
-        ts.sys,
-        path.dirname(configPath),
-      );
+      const parsedConfig = ts.parseJsonConfigFileContent(configFile.config, ts.sys, path.dirname(configPath));
 
       // Run the actual type-checking in a promise so we don't block esbuild
       const diagnostics = await new Promise<readonly ts.Diagnostic[]>((resolve) => {

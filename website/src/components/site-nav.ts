@@ -84,7 +84,9 @@ export const SiteNav = defineComponent('site-nav', ({ root }) => {
         text-decoration: none;
       }
 
-      .nav-logo:hover { color: var(--text-primary); }
+      .nav-logo:hover {
+        color: var(--text-primary);
+      }
 
       .logo-icon {
         font-size: 22px;
@@ -133,7 +135,9 @@ export const SiteNav = defineComponent('site-nav', ({ root }) => {
         border-radius: var(--radius-sm);
       }
 
-      .nav-toggle:hover { color: var(--text-primary); }
+      .nav-toggle:hover {
+        color: var(--text-primary);
+      }
 
       .mobile-menu {
         display: none;
@@ -155,19 +159,33 @@ export const SiteNav = defineComponent('site-nav', ({ root }) => {
         text-decoration: none;
       }
 
-      .mobile-link:last-child { border-bottom: none; }
-      .mobile-link:hover { color: var(--text-primary); }
+      .mobile-link:last-child {
+        border-bottom: none;
+      }
+      .mobile-link:hover {
+        color: var(--text-primary);
+      }
 
       @media (max-width: 768px) {
-        .nav-links { display: none; }
-        .nav-toggle { display: flex; }
-        .mobile-menu { display: flex; }
+        .nav-links {
+          display: none;
+        }
+        .nav-toggle {
+          display: flex;
+        }
+        .mobile-menu {
+          display: flex;
+        }
       }
     `,
     onMount: () => {
-      window.addEventListener('scroll', () => {
-        scrolledClass(window.scrollY > 20 ? 'nav-scrolled' : '');
-      }, { passive: true });
+      window.addEventListener(
+        'scroll',
+        () => {
+          scrolledClass(window.scrollY > 20 ? 'nav-scrolled' : '');
+        },
+        { passive: true },
+      );
     },
   };
 });

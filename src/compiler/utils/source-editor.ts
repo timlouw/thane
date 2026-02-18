@@ -1,6 +1,6 @@
 /**
  * Source Editor Utilities
- * 
+ *
  * Provides utilities for editing source code with position-based edits.
  */
 
@@ -24,10 +24,10 @@ export interface CodeRemoval {
 
 /**
  * Apply multiple edits to source code
- * 
+ *
  * Edits are applied from bottom to top (highest position first)
  * to avoid position shifting issues.
- * 
+ *
  * @param source - Original source code
  * @param edits - Array of edits to apply
  * @returns Modified source code
@@ -44,7 +44,7 @@ export const applyEdits = (source: string, edits: SourceEdit[]): string => {
     const lower = sortedEdits[i + 1]!;
     if (lower.end > higher.start) {
       throw new Error(
-        `Overlapping edits detected: [${lower.start}..${lower.end}) overlaps [${higher.start}..${higher.end})`
+        `Overlapping edits detected: [${lower.start}..${lower.end}) overlaps [${higher.start}..${higher.end})`,
       );
     }
   }
@@ -59,7 +59,7 @@ export const applyEdits = (source: string, edits: SourceEdit[]): string => {
 
 /**
  * Remove code at specified positions
- * 
+ *
  * @param source - Original source code
  * @param removals - Array of code sections to remove
  * @returns Modified source code
@@ -72,4 +72,3 @@ export const removeCode = (source: string, removals: CodeRemoval[]): string => {
   }));
   return applyEdits(source, edits);
 };
-

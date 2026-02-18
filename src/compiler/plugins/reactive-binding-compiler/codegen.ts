@@ -1,6 +1,6 @@
 /**
  * Code generation for reactive binding compiler
- * 
+ *
  * Generates JavaScript code for bindings, subscriptions, static templates,
  * imports, and the initializeBindings function.
  */
@@ -18,7 +18,14 @@ import type {
 } from './types.js';
 import { CLOSURE_ACCESS, isExpressionBinding, isSimpleBinding } from './types.js';
 import { generateStaticRepeatTemplate, getOptimizationSkipMessage } from './repeat-analysis.js';
-import { toCamelCase, BIND_FN, logger, PLUGIN_NAME, renameIdentifierInExpression, parseArrowFunction } from '../../utils/index.js';
+import {
+  toCamelCase,
+  BIND_FN,
+  logger,
+  PLUGIN_NAME,
+  renameIdentifierInExpression,
+  parseArrowFunction,
+} from '../../utils/index.js';
 import { injectIdIntoFirstElement } from '../../utils/html-parser/index.js';
 import type { ImportInfo } from '../../types.js';
 import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
@@ -150,7 +157,7 @@ const buildDelegatedListenerStatements = (
       const modParts: string[] = [];
       if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
       if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
-      const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+      const keyMods = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
       if (keyMods.length > 0) {
         const guard = compileKeyGuard(keyMods);
         if (guard) modParts.push(`if (${guard}) return`);
@@ -164,9 +171,7 @@ const buildDelegatedListenerStatements = (
       }
     }
 
-    statements.push(
-      `${containerVar}.addEventListener('${eventName}', (e) => { ${finalBody.join(' ')} });`
-    );
+    statements.push(`${containerVar}.addEventListener('${eventName}', (e) => { ${finalBody.join(' ')} });`);
   }
 
   return statements;
@@ -236,7 +241,7 @@ const buildNonDelegatableEventStatements = (
     if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
     if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
     if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
-    const keyMods = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+    const keyMods = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
     if (keyMods.length > 0) {
       const guard = compileKeyGuard(keyMods);
       if (guard) bodyParts.push(`if (${guard}) return`);
@@ -254,9 +259,16 @@ const buildNonDelegatableEventStatements = (
 
 /** Map of event modifier names to their corresponding KeyboardEvent.key values */
 const KEY_MAP: Record<string, string[]> = {
-  enter: ['Enter'], tab: ['Tab'], delete: ['Backspace', 'Delete'],
-  esc: ['Escape'], escape: ['Escape'], space: [' '],
-  up: ['ArrowUp'], down: ['ArrowDown'], left: ['ArrowLeft'], right: ['ArrowRight'],
+  enter: ['Enter'],
+  tab: ['Tab'],
+  delete: ['Backspace', 'Delete'],
+  esc: ['Escape'],
+  escape: ['Escape'],
+  space: [' '],
+  up: ['ArrowUp'],
+  down: ['ArrowDown'],
+  left: ['ArrowLeft'],
+  right: ['ArrowRight'],
 };
 
 /**
@@ -271,7 +283,7 @@ const KEY_MAP: Record<string, string[]> = {
  */
 const compileKeyGuard = (modifiers: string[]): string | null => {
   const checks = modifiers
-    .map(mod => {
+    .map((mod) => {
       const keys = KEY_MAP[mod];
       if (!keys) return null;
       return keys.length === 1 ? `e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(e.key)`;
@@ -332,7 +344,11 @@ export const groupBindingsBySignal = (bindings: SimpleBinding[]): Map<string, Si
 /**
  * Generate a consolidated subscription for multiple bindings of the same signal
  */
-export const generateConsolidatedSubscription = (signalName: string, bindings: SimpleBinding[], ap: AccessPattern = CLOSURE_ACCESS): string => {
+export const generateConsolidatedSubscription = (
+  signalName: string,
+  bindings: SimpleBinding[],
+  ap: AccessPattern = CLOSURE_ACCESS,
+): string => {
   if (bindings.length === 1) {
     const update = generateBindingUpdateCode(bindings[0]!);
     return `${ap.signal(signalName)}.subscribe(v => { ${update}; }, true)`;
@@ -362,17 +378,19 @@ const generateRepeatNestedCondInitFn = (
   const parts: string[] = [];
   parts.push('(_c) => {');
   // Build comment marker map for text bindings in this conditional
-  const itemTextIds = new Set(nestedItemBindings.filter(b => b.type === 'text').map(b => b.elementId));
+  const itemTextIds = new Set(nestedItemBindings.filter((b) => b.type === 'text').map((b) => b.elementId));
   const signalTextIds = new Set([
-    ...nestedBindings.filter(b => b.type === 'text' && isSimpleBinding(b)).map(b => (b as any).id),
-    ...nestedBindings.filter(b => b.type === 'text' && isExpressionBinding(b)).map(b => (b as any).id),
+    ...nestedBindings.filter((b) => b.type === 'text' && isSimpleBinding(b)).map((b) => (b as any).id),
+    ...nestedBindings.filter((b) => b.type === 'text' && isExpressionBinding(b)).map((b) => (b as any).id),
   ]);
   const hasTextMarkers = itemTextIds.size > 0 || signalTextIds.size > 0;
   if (hasTextMarkers) {
-    parts.push(`  const _rcm = {}; { const _w = document.createTreeWalker(_c || document, 128); let _n; while (_n = _w.nextNode()) _rcm[_n.data] = _n; }`);
+    parts.push(
+      `  const _rcm = {}; { const _w = document.createTreeWalker(_c || document, 128); let _n; while (_n = _w.nextNode()) _rcm[_n.data] = _n; }`,
+    );
   }
   // Item bindings: set once when conditional shows
-  const itemElIds = [...new Set(nestedItemBindings.map(b => b.elementId))];
+  const itemElIds = [...new Set(nestedItemBindings.map((b) => b.elementId))];
   for (const elId of itemElIds) {
     parts.push(`  const _n_${elId} = ${itemTextIds.has(elId) ? `_rcm['${elId}']` : `_gid('${elId}')`};`);
   }
@@ -388,7 +406,7 @@ const generateRepeatNestedCondInitFn = (
   // Signal bindings
   const simpleNested = nestedBindings.filter(isSimpleBinding);
   const exprNested = nestedBindings.filter(isExpressionBinding);
-  const signalElIds = [...new Set([...simpleNested.map(b => b.id), ...exprNested.map(b => b.id)])];
+  const signalElIds = [...new Set([...simpleNested.map((b) => b.id), ...exprNested.map((b) => b.id)])];
   for (const elId of signalElIds) {
     if (!itemElIds.includes(elId)) {
       parts.push(`  const _n_${elId} = ${signalTextIds.has(elId) ? `_rcm['${elId}']` : `_gid('${elId}')`};`);
@@ -418,12 +436,15 @@ const generateRepeatNestedCondInitFn = (
   // Subscriptions for signal bindings
   const signalGroups = groupBindingsBySignal(simpleNested);
   for (const [signalName, sbs] of signalGroups) {
-    const updates = sbs.map(sb => {
-      if (sb.type === 'text') return `if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = v`;
-      if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) _n_${sb.id}.setAttribute('${sb.property}', v)`;
-      if (sb.type === 'style' && sb.property) return `if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', v)`;
-      return '';
-    }).filter(Boolean);
+    const updates = sbs
+      .map((sb) => {
+        if (sb.type === 'text') return `if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = v`;
+        if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) _n_${sb.id}.setAttribute('${sb.property}', v)`;
+        if (sb.type === 'style' && sb.property)
+          return `if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', v)`;
+        return '';
+      })
+      .filter(Boolean);
     if (updates.length === 1) {
       parts.push(`  _nsubs.push(${ap.signal(signalName)}.subscribe(v => { ${updates[0]}; }, true));`);
     } else if (updates.length > 1) {
@@ -460,7 +481,7 @@ export const generateInitBindingsFunction = (
   eventBindings: EventBinding[] = [],
   filePath: string = '',
   ap: AccessPattern = CLOSURE_ACCESS,
-  childMountsByDirective?: Map<string, { cm: ChildMountInfo, globalIndex: number }[]>,
+  childMountsByDirective?: Map<string, { cm: ChildMountInfo; globalIndex: number }[]>,
 ): { code: string; staticTemplates: string[] } => {
   const lines: string[] = [];
   const staticTemplates: string[] = []; // Collect static templates for repeat optimizations
@@ -500,7 +521,7 @@ export const generateInitBindingsFunction = (
       const hasPrevent = evt.modifiers.includes('prevent');
       const hasStop = evt.modifiers.includes('stop');
       const hasSelf = evt.modifiers.includes('self');
-      const keyModifiers = evt.modifiers.filter(m => m !== 'prevent' && m !== 'stop' && m !== 'self');
+      const keyModifiers = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
 
       let handlerExpr = handlerCode;
       if (hasModifiers && (hasPrevent || hasStop || hasSelf || keyModifiers.length > 0)) {
@@ -539,8 +560,11 @@ export const generateInitBindingsFunction = (
   lines.push(`    const _gid = (id) => document.getElementById(id);`);
   // Collect all comment markers (<!--bN-->) into a map for O(1) lookup.
   // NodeFilter.SHOW_COMMENT = 128
-  lines.push(`    const _fcm = (root) => { const m = {}; const w = document.createTreeWalker(root, 128); let n; while (n = w.nextNode()) m[n.data] = n; return m; };`);
-  lines.push(`    const _cm = _fcm(r);`);  const topLevelBindings = bindings.filter((b) => !b.isInsideConditional);
+  lines.push(
+    `    const _fcm = (root) => { const m = {}; const w = document.createTreeWalker(root, 128); let n; while (n = w.nextNode()) m[n.data] = n; return m; };`,
+  );
+  lines.push(`    const _cm = _fcm(r);`);
+  const topLevelBindings = bindings.filter((b) => !b.isInsideConditional);
   // Separate expression bindings (multi-signal) from simple bindings
   const simpleBindings = topLevelBindings.filter(isSimpleBinding);
   const expressionBindings = topLevelBindings.filter(isExpressionBinding);
@@ -592,7 +616,7 @@ export const generateInitBindingsFunction = (
     let nestedCode = '() => []';
     const condMountLines = generateMountLines(cond.id, '      ');
     if (nestedBindings.length > 0 || nestedConds.length > 0 || condMountLines.length > 0) {
-      const nestedTextIds = new Set(nestedBindings.filter(b => b.type === 'text').map(b => b.id));
+      const nestedTextIds = new Set(nestedBindings.filter((b) => b.type === 'text').map((b) => b.id));
       const nestedIds = [...new Set(nestedBindings.map((b) => b.id))];
       const nestedLines: string[] = [];
       nestedLines.push('() => {');
@@ -639,7 +663,7 @@ export const generateInitBindingsFunction = (
         if (nestedCond.nestedBindings.length > 0) {
           const innerSimple = nestedCond.nestedBindings.filter(isSimpleBinding);
           const innerExpr = nestedCond.nestedBindings.filter(isExpressionBinding);
-          const innerTextIds = new Set(nestedCond.nestedBindings.filter(b => b.type === 'text').map(b => b.id));
+          const innerTextIds = new Set(nestedCond.nestedBindings.filter((b) => b.type === 'text').map((b) => b.id));
           const innerBindingLines: string[] = [];
           const innerIds = [...new Set(nestedCond.nestedBindings.map((b) => b.id))];
           innerBindingLines.push('() => {');
@@ -647,14 +671,18 @@ export const generateInitBindingsFunction = (
             innerBindingLines.push(`        const _icm = _fcm(r);`);
           }
           for (const id of innerIds) {
-            innerBindingLines.push(`        const ${id} = ${innerTextIds.has(id) ? `_icm['${id}']` : `_gid('${id}')`};`);
+            innerBindingLines.push(
+              `        const ${id} = ${innerTextIds.has(id) ? `_icm['${id}']` : `_gid('${id}')`};`,
+            );
           }
           for (const binding of innerSimple) {
             innerBindingLines.push(`        ${generateInitialValueCode(binding, ap)};`);
           }
           for (const binding of innerExpr) {
             const updFn = `_upd_${binding.id}`;
-            innerBindingLines.push(`        const ${updFn} = () => { ${binding.id}.nextSibling.data = ${binding.expression}; };`);
+            innerBindingLines.push(
+              `        const ${updFn} = () => { ${binding.id}.nextSibling.data = ${binding.expression}; };`,
+            );
           }
           const innerGroups = groupBindingsBySignal(innerSimple);
           innerBindingLines.push('        return [');
@@ -672,9 +700,12 @@ export const generateInitBindingsFunction = (
           innerNestedCode = innerBindingLines.join('\n');
         }
 
-        const isNestedSimple = nestedCond.signalNames.length === 1 && nestedCond.jsExpression === ap.signalCall(nestedCond.signalName);
+        const isNestedSimple =
+          nestedCond.signalNames.length === 1 && nestedCond.jsExpression === ap.signalCall(nestedCond.signalName);
         if (isNestedSimple) {
-          nestedLines.push(`        ${BIND_FN.IF}(r, ${ap.signal(nestedCond.signalName)}, '${nestedCond.id}', \`${nestedCondEscaped}\`, ${innerNestedCode}),`);
+          nestedLines.push(
+            `        ${BIND_FN.IF}(r, ${ap.signal(nestedCond.signalName)}, '${nestedCond.id}', \`${nestedCondEscaped}\`, ${innerNestedCode}),`,
+          );
         } else {
           const nestedSignalsArray = nestedCond.signalNames.map((s) => ap.signal(s)).join(', ');
           nestedLines.push(
@@ -690,10 +721,14 @@ export const generateInitBindingsFunction = (
     const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
 
     if (isSimpleExpr) {
-      lines.push(`    ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`);
+      lines.push(
+        `    ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`,
+      );
     } else {
       const signalsArray = cond.signalNames.map((s) => ap.signal(s)).join(', ');
-      lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`);
+      lines.push(
+        `    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`,
+      );
     }
   }
   for (const we of whenElseBlocks) {
@@ -701,7 +736,12 @@ export const generateInitBindingsFunction = (
     const elseTemplateWithId = injectIdIntoFirstElement(we.elseTemplate, we.elseId);
     const escapedThenTemplate = thenTemplateWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
     const escapedElseTemplate = elseTemplateWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    const generateNestedInitializer = (bindings: BindingInfo[], nestedConds: ConditionalBlock[], nestedWE: WhenElseBlock[], directiveId?: string): string => {
+    const generateNestedInitializer = (
+      bindings: BindingInfo[],
+      nestedConds: ConditionalBlock[],
+      nestedWE: WhenElseBlock[],
+      directiveId?: string,
+    ): string => {
       const weMountLines = directiveId ? generateMountLines(directiveId, '      ') : [];
       if (bindings.length === 0 && nestedConds.length === 0 && nestedWE.length === 0 && weMountLines.length === 0) {
         return '() => []';
@@ -709,7 +749,7 @@ export const generateInitBindingsFunction = (
 
       const initLines: string[] = [];
       initLines.push('() => {');
-      const weTextIds = new Set(bindings.filter(b => b.type === 'text').map(b => b.id));
+      const weTextIds = new Set(bindings.filter((b) => b.type === 'text').map((b) => b.id));
       const ids = [...new Set(bindings.map((b) => b.id))];
       if (weTextIds.size > 0) {
         initLines.push(`      const _wcm = _fcm(r);`);
@@ -747,10 +787,14 @@ export const generateInitBindingsFunction = (
         const nestedBindingsCode = generateNestedInitializer(cond.nestedBindings, [], []);
         const isSimple = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
         if (isSimple) {
-          initLines.push(`        ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`);
+          initLines.push(
+            `        ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`,
+          );
         } else {
           const signalsArray = cond.signalNames.map((s) => ap.signal(s)).join(', ');
-          initLines.push(`        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`);
+          initLines.push(
+            `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`,
+          );
         }
       }
       for (const nestedWe of nestedWE) {
@@ -760,13 +804,19 @@ export const generateInitBindingsFunction = (
         const nestedElseTemplate = nestedElseWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
         const thenInitCode = generateNestedInitializer(
           nestedWe.thenBindings,
-          nestedWe.nestedConditionals.filter((c) => nestedWe.thenBindings.some((b) => b.conditionalId === c.id) || true),
+          nestedWe.nestedConditionals.filter(
+            (c) => nestedWe.thenBindings.some((b) => b.conditionalId === c.id) || true,
+          ),
           nestedWe.nestedWhenElse,
         );
         const elseInitCode = generateNestedInitializer(nestedWe.elseBindings, [], []);
         const signalsArray = nestedWe.signalNames.map((s) => ap.signal(s)).join(', ');
-        initLines.push(`        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${nestedWe.jsExpression}, '${nestedWe.thenId}', \`${nestedThenTemplate}\`, ${thenInitCode}),`);
-        initLines.push(`        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${nestedWe.jsExpression}), '${nestedWe.elseId}', \`${nestedElseTemplate}\`, ${elseInitCode}),`);
+        initLines.push(
+          `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${nestedWe.jsExpression}, '${nestedWe.thenId}', \`${nestedThenTemplate}\`, ${thenInitCode}),`,
+        );
+        initLines.push(
+          `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${nestedWe.jsExpression}), '${nestedWe.elseId}', \`${nestedElseTemplate}\`, ${elseInitCode}),`,
+        );
       }
 
       initLines.push('      ];');
@@ -777,8 +827,12 @@ export const generateInitBindingsFunction = (
     const elseCode = generateNestedInitializer(we.elseBindings, [], [], we.elseId);
 
     const signalsArray = we.signalNames.map((s) => ap.signal(s)).join(', ');
-    lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThenTemplate}\`, ${thenCode});`);
-    lines.push(`    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElseTemplate}\`, ${elseCode});`);
+    lines.push(
+      `    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThenTemplate}\`, ${thenCode});`,
+    );
+    lines.push(
+      `    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElseTemplate}\`, ${elseCode});`,
+    );
   }
   // Cached prototype methods for repeat block hot paths (avoids prototype chain lookup per call)
   if (repeatBlocks.length > 0) {
@@ -792,21 +846,37 @@ export const generateInitBindingsFunction = (
     const hasNestedRepeats = rep.nestedRepeats.length > 0;
     const hasNestedConditionals = rep.nestedConditionals.length > 0;
     const hasItemEvents = rep.itemEvents.length > 0;
-    
+
     {
       // Use optimized template-based approach
       // Collect directive anchor IDs for path computation (Step 14/15)
       const directiveAnchorIds: string[] = [
-        ...rep.nestedConditionals.map(c => c.id),
-        ...rep.nestedWhenElse.flatMap(we => [we.thenId, we.elseId]),
-        ...rep.nestedRepeats.map(nr => nr.id),
+        ...rep.nestedConditionals.map((c) => c.id),
+        ...rep.nestedWhenElse.flatMap((we) => [we.thenId, we.elseId]),
+        ...rep.nestedRepeats.map((nr) => nr.id),
       ];
-      const staticInfo = generateStaticRepeatTemplate(rep.itemTemplate, rep.itemBindings, rep.itemVar, rep.itemEvents, rep.signalBindings, directiveAnchorIds.length > 0 ? directiveAnchorIds : undefined);
-      
-      const hasCommentBindings = rep.itemBindings.some(b => b.type === 'text' && b.textBindingMode === 'commentMarker');
+      const staticInfo = generateStaticRepeatTemplate(
+        rep.itemTemplate,
+        rep.itemBindings,
+        rep.itemVar,
+        rep.itemEvents,
+        rep.signalBindings,
+        directiveAnchorIds.length > 0 ? directiveAnchorIds : undefined,
+      );
+
+      const hasCommentBindings = rep.itemBindings.some(
+        (b) => b.type === 'text' && b.textBindingMode === 'commentMarker',
+      );
       const hasSignalCommentBindings = (staticInfo.signalCommentBindings?.length ?? 0) > 0;
-      const hasAnyBindings = staticInfo.elementBindings.length > 0 || hasCommentBindings || hasSignalCommentBindings || hasItemEvents || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0;
-      
+      const hasAnyBindings =
+        staticInfo.elementBindings.length > 0 ||
+        hasCommentBindings ||
+        hasSignalCommentBindings ||
+        hasItemEvents ||
+        hasNestedConditionals ||
+        hasNestedRepeats ||
+        rep.nestedWhenElse.length > 0;
+
       if (staticInfo.canUseOptimized && hasAnyBindings) {
         // Restore child mount anchor IDs stripped by static template generation (Step 7)
         const repMounts = childMountsByDirective?.get(rep.id);
@@ -820,16 +890,16 @@ export const generateInitBindingsFunction = (
         }
         // Generate static template identifier
         const templateId = `__tpl_${rep.id}`;
-        
+
         // Generate static template IIFE
         const escapedStaticHtml = staticInfo.staticHtml
           .replace(/\\/g, '\\\\')
           .replace(/`/g, '\\`')
           .replace(/\n/g, '\\n')
           .replace(/\r/g, '\\r');
-        
+
         staticTemplates.push(`  const ${templateId} = _T(\`${escapedStaticHtml}\`);`);
-        
+
         // Fully inlined repeat — inline navigation code, no runtime navigatePath
         // Generate inlined navigation code for each bound element
         const navVarNames: string[] = [];
@@ -856,7 +926,7 @@ export const generateInitBindingsFunction = (
             }
           }
         }
-        
+
         // Generate fill statements using inlined var names
         const fillStatements: string[] = [];
         const updateStatements: string[] = [];
@@ -878,13 +948,17 @@ export const generateInitBindingsFunction = (
         }
 
         // Comment-marker item bindings (mixed-content text bindings)
-        const commentBindings = rep.itemBindings.filter(b => b.type === 'text' && b.textBindingMode === 'commentMarker');
+        const commentBindings = rep.itemBindings.filter(
+          (b) => b.type === 'text' && b.textBindingMode === 'commentMarker',
+        );
         const commentNavStatements: string[] = [];
         const commentFillStatements: string[] = [];
         const commentUpdateStatements: string[] = [];
         if (commentBindings.length > 0) {
           // Scan cloned element for comment markers
-          commentNavStatements.push(`const _icm = {}; { const _tw = document.createTreeWalker(_el, 128); let _cn; while (_cn = _tw.nextNode()) _icm[_cn.data] = _cn; }`);
+          commentNavStatements.push(
+            `const _icm = {}; { const _tw = document.createTreeWalker(_el, 128); let _cn; while (_cn = _tw.nextNode()) _icm[_cn.data] = _cn; }`,
+          );
           for (const cb of commentBindings) {
             const expr = renameIdentifierInExpression(cb.expression, rep.itemVar, 'item');
             const cmVar = `_icm['${cb.elementId}']`;
@@ -892,7 +966,7 @@ export const generateInitBindingsFunction = (
             commentUpdateStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${expr}`);
           }
         }
-        
+
         // Signal binding navigation and fill (Step 13)
         const signalNavStatements: string[] = [];
         const signalFillStatements: string[] = [];
@@ -912,10 +986,14 @@ export const generateInitBindingsFunction = (
             const signalCall = ap.signalCall(sb.signalName);
             if (sb.type === 'attr' && sb.property) {
               signalFillStatements.push(`${varName}.setAttribute('${sb.property}', ${signalCall})`);
-              signalSubscriptions.push(`_cleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`);
+              signalSubscriptions.push(
+                `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`,
+              );
             } else if (sb.type === 'style' && sb.property) {
               signalFillStatements.push(`${varName}.style.setProperty('${sb.property}', ${signalCall})`);
-              signalSubscriptions.push(`_cleanups.push(${signalRef}.subscribe(() => { ${varName}.style.setProperty('${sb.property}', ${signalCall}); }, true))`);
+              signalSubscriptions.push(
+                `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.style.setProperty('${sb.property}', ${signalCall}); }, true))`,
+              );
             }
           }
         }
@@ -924,57 +1002,65 @@ export const generateInitBindingsFunction = (
         if (staticInfo.signalCommentBindings && staticInfo.signalCommentBindings.length > 0) {
           // Ensure comment marker TreeWalker is emitted (share _icm with item comment bindings)
           if (commentNavStatements.length === 0) {
-            commentNavStatements.push(`const _icm = {}; { const _tw = document.createTreeWalker(_el, 128); let _cn; while (_cn = _tw.nextNode()) _icm[_cn.data] = _cn; }`);
+            commentNavStatements.push(
+              `const _icm = {}; { const _tw = document.createTreeWalker(_el, 128); let _cn; while (_cn = _tw.nextNode()) _icm[_cn.data] = _cn; }`,
+            );
           }
           for (const scb of staticInfo.signalCommentBindings) {
             const signalRef = ap.signal(scb.signalName);
             const signalCall = ap.signalCall(scb.signalName);
             const cmVar = `_icm['${scb.commentId}']`;
             signalFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}`);
-            signalSubscriptions.push(`_cleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}; }, true))`);
+            signalSubscriptions.push(
+              `_cleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}; }, true))`,
+            );
           }
         }
-        
+
         // Key function and empty template are handled inline below
-        
+
         // Generate the inlined repeat setup
         const tplContentVar = `_tc_${rep.id}`;
         const anchorVar = `_a_${rep.id}`;
         const containerVar = `_ct_${rep.id}`;
         const reconcilerVar = `_rc_${rep.id}`;
-        
+
         lines.push(`    const ${tplContentVar} = ${ap.staticPrefix}${templateId}.content.firstElementChild;`);
         lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
         // Partition item events into delegated (container listener) vs non-delegatable (per-item)
-        const { delegatedByType: delegatedEventsByType, nonDelegatable: nonDelegatableEvents } =
-          hasItemEvents
-            ? partitionItemEvents(rep.itemEvents, staticInfo.eventElementPaths, rep, indexVar)
-            : { delegatedByType: new Map<string, DelegatedEvent[]>(), nonDelegatable: [] as ItemEventBinding[] };
+        const { delegatedByType: delegatedEventsByType, nonDelegatable: nonDelegatableEvents } = hasItemEvents
+          ? partitionItemEvents(rep.itemEvents, staticInfo.eventElementPaths, rep, indexVar)
+          : { delegatedByType: new Map<string, DelegatedEvent[]>(), nonDelegatable: [] as ItemEventBinding[] };
 
         // Build delegated listener code (emitted AFTER reconciler creation)
         const delegatedListenerStatements = buildDelegatedListenerStatements(delegatedEventsByType, containerVar);
-        
+
         // Handle non-delegatable events (e.g., .self modifier) with per-item listeners
         const { navStatements: eventNavStatements, addStatements: eventAddStatements } =
           buildNonDelegatableEventStatements(
-            nonDelegatableEvents, staticInfo.eventElementPaths,
-            staticInfo.elementBindings, navVarNames, rep, indexVar,
+            nonDelegatableEvents,
+            staticInfo.eventElementPaths,
+            staticInfo.elementBindings,
+            navVarNames,
+            rep,
+            indexVar,
           );
-        
+
         // Determine if we need to store item data on the element for delegation
         const useDelegation = delegatedEventsByType.size > 0;
-        
+
         // Always use createKeyedReconciler — when no trackBy, inject (_, i) => i
         const _keyProp = rep.trackByFn ? extractKeyProperty(rep.trackByFn) : null;
-        const keyFnExpr = _keyProp ? `'${_keyProp}'` : (rep.trackByFn || '(_, i) => i');
+        const keyFnExpr = _keyProp ? `'${_keyProp}'` : rep.trackByFn || '(_, i) => i';
 
         const repMountLines = generateMountLines(rep.id, '        ', {
           itemVar: rep.itemVar,
           indexVar: rep.indexVar || '_idx',
         });
         const hasSignalSubs = signalSubscriptions.length > 0;
-        const needsCleanups = hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0;
+        const needsCleanups =
+          hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0;
 
         const updateParts = [...updateStatements, ...commentUpdateStatements];
         if (useDelegation) {
@@ -1026,13 +1112,23 @@ export const generateInitBindingsFunction = (
           const condNavExpr = pathToSiblingNav('_el', condAnchorPath);
           lines.push(`        const _cond_${cond.id} = ${condNavExpr};`);
           const condTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-          const condInitNested = generateRepeatNestedCondInitFn(cond.nestedBindings, cond.nestedItemBindings, cond.nestedEventBindings, rep.itemVar, ap);
+          const condInitNested = generateRepeatNestedCondInitFn(
+            cond.nestedBindings,
+            cond.nestedItemBindings,
+            cond.nestedEventBindings,
+            rep.itemVar,
+            ap,
+          );
           const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
           if (isSimpleExpr) {
-            lines.push(`        _cleanups.push(${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${cond.id}));`);
+            lines.push(
+              `        _cleanups.push(${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${cond.id}));`,
+            );
           } else {
-            const condSignals = cond.signalNames.map(s => ap.signal(s)).join(', ');
-            lines.push(`        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${condSignals}], () => ${cond.jsExpression}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${cond.id}));`);
+            const condSignals = cond.signalNames.map((s) => ap.signal(s)).join(', ');
+            lines.push(
+              `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${condSignals}], () => ${cond.jsExpression}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${cond.id}));`,
+            );
           }
         }
         // Nested whenElse codegen (Step 14)
@@ -1050,9 +1146,13 @@ export const generateInitBindingsFunction = (
           const escapedElse = elseTplWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
           const thenInitFn = generateRepeatNestedCondInitFn(we.thenBindings, [], [], rep.itemVar, ap);
           const elseInitFn = generateRepeatNestedCondInitFn(we.elseBindings, [], [], rep.itemVar, ap);
-          const weSignals = we.signalNames.map(s => ap.signal(s)).join(', ');
-          lines.push(`        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThen}\`, ${thenInitFn}, _cond_${we.thenId}));`);
-          lines.push(`        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElse}\`, ${elseInitFn}, _cond_${we.elseId}));`);
+          const weSignals = we.signalNames.map((s) => ap.signal(s)).join(', ');
+          lines.push(
+            `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThen}\`, ${thenInitFn}, _cond_${we.thenId}));`,
+          );
+          lines.push(
+            `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElse}\`, ${elseInitFn}, _cond_${we.elseId}));`,
+          );
         }
         // Nested repeat codegen (Step 15)
         for (const nr of rep.nestedRepeats) {
@@ -1062,19 +1162,42 @@ export const generateInitBindingsFunction = (
           lines.push(`        const _nrA_${nr.id} = ${nrNavExpr};`);
           lines.push(`        const _nrC_${nr.id} = _nrA_${nr.id}.parentNode;`);
           // Generate inner static template
-          const innerStaticInfo = generateStaticRepeatTemplate(nr.itemTemplate, nr.itemBindings, nr.itemVar, nr.itemEvents, nr.signalBindings);
+          const innerStaticInfo = generateStaticRepeatTemplate(
+            nr.itemTemplate,
+            nr.itemBindings,
+            nr.itemVar,
+            nr.itemEvents,
+            nr.signalBindings,
+          );
           const innerTplId = `__tpl_${nr.id}`;
           if (innerStaticInfo.canUseOptimized) {
-            const innerEscaped = (innerStaticInfo.staticHtml || nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, '')).replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+            const innerEscaped = (
+              innerStaticInfo.staticHtml ||
+              nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, '')
+            )
+              .replace(/\\/g, '\\\\')
+              .replace(/`/g, '\\`')
+              .replace(/\n/g, '\\n')
+              .replace(/\r/g, '\\r');
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           } else {
-            const fallbackHtml = nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, '').replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
-            const innerEscaped = fallbackHtml.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+            const fallbackHtml = nr.itemTemplate
+              .replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '')
+              .replace(/\s*id="[ib]\d+"/g, '')
+              .replace(/\s+/g, ' ')
+              .replace(/>\s+</g, '><')
+              .replace(/\s+>/g, '>')
+              .trim();
+            const innerEscaped = fallbackHtml
+              .replace(/\\/g, '\\\\')
+              .replace(/`/g, '\\`')
+              .replace(/\n/g, '\\n')
+              .replace(/\r/g, '\\r');
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           }
           const innerIndexVar = nr.indexVar || '_idx';
           const _innerKeyProp = nr.trackByFn ? extractKeyProperty(nr.trackByFn) : null;
-          const innerKeyFn = _innerKeyProp ? `'${_innerKeyProp}'` : (nr.trackByFn || '(_, i) => i');
+          const innerKeyFn = _innerKeyProp ? `'${_innerKeyProp}'` : nr.trackByFn || '(_, i) => i';
           lines.push(`        const _nrTc_${nr.id} = ${ap.staticPrefix}${innerTplId}.content.firstElementChild;`);
           lines.push(`        const _nrRc_${nr.id} = ${BIND_FN.KEYED_RECONCILER}(_nrC_${nr.id}, _nrA_${nr.id},`);
           lines.push(`          (_nrItem, ${innerIndexVar}, _nrRef) => {`);
@@ -1100,12 +1223,16 @@ export const generateInitBindingsFunction = (
             }
           }
           // Inner comment-marker item bindings (mixed-content text bindings)
-          const innerCommentBindings = nr.itemBindings.filter(b => b.type === 'text' && b.textBindingMode === 'commentMarker');
+          const innerCommentBindings = nr.itemBindings.filter(
+            (b) => b.type === 'text' && b.textBindingMode === 'commentMarker',
+          );
           const innerCommentNavStatements: string[] = [];
           const innerCommentFillStatements: string[] = [];
           const innerCommentUpdateStatements: string[] = [];
           if (innerCommentBindings.length > 0) {
-            innerCommentNavStatements.push(`const _nricm = {}; { const _tw = document.createTreeWalker(_nrEl, 128); let _cn; while (_cn = _tw.nextNode()) _nricm[_cn.data] = _cn; }`);
+            innerCommentNavStatements.push(
+              `const _nricm = {}; { const _tw = document.createTreeWalker(_nrEl, 128); let _cn; while (_cn = _tw.nextNode()) _nricm[_cn.data] = _cn; }`,
+            );
             for (const cb of innerCommentBindings) {
               const expr = renameIdentifierInExpression(cb.expression, nr.itemVar, '_nrItem');
               const cmVar = `_nricm['${cb.elementId}']`;
@@ -1138,10 +1265,14 @@ export const generateInitBindingsFunction = (
               // Only attr/style — text bindings use signalCommentBindings
               if (sb.type === 'attr' && sb.property) {
                 innerSignalFillStatements.push(`${varName}.setAttribute('${sb.property}', ${signalCall})`);
-                innerSignalSubscriptions.push(`_nrCleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`);
+                innerSignalSubscriptions.push(
+                  `_nrCleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`,
+                );
               } else if (sb.type === 'style' && sb.property) {
                 innerSignalFillStatements.push(`${varName}.style.setProperty('${sb.property}', ${signalCall})`);
-                innerSignalSubscriptions.push(`_nrCleanups.push(${signalRef}.subscribe(() => { ${varName}.style.setProperty('${sb.property}', ${signalCall}); }, true))`);
+                innerSignalSubscriptions.push(
+                  `_nrCleanups.push(${signalRef}.subscribe(() => { ${varName}.style.setProperty('${sb.property}', ${signalCall}); }, true))`,
+                );
               }
             }
           }
@@ -1149,14 +1280,18 @@ export const generateInitBindingsFunction = (
           if (innerStaticInfo.signalCommentBindings && innerStaticInfo.signalCommentBindings.length > 0) {
             // Share _nricm TreeWalker with item comment bindings if already emitted
             if (innerCommentBindings.length === 0) {
-              innerSignalNavStatements.push(`const _nricm = {}; { const _tw = document.createTreeWalker(_nrEl, 128); let _cn; while (_cn = _tw.nextNode()) _nricm[_cn.data] = _cn; }`);
+              innerSignalNavStatements.push(
+                `const _nricm = {}; { const _tw = document.createTreeWalker(_nrEl, 128); let _cn; while (_cn = _tw.nextNode()) _nricm[_cn.data] = _cn; }`,
+              );
             }
             for (const scb of innerStaticInfo.signalCommentBindings) {
               const signalRef = ap.signal(scb.signalName);
               const signalCall = ap.signalCall(scb.signalName);
               const cmVar = `_nricm['${scb.commentId}']`;
               innerSignalFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}`);
-              innerSignalSubscriptions.push(`_nrCleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}; }, true))`);
+              innerSignalSubscriptions.push(
+                `_nrCleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}; }, true))`,
+              );
             }
           }
           const hasInnerSignalSubs = innerSignalSubscriptions.length > 0;
@@ -1190,8 +1325,12 @@ export const generateInitBindingsFunction = (
               lines.push(`            ${sub};`);
             }
           }
-          lines.push(`            return { itemSignal: null, el: _nrEl, cleanups: ${hasInnerSignalSubs ? '_nrCleanups' : '[]'}, value: _nrItem,`);
-          lines.push(`              update: (_nrItem) => { ${innerUpdateParts.join('; ')}${innerUpdateParts.length ? ';' : ''} } };`);
+          lines.push(
+            `            return { itemSignal: null, el: _nrEl, cleanups: ${hasInnerSignalSubs ? '_nrCleanups' : '[]'}, value: _nrItem,`,
+          );
+          lines.push(
+            `              update: (_nrItem) => { ${innerUpdateParts.join('; ')}${innerUpdateParts.length ? ';' : ''} } };`,
+          );
           lines.push(`          },`);
           lines.push(`        ${innerKeyFn});`);
           // Subscribe to the signal driving the nested repeat
@@ -1205,7 +1344,9 @@ export const generateInitBindingsFunction = (
           }
           lines.push(`        _cleanups.push(() => { _nrRc_${nr.id}.clearAll(); });`);
         }
-        lines.push(`        return { itemSignal: null, el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`);
+        lines.push(
+          `        return { itemSignal: null, el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`,
+        );
         lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
         lines.push(`      },`);
         lines.push(`    ${keyFnExpr});`);
@@ -1215,19 +1356,25 @@ export const generateInitBindingsFunction = (
           const escapedEmptyTemplate = rep.emptyTemplate.replace(/`/g, '\\`');
           lines.push(`    let _empty_${rep.id};`);
           const emptyVar = `_empty_${rep.id}`;
-          lines.push(`    const _syncEmpty_${rep.id} = (items) => { items.length ? ${emptyVar}?.remove() : ${containerVar}.insertBefore(${emptyVar} ??= _T(\`${escapedEmptyTemplate}\`).content.firstElementChild, ${anchorVar}); };`);
+          lines.push(
+            `    const _syncEmpty_${rep.id} = (items) => { items.length ? ${emptyVar}?.remove() : ${containerVar}.insertBefore(${emptyVar} ??= _T(\`${escapedEmptyTemplate}\`).content.firstElementChild, ${anchorVar}); };`,
+          );
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
           lines.push(`    _syncEmpty_${rep.id}(${ap.signal(rep.signalName)}());`);
-          lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true);`);
+          lines.push(
+            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true);`,
+          );
         } else {
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
-          lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`);
+          lines.push(
+            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`,
+          );
         }
         // Emit delegated event listeners on the container (after reconciler is ready)
         for (const stmt of delegatedListenerStatements) {
           lines.push(`    ${stmt}`);
         }
-        
+
         continue; // Skip the fallback path
       } else if (staticInfo.canUseOptimized || !hasItemBindings) {
         // No-bindings path: template clone with no fill/update
@@ -1241,7 +1388,7 @@ export const generateInitBindingsFunction = (
             );
           }
         }
-        
+
         // Use raw item template if static generation failed
         let templateHtml = staticInfo.staticHtml || rep.itemTemplate;
         // Strip remaining ${...} expressions and inline IDs for clean static template
@@ -1250,7 +1397,7 @@ export const generateInitBindingsFunction = (
           templateHtml = templateHtml.replace(/\s*id="[ib]\d+"/g, '');
           templateHtml = templateHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
         }
-        
+
         const templateId = `__tpl_${rep.id}`;
         const escapedStaticHtml = templateHtml
           .replace(/\\/g, '\\\\')
@@ -1269,7 +1416,7 @@ export const generateInitBindingsFunction = (
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
 
         const _fbKeyProp = rep.trackByFn ? extractKeyProperty(rep.trackByFn) : null;
-        let keyFnArg = _fbKeyProp ? `'${_fbKeyProp}'` : (rep.trackByFn || '(_, i) => i');
+        let keyFnArg = _fbKeyProp ? `'${_fbKeyProp}'` : rep.trackByFn || '(_, i) => i';
 
         lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
         lines.push(`      (item, ${indexVar}, _ref) => {`);
@@ -1292,19 +1439,28 @@ export const generateInitBindingsFunction = (
           const escapedEmptyTemplate = rep.emptyTemplate.replace(/`/g, '\\`');
           lines.push(`    let _empty_${rep.id};`);
           const emptyVar = `_empty_${rep.id}`;
-          lines.push(`    const _syncEmpty_${rep.id} = (items) => { items.length ? ${emptyVar}?.remove() : ${containerVar}.insertBefore(${emptyVar} ??= _T(\`${escapedEmptyTemplate}\`).content.firstElementChild, ${anchorVar}); };`);
+          lines.push(
+            `    const _syncEmpty_${rep.id} = (items) => { items.length ? ${emptyVar}?.remove() : ${containerVar}.insertBefore(${emptyVar} ??= _T(\`${escapedEmptyTemplate}\`).content.firstElementChild, ${anchorVar}); };`,
+          );
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
           lines.push(`    _syncEmpty_${rep.id}(${ap.signal(rep.signalName)}());`);
-          lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true);`);
+          lines.push(
+            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true);`,
+          );
         } else {
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
-          lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`);
+          lines.push(
+            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`,
+          );
         }
 
         continue;
       } else if (staticInfo.skipReason) {
         const fileName = filePath.split(/[/\\]/).pop() || filePath;
-        logger.warn(NAME, `repeat() in ${fileName}: ${getOptimizationSkipMessage(staticInfo.skipReason)} — using safe fallback renderer.`);
+        logger.warn(
+          NAME,
+          `repeat() in ${fileName}: ${getOptimizationSkipMessage(staticInfo.skipReason)} — using safe fallback renderer.`,
+        );
 
         const indexVarName = rep.indexVar || '_idx';
         const anchorVar = `_a_${rep.id}`;
@@ -1313,26 +1469,26 @@ export const generateInitBindingsFunction = (
         const renderItemVar = `_ri_${rep.id}`;
         const renderVar = `_rr_${rep.id}`;
         const emptyFlagVar = `_hasEmpty_${rep.id}`;
-        const sourceTemplate = rep.itemTemplate
-          .replace(/\\/g, '\\\\')
-          .replace(/`/g, '\\`');
+        const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
         const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
         const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
-        const emptyTemplate = (rep.emptyTemplate || '')
-          .replace(/\\/g, '\\\\')
-          .replace(/`/g, '\\`');
+        const emptyTemplate = (rep.emptyTemplate || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`');
 
         lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
         lines.push(`    const ${startVar} = document.createComment('r:${rep.id}');`);
         lines.push(`    ${containerVar}.insertBefore(${startVar}, ${anchorVar});`);
-        lines.push(`    const ${renderItemVar} = (item, ${indexVarName}) => {${itemSignalAccessorDecl}${itemAliasDecl} return \`${sourceTemplate}\`; };`);
+        lines.push(
+          `    const ${renderItemVar} = (item, ${indexVarName}) => {${itemSignalAccessorDecl}${itemAliasDecl} return \`${sourceTemplate}\`; };`,
+        );
         if (rep.emptyTemplate) {
           lines.push(`    let ${emptyFlagVar} = false;`);
         }
         lines.push(`    const ${renderVar} = (items) => {`);
         lines.push(`      let _n = ${startVar}.nextSibling;`);
-        lines.push(`      while (_n && _n !== ${anchorVar}) { const _next = _n.nextSibling; _n.remove(); _n = _next; }`);
+        lines.push(
+          `      while (_n && _n !== ${anchorVar}) { const _next = _n.nextSibling; _n.remove(); _n = _next; }`,
+        );
         lines.push(`      if (!items || items.length === 0) {`);
         if (rep.emptyTemplate) {
           lines.push(`        if (!${emptyFlagVar}) {`);
@@ -1348,7 +1504,7 @@ export const generateInitBindingsFunction = (
         }
         lines.push('      for (let i = 0; i < items.length; i++) {');
         lines.push('        const item = items[i];');
-        lines.push('        const _t = document.createElement(\'template\');');
+        lines.push("        const _t = document.createElement('template');");
         lines.push(`        _t.innerHTML = ${renderItemVar}(item, i);`);
         lines.push('        const _f = _t.content;');
         lines.push(`        while (_f.firstChild) ${containerVar}.insertBefore(_f.firstChild, ${anchorVar});`);
@@ -1357,7 +1513,9 @@ export const generateInitBindingsFunction = (
         lines.push(`    ${renderVar}(${ap.signal(rep.signalName)}());`);
         lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true);`);
 
-        const fallbackSignals = [...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName))];
+        const fallbackSignals = [
+          ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
+        ];
         for (const sig of fallbackSignals) {
           lines.push(`    ${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true);`);
         }
@@ -1377,20 +1535,18 @@ export const generateInitBindingsFunction = (
     const renderItemVar = `_ri_${rep.id}`;
     const renderVar = `_rr_${rep.id}`;
     const emptyFlagVar = `_hasEmpty_${rep.id}`;
-    const sourceTemplate = rep.itemTemplate
-      .replace(/\\/g, '\\\\')
-      .replace(/`/g, '\\`');
+    const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
     const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
     const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
-    const emptyTemplate = (rep.emptyTemplate || '')
-      .replace(/\\/g, '\\\\')
-      .replace(/`/g, '\\`');
+    const emptyTemplate = (rep.emptyTemplate || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`');
 
     lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
     lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
     lines.push(`    const ${startVar} = document.createComment('r:${rep.id}');`);
     lines.push(`    ${containerVar}.insertBefore(${startVar}, ${anchorVar});`);
-    lines.push(`    const ${renderItemVar} = (item, ${indexVarName}) => {${itemSignalAccessorDecl}${itemAliasDecl} return \`${sourceTemplate}\`; };`);
+    lines.push(
+      `    const ${renderItemVar} = (item, ${indexVarName}) => {${itemSignalAccessorDecl}${itemAliasDecl} return \`${sourceTemplate}\`; };`,
+    );
     if (rep.emptyTemplate) {
       lines.push(`    let ${emptyFlagVar} = false;`);
     }
@@ -1412,7 +1568,7 @@ export const generateInitBindingsFunction = (
     }
     lines.push('      for (let i = 0; i < items.length; i++) {');
     lines.push('        const item = items[i];');
-    lines.push('        const _t = document.createElement(\'template\');');
+    lines.push("        const _t = document.createElement('template');");
     lines.push(`        _t.innerHTML = ${renderItemVar}(item, i);`);
     lines.push('        const _f = _t.content;');
     lines.push(`        while (_f.firstChild) ${containerVar}.insertBefore(_f.firstChild, ${anchorVar});`);
@@ -1420,7 +1576,9 @@ export const generateInitBindingsFunction = (
     lines.push('    };');
     lines.push(`    ${renderVar}(${ap.signal(rep.signalName)}());`);
     lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true);`);
-    const fallbackSignals = [...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName))];
+    const fallbackSignals = [
+      ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
+    ];
     for (const sig of fallbackSignals) {
       lines.push(`    ${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true);`);
     }

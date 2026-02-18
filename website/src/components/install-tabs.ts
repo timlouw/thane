@@ -17,10 +17,10 @@ export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ 
 
   const command = computed(() => commands[activeTab()] || commands.bun);
 
-  const bunActive = computed(() => activeTab() === 'bun' ? 'tab-active' : '');
-  const npmActive = computed(() => activeTab() === 'npm' ? 'tab-active' : '');
-  const yarnActive = computed(() => activeTab() === 'yarn' ? 'tab-active' : '');
-  const pnpmActive = computed(() => activeTab() === 'pnpm' ? 'tab-active' : '');
+  const bunActive = computed(() => (activeTab() === 'bun' ? 'tab-active' : ''));
+  const npmActive = computed(() => (activeTab() === 'npm' ? 'tab-active' : ''));
+  const yarnActive = computed(() => (activeTab() === 'yarn' ? 'tab-active' : ''));
+  const pnpmActive = computed(() => (activeTab() === 'pnpm' ? 'tab-active' : ''));
 
   const copyCommand = () => {
     navigator.clipboard.writeText(command()).catch(() => {});
@@ -45,8 +45,13 @@ export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ 
           <button class="copy-btn" @click=${copyCommand}>
             ${whenElse(
               copied(),
-              html`<svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>`,
-              html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`
+              html`<svg viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" width="16" height="16">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>`,
+              html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>`,
             )}
           </button>
         </div>
@@ -61,7 +66,9 @@ export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ 
         max-width: 480px;
       }
 
-      .install-compact { max-width: 400px; }
+      .install-compact {
+        max-width: 400px;
+      }
 
       .tab-bar {
         display: flex;

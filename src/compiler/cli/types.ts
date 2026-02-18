@@ -57,11 +57,13 @@ export interface ThaneBuildOptions {
  * Precedence: CLI flags > command overrides > top-level config > built-in defaults.
  */
 export interface ThaneConfigFile extends ThaneBuildOptions {
-  commands?: {
-    build?: ThaneBuildOptions | undefined;
-    dev?: ThaneBuildOptions | undefined;
-    serve?: ThaneBuildOptions | undefined;
-  } | undefined;
+  commands?:
+    | {
+        build?: ThaneBuildOptions | undefined;
+        dev?: ThaneBuildOptions | undefined;
+        serve?: ThaneBuildOptions | undefined;
+      }
+    | undefined;
 }
 
 export interface BuildConfig {

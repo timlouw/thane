@@ -148,9 +148,23 @@ export function parseArgs(args: string[]): CLIOptions {
   const options: CLIOptions = { ...DEFAULT_OPTIONS };
 
   const knownFlags = new Set([
-    '--prod', '-p', '--gzip', '--app', '--entry', '--out',
-    '--assets', '--html', '--help', '-h', '--version', '-v',
-    '--verbose', '-V', '--quiet', '-q', '--config',
+    '--prod',
+    '-p',
+    '--gzip',
+    '--app',
+    '--entry',
+    '--out',
+    '--assets',
+    '--html',
+    '--help',
+    '-h',
+    '--version',
+    '-v',
+    '--verbose',
+    '-V',
+    '--quiet',
+    '-q',
+    '--config',
   ]);
   const flagsWithValue = new Set(['--app', '--entry', '--out', '--assets', '--html', '--config']);
 
@@ -267,14 +281,14 @@ export function printVersion(): void {
 
 export function createBuildConfig(options: CLIOptions): BuildConfig {
   const indexHTMLFileName = 'index.html';
-  
+
   const distDir = options.outDir ?? './dist';
   const assetsInputDir = options.assetsDir ?? './src/assets';
   const assetsOutputDir = `${distDir}/assets`;
   const inputHTMLFilePath = options.htmlTemplate ?? `./${indexHTMLFileName}`;
   const outputHTMLFilePath = `${distDir}/${indexHTMLFileName}`;
   const entryPoints = options.entry ? [options.entry] : ['./src/main.ts'];
-  
+
   return {
     entryPoints,
     outDir: distDir,

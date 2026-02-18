@@ -39,9 +39,7 @@ export interface ThaneLinterOptions {
 }
 
 export const ThaneLinterPlugin = (options: ThaneLinterOptions = {}): Plugin => {
-  const rules: readonly LintRuleDefinition[] = options.extraRules
-    ? [...allRules, ...options.extraRules]
-    : allRules;
+  const rules: readonly LintRuleDefinition[] = options.extraRules ? [...allRules, ...options.extraRules] : allRules;
 
   const suppress = new Set(options.suppress ?? []);
 

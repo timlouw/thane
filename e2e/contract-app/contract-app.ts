@@ -68,10 +68,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const toggleWhenElse = () => whenElseFlag(!whenElseFlag());
   const addItem = () => {
     const next = items().length + 1;
-    items([
-      ...items(),
-      { id: next, name: `New-${next}`, active: next % 2 === 0, children: [`N${next}`] },
-    ]);
+    items([...items(), { id: next, name: `New-${next}`, active: next % 2 === 0, children: [`N${next}`] }]);
   };
   const removeFirst = () => items(items().slice(1));
   const clearItems = () => items([]);
@@ -102,9 +99,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const resetNested = () => nestedItems(initialNestedItems());
 
   const addFallbackRow = () => {
-    const nextId = fallbackRows().length
-      ? Math.max(...fallbackRows().map((r) => r.id)) + 1
-      : 201;
+    const nextId = fallbackRows().length ? Math.max(...fallbackRows().map((r) => r.id)) + 1 : 201;
     fallbackRows([...fallbackRows(), { id: nextId, label: `FB-${nextId}` }]);
   };
   const clearFallbackRows = () => fallbackRows([]);
@@ -218,7 +213,9 @@ export const ContractApp = defineComponent('contract-app', () => {
   // These subscribe WITHOUT skipInitial — but the template bakes in
   // compile-time initial values, so we only test post-interaction state.
   excSource.subscribe((v) => excBefore(`before-${v}`), true);
-  excSource.subscribe(() => { throw new Error('boom'); }, true);
+  excSource.subscribe(() => {
+    throw new Error('boom');
+  }, true);
   excSource.subscribe((v) => excAfter(`after-${v}`), true);
 
   const triggerExc = () => excSource(excSource() + 1);
@@ -240,7 +237,7 @@ export const ContractApp = defineComponent('contract-app', () => {
 
         <section data-testid="when-else-section">
           <button data-testid="toggle-when-else" @click=${toggleWhenElse}>toggle whenElse</button>
-          ${whenElse(whenElseFlag(), html`<p data-testid="when-else-then">THEN</p>`, html`<p data-testid="when-else-else">ELSE</p>`) }
+          ${whenElse(whenElseFlag(), html`<p data-testid="when-else-then">THEN</p>`, html`<p data-testid="when-else-else">ELSE</p>`)}
         </section>
 
         <section data-testid="reactivity-section">
@@ -441,7 +438,9 @@ export const ContractApp = defineComponent('contract-app', () => {
       </main>
     `,
     styles: css`
-      .parent-scoped { color: rgb(0, 128, 0); }
+      .parent-scoped {
+        color: rgb(0, 128, 0);
+      }
     `,
   };
 });

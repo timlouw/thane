@@ -87,7 +87,11 @@ const stripThisAccessAST = (code: string): string => {
   }
 };
 
-const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classProperties: Map<string, any>): EvalResult => {
+const evaluateExpressionCTFE = (
+  node: ts.Node,
+  sourceFile: ts.SourceFile,
+  classProperties: Map<string, any>,
+): EvalResult => {
   if (ts.isStringLiteral(node)) return node.text;
   if (ts.isNumericLiteral(node)) return Number(node.text);
   if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
@@ -163,7 +167,10 @@ const evaluateExpressionCTFE = (node: ts.Node, sourceFile: ts.SourceFile, classP
   }
 };
 
-const extractClassPropertiesCTFE = (classNode: ts.ClassExpression | ts.ClassDeclaration, sourceFile: ts.SourceFile): Map<string, any> => {
+const extractClassPropertiesCTFE = (
+  classNode: ts.ClassExpression | ts.ClassDeclaration,
+  sourceFile: ts.SourceFile,
+): Map<string, any> => {
   const resolvedProperties = new Map<string, any>();
   const unresolvedProperties = new Map<string, ts.Expression>();
 
@@ -240,7 +247,9 @@ const findComponentCallsCTFE = (
         const template = node.template;
 
         const enclosingClass = findEnclosingClass(node);
-        const classProperties = enclosingClass ? extractClassPropertiesCTFE(enclosingClass, sourceFile) : new Map<string, any>();
+        const classProperties = enclosingClass
+          ? extractClassPropertiesCTFE(enclosingClass, sourceFile)
+          : new Map<string, any>();
 
         if (ts.isTemplateExpression(template)) {
           template.templateSpans.forEach((span) => {
@@ -432,7 +441,8 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
                   anchorId,
                 });
 
-                modifiedSource = modifiedSource.substring(0, call.startIndex) + compiledHTML + modifiedSource.substring(call.endIndex);
+                modifiedSource =
+                  modifiedSource.substring(0, call.startIndex) + compiledHTML + modifiedSource.substring(call.endIndex);
 
                 mounts.push({
                   componentName: call.componentName,

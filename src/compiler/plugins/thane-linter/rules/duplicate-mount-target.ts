@@ -84,15 +84,13 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   for (const mc of mountCalls) {
     const existing = seenTargets.get(mc.targetKey);
     if (existing) {
-      const targetDesc = mc.targetKey === '__default_body__'
-        ? 'document.body (default)'
-        : mc.targetKey;
+      const targetDesc = mc.targetKey === '__default_body__' ? 'document.body (default)' : mc.targetKey;
       diagnostics.push(
         createWarning(
           `Duplicate mount() call targeting ${targetDesc}. ` +
-          `A previous mount() to the same target was found at line ${existing.line + 1}. ` +
-          'Mounting multiple components to the same target appends duplicate content ' +
-          'and causes binding collisions. Use a different target element for each mount().',
+            `A previous mount() to the same target was found at line ${existing.line + 1}. ` +
+            'Mounting multiple components to the same target appends duplicate content ' +
+            'and causes binding collisions. Use a different target element for each mount().',
           { file: filePath, line: mc.line + 1, column: mc.character + 1 },
           ErrorCode.DUPLICATE_MOUNT_TARGET,
         ),

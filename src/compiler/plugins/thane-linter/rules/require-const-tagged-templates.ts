@@ -56,7 +56,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
               diagnostics.push(
                 createError(
                   `'${tagName}\`\`' tagged template must use 'const', not '${keyword}'. ` +
-                  `Templates declared with '${keyword}' can be reassigned and cannot be resolved at compile time.`,
+                    `Templates declared with '${keyword}' can be reassigned and cannot be resolved at compile time.`,
                   { file: filePath, line: line + 1, column: character + 1 },
                   ErrorCode.REQUIRE_CONST_TAGGED_TEMPLATES,
                 ),

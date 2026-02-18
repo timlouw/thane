@@ -12,10 +12,7 @@ export const safeReadFile = async (filePath: string): Promise<string | null> => 
 };
 
 /** Directories that should never be scanned for component sources */
-const EXCLUDED_DIRS = new Set([
-  'node_modules', 'dist', '.git', '.svn', '.hg',
-  'coverage', '.turbo', '.next', '.nuxt',
-]);
+const EXCLUDED_DIRS = new Set(['node_modules', 'dist', '.git', '.svn', '.hg', 'coverage', '.turbo', '.next', '.nuxt']);
 
 export const collectFilesRecursively = async (
   dir: string,

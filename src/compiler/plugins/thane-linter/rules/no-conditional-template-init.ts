@@ -58,7 +58,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
           diagnostics.push(
             createWarning(
               'Conditional assignment of tagged templates is not supported. ' +
-              "The compiler cannot determine which template to use at compile time. Use 'whenElse()' instead.",
+                "The compiler cannot determine which template to use at compile time. Use 'whenElse()' instead.",
               { file: filePath, line: line + 1, column: character + 1 },
               ErrorCode.NO_CONDITIONAL_TEMPLATE_INIT,
             ),
@@ -67,16 +67,18 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
       }
 
       // Logical expressions: const tpl = show && html`a`  or  const tpl = a || html`b`
-      if (ts.isBinaryExpression(init) &&
-          (init.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
-           init.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
-           init.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)) {
+      if (
+        ts.isBinaryExpression(init) &&
+        (init.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+          init.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+          init.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+      ) {
         if (containsTemplateTag(init.left) || containsTemplateTag(init.right)) {
           const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
           diagnostics.push(
             createWarning(
               'Logical expression assignment of tagged templates is not supported. ' +
-              "The compiler cannot resolve the template value at compile time. Use 'whenElse()' instead.",
+                "The compiler cannot resolve the template value at compile time. Use 'whenElse()' instead.",
               { file: filePath, line: line + 1, column: character + 1 },
               ErrorCode.NO_CONDITIONAL_TEMPLATE_INIT,
             ),

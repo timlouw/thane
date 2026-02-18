@@ -59,7 +59,10 @@ export const printTotalSizes = async (
   useGzip?: boolean,
 ): Promise<void> => {
   const totalSizeInKilobytes = totalBundleSizeInBytes / 1024;
-  console.info(consoleColors.green, `=== TOTAL BUNDLE SIZE: ${totalBundleSizeInBytes.toFixed(2)} B (${totalSizeInKilobytes.toFixed(2)} KB) ===`);
+  console.info(
+    consoleColors.green,
+    `=== TOTAL BUNDLE SIZE: ${totalBundleSizeInBytes.toFixed(2)} B (${totalSizeInKilobytes.toFixed(2)} KB) ===`,
+  );
 
   if (useGzip) {
     let totalGzippedSize = 0;
@@ -80,8 +83,14 @@ export const printTotalSizes = async (
     }
     const totalGzippedKB = totalGzippedSize / 1024;
     const totalBrotliKB = totalBrotliSize / 1024;
-    console.info(consoleColors.green, `=== TOTAL GZIPPED: ${totalGzippedSize.toFixed(2)} B (${totalGzippedKB.toFixed(2)} KB) ===`);
-    console.info(consoleColors.green, `=== TOTAL BROTLI: ${totalBrotliSize.toFixed(2)} B (${totalBrotliKB.toFixed(2)} KB) ===`);
+    console.info(
+      consoleColors.green,
+      `=== TOTAL GZIPPED: ${totalGzippedSize.toFixed(2)} B (${totalGzippedKB.toFixed(2)} KB) ===`,
+    );
+    console.info(
+      consoleColors.green,
+      `=== TOTAL BROTLI: ${totalBrotliSize.toFixed(2)} B (${totalBrotliKB.toFixed(2)} KB) ===`,
+    );
   }
 
   console.info('');

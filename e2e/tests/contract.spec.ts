@@ -5,8 +5,7 @@ const gotoApp = async ({ page }: { page: any }) => {
   await expect(page.getByTestId('app-title')).toHaveText('Thane Contract App');
 };
 
-const listItemIds = async (page: any): Promise<string[]> =>
-  page.locator('[data-testid="item-id"]').allTextContents();
+const listItemIds = async (page: any): Promise<string[]> => page.locator('[data-testid="item-id"]').allTextContents();
 
 test('basic render, click updates, when and whenElse branch switching', async ({ page }) => {
   await gotoApp({ page });

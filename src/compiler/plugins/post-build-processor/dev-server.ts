@@ -73,9 +73,18 @@ export class DevServer {
     // Pre-resolve the canonical dist root for path-traversal checks
     const canonicalDistDir = resolve(distDir);
 
-    const compressAndRespond = async (filePath: string, req: Request, contentType: string, cacheControl: string): Promise<Response> => {
+    const compressAndRespond = async (
+      filePath: string,
+      req: Request,
+      contentType: string,
+      cacheControl: string,
+    ): Promise<Response> => {
       const acceptEncoding = req.headers.get('accept-encoding') ?? '';
-      const canCompress = useGzip && !contentType.startsWith('image/') && !contentType.startsWith('video/') && !contentType.startsWith('audio/');
+      const canCompress =
+        useGzip &&
+        !contentType.startsWith('image/') &&
+        !contentType.startsWith('video/') &&
+        !contentType.startsWith('audio/');
 
       const headers: Record<string, string> = {
         'Content-Type': contentType,
@@ -150,7 +159,12 @@ export class DevServer {
             if (await file.exists()) {
               const stat = await file.stat();
               if (stat?.isFile()) {
-                return compressAndRespond(requestedPath, req, getContentType(requestedUrl), 'public, max-age=31536000, immutable');
+                return compressAndRespond(
+                  requestedPath,
+                  req,
+                  getContentType(requestedUrl),
+                  'public, max-age=31536000, immutable',
+                );
               } else if (!hasFileExtension) {
                 return compressAndRespond(indexPath, req, 'text/html', 'no-cache');
               }

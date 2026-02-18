@@ -49,7 +49,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
         diagnostics.push(
           createError(
             "Nested 'html' tagged templates are not supported. The inner template will not be " +
-            'processed for signal bindings or subscriptions. Extract it into a const variable instead.',
+              'processed for signal bindings or subscriptions. Extract it into a const variable instead.',
             { file: filePath, line: line + 1, column: character + 1 },
             ErrorCode.NO_NESTED_HTML_TAGS,
           ),
@@ -80,7 +80,7 @@ export const noNestedHtmlTags: LintRuleDefinition = {
     code: ErrorCode.NO_NESTED_HTML_TAGS,
     name: 'no-nested-html-tags',
     severity: 'error',
-    description: "html`` tagged templates must not be nested inside another html``.",
+    description: 'html`` tagged templates must not be nested inside another html``.',
   },
   check,
 };

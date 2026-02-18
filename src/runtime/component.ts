@@ -1,6 +1,6 @@
 /**
  * Component implementation — defineComponent API
- * 
+ *
  * Thane uses native DOM mode — no Web Components Shadow DOM required.
  * Components are rendered as regular DOM elements with scoped styles.
  *
@@ -100,7 +100,7 @@ interface SetupWithSelector<P = {}> extends SetupFunction<P> {
 
 /**
  * Register global styles to be added to the document.
- * 
+ *
  * Self-contained: has its own deduplication Set and CSSStyleSheet creation.
  * If no component imports this, esbuild tree-shakes it entirely.
  *
@@ -142,15 +142,13 @@ let _onStyles: ((selector: string, cssText: string) => void) | null = null;
  * @internal — exported only for compiler consumption.
  */
 export function __enableComponentStyles(): void {
-  if (_onStyles) return;          // idempotent
+  if (_onStyles) return; // idempotent
   const registered = new Set<string>();
   _onStyles = (selector, cssText) => {
     if (!registered.has(selector)) {
       registered.add(selector);
       // Replace legacy :host with & (CSS nesting parent selector) for backward compat
-      const normalized = cssText
-        .replace(/:host\b/g, '&')
-        .replace(/:host\(/g, '&(');
+      const normalized = cssText.replace(/:host\b/g, '&').replace(/:host\(/g, '&(');
       const sheet = new CSSStyleSheet();
       sheet.replaceSync(`.${selector} { ${normalized} }`);
       (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
@@ -180,16 +178,16 @@ export function __enableComponentStyles(): void {
 
 /**
  * Define a component using the function-based API.
- * 
+ *
  * The selector is auto-derived from the export name at compile time.
  * An explicit selector string can be provided as an optional override.
- * 
+ *
  * @example
  * // Auto-derived selector: 'my-counter' from export name MyCounter
  * export const MyCounter = defineComponent(() => ({
  *   template: html`<button>Click me</button>`,
  * }));
- * 
+ *
  * @example
  * // Explicit selector override
  * export const MyCounter = defineComponent('custom-counter', () => ({
@@ -197,7 +195,10 @@ export function __enableComponentStyles(): void {
  * }));
  */
 export function defineComponent<P extends ComponentProps = {}>(setup: SetupFunction<P>): ComponentHTMLSelector<P>;
-export function defineComponent<P extends ComponentProps = {}>(selector: string, setup: SetupFunction<P>): ComponentHTMLSelector<P>;
+export function defineComponent<P extends ComponentProps = {}>(
+  selector: string,
+  setup: SetupFunction<P>,
+): ComponentHTMLSelector<P>;
 export function defineComponent<P extends ComponentProps = {}>(
   selectorOrSetup: string | SetupFunction<P>,
   maybeSetup?: SetupFunction<P> | any,
@@ -217,7 +218,7 @@ export function defineComponent<P extends ComponentProps = {}>(
     if (!selector) {
       throw new Error(
         'defineComponent: could not resolve selector. ' +
-        'Either pass an explicit selector string or ensure the compiler auto-derives it from the export name.'
+          'Either pass an explicit selector string or ensure the compiler auto-derives it from the export name.',
       );
     }
   }
@@ -375,7 +376,9 @@ export function mount(
 ): MountHandle | null {
   // Both registration paths (defineComponent, __registerComponent)
   // store the factory as __f on the ref.
-  const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (component as unknown as ComponentRef).__f;
+  const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (
+    component as unknown as ComponentRef
+  ).__f;
   if (!factory) return null;
 
   const instance = factory(target, props);
@@ -387,6 +390,3 @@ export function mount(
     },
   };
 }
-
-
-

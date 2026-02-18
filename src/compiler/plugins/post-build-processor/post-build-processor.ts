@@ -1,9 +1,9 @@
 /**
  * Post-Build Processor Plugin
- * 
+ *
  * Orchestrates file copying, compression, HTML templating, HTTP server,
  * live reload, and console reporting after esbuild completes.
- * 
+ *
  * Split into sub-modules:
  * - file-copy.ts        — Asset copying and watcher with debouncing
  * - compression.ts      — Gzip / Brotli compression
@@ -17,7 +17,11 @@ import type { Metafile, Plugin } from 'esbuild';
 import { sourceCache, PLUGIN_NAME, consoleColors } from '../../utils/index.js';
 import type { BuildContext } from '../../types.js';
 
-import { recursivelyCopyAssetsIntoDist, watchAndRecursivelyCopyAssetsIntoDist, watchFileForChanges } from './file-copy.js';
+import {
+  recursivelyCopyAssetsIntoDist,
+  watchAndRecursivelyCopyAssetsIntoDist,
+  watchFileForChanges,
+} from './file-copy.js';
 import { gzipDistFiles } from './compression.js';
 import { DevServer } from './dev-server.js';
 import { printAllFileSizes, printTotalSizes } from './console-reporting.js';
@@ -80,7 +84,9 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
     devServer.notifyLiveReloadClients();
   };
 
-  const copyIndexHTMLIntoDistAndStartServer = async (hashedFileNames: Record<string, string | undefined>): Promise<void> => {
+  const copyIndexHTMLIntoDistAndStartServer = async (
+    hashedFileNames: Record<string, string | undefined>,
+  ): Promise<void> => {
     const { inputHTMLFilePath, outputHTMLFilePath, isProd, serve, useGzip, distDir } = config;
     const placeholders: Record<string, string | undefined> = {
       MAIN_JS_FILE_PLACEHOLDER: hashedFileNames['main'],
@@ -140,8 +146,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
       try {
         const stats = await fs.promises.stat(fullPath);
         sizeInBytes = stats.size;
-      } catch {
-      }
+      } catch {}
 
       totalBundleSizeInBytes += sizeInBytes;
       fileSizeLog.push({ fileName, sizeInBytes });
@@ -164,7 +169,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
     name: NAME,
     setup(build) {
       const { distDir } = config;
-      
+
       build.onStart(async () => {
         sourceCache.clear();
 

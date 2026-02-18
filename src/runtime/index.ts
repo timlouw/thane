@@ -29,10 +29,10 @@ declare global {
    * Repeat directive for rendering arrays
    */
   function repeat<T>(
-    items: T[] | (() => T[]), 
-    templateFn: (item: T, index: number) => any, 
-    emptyTemplate?: any, 
-    trackBy?: (item: T, index: number) => string | number
+    items: T[] | (() => T[]),
+    templateFn: (item: T, index: number) => any,
+    emptyTemplate?: any,
+    trackBy?: (item: T, index: number) => string | number,
   ): any[];
 
   /**
@@ -58,10 +58,10 @@ export type { Signal, ComponentRoot } from './types.js';
 export { signal, batch, computed, effect } from './signal.js';
 
 // Export component
-export { 
+export {
   defineComponent,
   __registerComponent,
-  registerGlobalStyles, 
+  registerGlobalStyles,
   mount,
   __enableComponentStyles,
   type ComponentContext,
@@ -70,8 +70,4 @@ export {
 } from './component.js';
 
 // Export DOM binding utilities
-export { 
-  __bindIf, 
-  __bindIfExpr, 
-  createKeyedReconciler,
-} from './dom-binding.js';
+export { __bindIf, __bindIfExpr, createKeyedReconciler } from './dom-binding.js';

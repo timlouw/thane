@@ -1,6 +1,6 @@
 /**
  * Source transformation for reactive binding compiler
- * 
+ *
  * Handles TypeScript source file analysis, locating HTML/CSS templates,
  * finding imports, and orchestrating the full component transformation.
  */
@@ -64,7 +64,10 @@ const isEmptyArrowFunction = (node: ts.Node): boolean => {
  * @param source - The full component source (post-injection)
  * @param hasCompiledTemplate - Whether a compiled template was injected
  */
-const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplate: boolean): { source: string; hasStyles: boolean; hasLifecycle: boolean } => {
+const stripDeadPropertiesAndDetectFeatures = (
+  source: string,
+  hasCompiledTemplate: boolean,
+): { source: string; hasStyles: boolean; hasLifecycle: boolean } => {
   const sf = ts.createSourceFile('__strip.ts', source, ts.ScriptTarget.Latest, true);
 
   // Find the defineComponent return object
@@ -104,7 +107,7 @@ const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplat
       if (prop.name.text === 'styles') {
         hasStyles = true;
       }
-      continue;  // shorthand props are never strippable
+      continue; // shorthand props are never strippable
     }
 
     if (!ts.isPropertyAssignment(prop)) continue;
@@ -115,13 +118,13 @@ const stripDeadPropertiesAndDetectFeatures = (source: string, hasCompiledTemplat
     // Supports both inline css`` and imported CSS file strings
     if (name === 'styles') {
       hasStyles = true;
-      continue;  // keep in return — runtime handles it via _onStyles callback
+      continue; // keep in return — runtime handles it via _onStyles callback
     }
 
     // ── Feature detection (lifecycle) — non-empty hooks that survive stripping ──
     if (STRIPPABLE_LIFECYCLE.has(name) && !isEmptyArrowFunction(prop.initializer)) {
       hasLifecycle = true;
-      continue;  // keep — runtime needs these
+      continue; // keep — runtime needs these
     }
 
     // ── Strippable properties ──
@@ -222,7 +225,11 @@ export const isThaneRuntimeImport = (specifier: string): boolean => {
  */
 export const findServicesImport = (sourceFile: ts.SourceFile): ImportInfo | null => {
   for (const statement of sourceFile.statements) {
-    if (ts.isImportDeclaration(statement) && statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) {
+    if (
+      ts.isImportDeclaration(statement) &&
+      statement.moduleSpecifier &&
+      ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
       const specifier = statement.moduleSpecifier.text;
 
       if (isThaneRuntimeImport(specifier)) {
@@ -236,11 +243,12 @@ export const findServicesImport = (sourceFile: ts.SourceFile): ImportInfo | null
 
         const fullText = statement.moduleSpecifier.getFullText(sourceFile);
         const quoteChar = fullText.includes("'") ? "'" : '"';
-        const normalizedSpecifier = specifier === 'thane' || specifier.startsWith('thane/')
-          ? specifier
-          : specifier.includes('shadow-dom')
-            ? specifier.replace('shadow-dom.js', 'index.js').replace('shadow-dom', 'index')
-            : specifier;
+        const normalizedSpecifier =
+          specifier === 'thane' || specifier.startsWith('thane/')
+            ? specifier
+            : specifier.includes('shadow-dom')
+              ? specifier.replace('shadow-dom.js', 'index.js').replace('shadow-dom', 'index')
+              : specifier;
 
         return {
           namedImports,
@@ -304,16 +312,12 @@ const resolveTemplateIdentifier = (
  * so fragment templates (const piece = html`...`) can be injected via ${piece}
  * without being blanked by this compile pass.
  */
-const findHtmlTemplates = (
-  sourceFile: ts.SourceFile,
-  defineComponentCall: ts.CallExpression,
-): TemplateInfo[] => {
+const findHtmlTemplates = (sourceFile: ts.SourceFile, defineComponentCall: ts.CallExpression): TemplateInfo[] => {
   const templates: TemplateInfo[] = [];
   const seen = new Set<number>();
 
-  const setupArg = defineComponentCall.arguments.length >= 2
-    ? defineComponentCall.arguments[1]
-    : defineComponentCall.arguments[0];
+  const setupArg =
+    defineComponentCall.arguments.length >= 2 ? defineComponentCall.arguments[1] : defineComponentCall.arguments[0];
   if (!setupArg || (!ts.isArrowFunction(setupArg) && !ts.isFunctionExpression(setupArg))) {
     return templates;
   }
@@ -376,7 +380,7 @@ const findHtmlTemplates = (
 /**
  * Transform a defineComponent source file by processing HTML templates,
  * generating binding code, and injecting static templates.
- * 
+ *
  * The pipeline natively supports defineComponent's closure-based access pattern:
  * 1. Parse templates directly — bare signal() calls are detected by the regex pipeline
  * 2. Run template processing and codegen with CLOSURE_ACCESS pattern
@@ -390,16 +394,21 @@ export const transformDefineComponentSource = (
   _childMountCount?: number,
 ): string | null => {
   const sourceFile = sourceCache.parse(filePath, source);
-  
+
   // Find the defineComponent call
   let defineComponentCall: ts.CallExpression | null = null;
   let exportName: string | null = null;
-  
+
   const findDefineComponent = (node: ts.Node) => {
     if (ts.isVariableStatement(node)) {
       const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
       for (const decl of node.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name) && decl.initializer && ts.isCallExpression(decl.initializer) && isDefineComponentCall(decl.initializer)) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          decl.initializer &&
+          ts.isCallExpression(decl.initializer) &&
+          isDefineComponentCall(decl.initializer)
+        ) {
           defineComponentCall = decl.initializer;
           exportName = hasExport ? decl.name.text : null;
         }
@@ -408,33 +417,33 @@ export const transformDefineComponentSource = (
     if (!defineComponentCall) ts.forEachChild(node, findDefineComponent);
   };
   findDefineComponent(sourceFile);
-  
+
   if (!defineComponentCall) return null;
-  
+
   // Narrow for TypeScript — the null check above guarantees this
   const dcCall: ts.CallExpression = defineComponentCall;
-  
+
   // Determine selector
   let selector: string | null = null;
   let hasExplicitSelector = false;
   const args = dcCall.arguments;
-  
+
   if (args.length >= 2 && ts.isStringLiteral(args[0]!)) {
     selector = (args[0] as ts.StringLiteral).text;
     hasExplicitSelector = true;
   } else if (exportName) {
     selector = pascalToKebab(exportName);
   }
-  
+
   if (!selector) return null;
-  
+
   const signalInitializers = findSignalInitializers(sourceFile);
-  
+
   // Find html templates directly — no normalization needed.
   // The regex pipeline natively matches bare signal() calls.
   const servicesImport = findServicesImport(sourceFile);
   const htmlTemplates = findHtmlTemplates(sourceFile, dcCall);
-  
+
   const edits: Array<{ start: number; end: number; replacement: string }> = [];
   let allBindings: BindingInfo[] = [];
   let allConditionals: ConditionalBlock[] = [];
@@ -444,10 +453,10 @@ export const transformDefineComponentSource = (
   let idCounter = computeInitialIdSeed(filePath, source);
   let lastProcessedTemplateContent = '';
   let hasConditionals = false;
-  
+
   for (const templateInfo of htmlTemplates) {
     let templateContent = extractTemplateContent(templateInfo.node.template, sourceFile);
-    
+
     const result = processHtmlTemplateWithConditionals(templateContent, signalInitializers, idCounter);
     templateContent = result.processedContent;
     allBindings = [...allBindings, ...result.bindings];
@@ -457,16 +466,16 @@ export const transformDefineComponentSource = (
     allEventBindings = [...allEventBindings, ...result.eventBindings];
     idCounter = result.nextId;
     hasConditionals = hasConditionals || result.hasConditionals;
-    
+
     lastProcessedTemplateContent = templateContent;
-    
+
     edits.push({
       start: templateInfo.templateStart,
       end: templateInfo.templateEnd,
       replacement: '``',
     });
   }
-  
+
   // Strip css tags
   const visitCss = (node: ts.Node) => {
     if (ts.isTaggedTemplateExpression(node) && isCssTemplate(node)) {
@@ -480,7 +489,7 @@ export const transformDefineComponentSource = (
     ts.forEachChild(node, visitCss);
   };
   visitCss(sourceFile);
-  
+
   // Early detection: check if the component has a `styles` property.
   // This is needed before edits are applied so we can add __enableComponentStyles to imports.
   let componentHasStyles = false;
@@ -513,7 +522,12 @@ export const transformDefineComponentSource = (
         if (ts.isParenthesizedExpression(n) && ts.isObjectLiteralExpression(n.expression) && n.parent === setupArg) {
           checkObjectForStyles(n.expression);
         }
-        if (ts.isObjectLiteralExpression(n) && n.parent && ts.isParenthesizedExpression(n.parent) && n.parent.parent === setupArg) {
+        if (
+          ts.isObjectLiteralExpression(n) &&
+          n.parent &&
+          ts.isParenthesizedExpression(n.parent) &&
+          n.parent.parent === setupArg
+        ) {
           checkObjectForStyles(n);
         }
 
@@ -524,8 +538,8 @@ export const transformDefineComponentSource = (
   }
 
   // ── Partition child mounts by directive containment (Step 7) ──
-  const directiveChildMounts = new Map<string, { cm: ChildMountInfo, globalIndex: number }[]>();
-  const topLevelChildMounts: { cm: ChildMountInfo, globalIndex: number }[] = [];
+  const directiveChildMounts = new Map<string, { cm: ChildMountInfo; globalIndex: number }[]>();
+  const topLevelChildMounts: { cm: ChildMountInfo; globalIndex: number }[] = [];
 
   if (childMounts && childMounts.length > 0) {
     const addToDirective = (key: string, cm: ChildMountInfo, idx: number) => {
@@ -570,9 +584,17 @@ export const transformDefineComponentSource = (
       for (const rep of allRepeatBlocks) {
         if (!rep.itemTemplate.includes(marker)) continue;
         const innerCond = findInConditionals(marker, rep.nestedConditionals);
-        if (innerCond) { addToDirective(innerCond, cm, i); placed = true; break; }
+        if (innerCond) {
+          addToDirective(innerCond, cm, i);
+          placed = true;
+          break;
+        }
         const innerWE = findInWhenElse(marker, rep.nestedWhenElse);
-        if (innerWE) { addToDirective(innerWE, cm, i); placed = true; break; }
+        if (innerWE) {
+          addToDirective(innerWE, cm, i);
+          placed = true;
+          break;
+        }
         addToDirective(rep.id, cm, i);
         placed = true;
         break;
@@ -581,11 +603,17 @@ export const transformDefineComponentSource = (
 
       // Check top-level conditionals
       const condId = findInConditionals(marker, allConditionals);
-      if (condId) { addToDirective(condId, cm, i); continue; }
+      if (condId) {
+        addToDirective(condId, cm, i);
+        continue;
+      }
 
       // Check whenElse blocks
       const weId = findInWhenElse(marker, allWhenElseBlocks);
-      if (weId) { addToDirective(weId, cm, i); continue; }
+      if (weId) {
+        addToDirective(weId, cm, i);
+        continue;
+      }
 
       // Top-level mount
       topLevelChildMounts.push({ cm, globalIndex: i });
@@ -596,30 +624,40 @@ export const transformDefineComponentSource = (
   // ctx.root, and closure-compatible code. No post-hoc stripping needed.
   const ap = CLOSURE_ACCESS;
   const { code: initBindingsFunction, staticTemplates: repeatStaticTemplates } = generateInitBindingsFunction(
-    allBindings, allConditionals, allWhenElseBlocks, allRepeatBlocks, allEventBindings, filePath, ap,
+    allBindings,
+    allConditionals,
+    allWhenElseBlocks,
+    allRepeatBlocks,
+    allEventBindings,
+    filePath,
+    ap,
     directiveChildMounts.size > 0 ? directiveChildMounts : undefined,
   );
-  
+
   let staticTemplateCode = '';
   if (lastProcessedTemplateContent) {
     staticTemplateCode = generateStaticTemplate(lastProcessedTemplateContent, ap);
   }
-  
+
   if (repeatStaticTemplates.length > 0) {
     staticTemplateCode += '\n' + repeatStaticTemplates.join('\n');
   }
-  
+
   // Update imports: always replace defineComponent → __registerComponent,
   // and add binding / styles imports as needed.
-  const hasAnyBindings = allBindings.length > 0 || allConditionals.length > 0 || 
-    allWhenElseBlocks.length > 0 || allRepeatBlocks.length > 0 || allEventBindings.length > 0 ||
+  const hasAnyBindings =
+    allBindings.length > 0 ||
+    allConditionals.length > 0 ||
+    allWhenElseBlocks.length > 0 ||
+    allRepeatBlocks.length > 0 ||
+    allEventBindings.length > 0 ||
     (childMounts != null && childMounts.length > 0);
-    
+
   if (servicesImport) {
     // Filter out defineComponent (replaced by __registerComponent in compiled output)
     const filteredImport: typeof servicesImport = {
       ...servicesImport,
-      namedImports: servicesImport.namedImports.filter(n => n !== 'defineComponent'),
+      namedImports: servicesImport.namedImports.filter((n) => n !== 'defineComponent'),
     };
     // Determine which registration function to import — lean or full.
     // At this point we don't yet know if the component has lifecycle hooks
@@ -632,25 +670,25 @@ export const transformDefineComponentSource = (
       if (allBindings.some((b) => b.type === 'style')) requiredFunctions.push(BIND_FN.STYLE);
       if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
       if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
-      
+
       // Check for conditionals at top level AND nested inside repeat items (Step 14)
       const allConditionalsIncludingNested = [
         ...allConditionals,
-        ...allRepeatBlocks.flatMap(r => r.nestedConditionals),
+        ...allRepeatBlocks.flatMap((r) => r.nestedConditionals),
       ];
-      const allWhenElseIncludingNested = [
-        ...allWhenElseBlocks,
-        ...allRepeatBlocks.flatMap(r => r.nestedWhenElse),
-      ];
-      const hasSimpleConditionals = allConditionalsIncludingNested.some((c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`);
-      const hasComplexConditionals = allConditionalsIncludingNested.some((c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`);
+      const allWhenElseIncludingNested = [...allWhenElseBlocks, ...allRepeatBlocks.flatMap((r) => r.nestedWhenElse)];
+      const hasSimpleConditionals = allConditionalsIncludingNested.some(
+        (c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`,
+      );
+      const hasComplexConditionals = allConditionalsIncludingNested.some(
+        (c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`,
+      );
       if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
       if (hasComplexConditionals || allWhenElseIncludingNested.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
-      
+
       if (allRepeatBlocks.length > 0) {
         // Always import createKeyedReconciler — it's the sole reconciler now (Step 16)
         requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
-        
       }
       // Events now use direct addEventListener — no runtime import needed
     }
@@ -659,7 +697,7 @@ export const transformDefineComponentSource = (
     if (componentHasStyles) {
       requiredFunctions.push(BIND_FN.ENABLE_STYLES);
     }
-    
+
     const newImport = generateUpdatedImport(filteredImport, requiredFunctions);
     edits.push({
       start: servicesImport.start,
@@ -667,10 +705,10 @@ export const transformDefineComponentSource = (
       replacement: newImport,
     });
   }
-  
+
   // Apply all edits to the source (no normalization pass — edits are against the original)
   let result = applyEdits(source, edits);
-  
+
   // ──────────────────────────────────────────────────────────────────────
   // Injection strategy for defineComponent:
   //
@@ -706,7 +744,7 @@ export const transformDefineComponentSource = (
     }
     processedBindings += '\n    ' + mountLines.join('\n    ');
   }
-  
+
   // Collect repeat static template names
   const repeatTemplateNames: string[] = [];
   const repeatTplRegex = /const (__tpl_\w+) =/g;
@@ -714,24 +752,21 @@ export const transformDefineComponentSource = (
   while ((tplMatch = repeatTplRegex.exec(staticTemplateCode)) !== null) {
     if (tplMatch[1]) repeatTemplateNames.push(tplMatch[1]);
   }
-  
+
   // Inject selector if auto-derived (before the setup function argument)
   if (!hasExplicitSelector && selector) {
-    result = result.replace(
-      /defineComponent\s*((?:<[^(]*>)?)\s*\(/,
-      `defineComponent$1('${selector}', `,
-    );
+    result = result.replace(/defineComponent\s*((?:<[^(]*>)?)\s*\(/, `defineComponent$1('${selector}', `);
   }
-  
+
   // ── AST-based injection: re-parse the transformed source for reliable positions ──
   const injectionSf = ts.createSourceFile('__injection.ts', result, ts.ScriptTarget.Latest, true);
-  
+
   // Find the export declaration and defineComponent call via AST
   let exportStart: number | null = null;
   let dcCallNode: ts.CallExpression | null = null;
   let dcCallCloseParen: number | null = null;
   let returnObjectBracePos: number | null = null;
-  
+
   const findInjectionPoints = (node: ts.Node) => {
     // Find: [export] const X = defineComponent(...)
     if (ts.isVariableStatement(node)) {
@@ -747,12 +782,13 @@ export const transformDefineComponentSource = (
     ts.forEachChild(node, findInjectionPoints);
   };
   findInjectionPoints(injectionSf);
-  
+
   // Find the return statement inside the setup function
   if (dcCallNode) {
-    const setupArg = (dcCallNode as ts.CallExpression).arguments.length >= 2 
-      ? (dcCallNode as ts.CallExpression).arguments[1] 
-      : (dcCallNode as ts.CallExpression).arguments[0];
+    const setupArg =
+      (dcCallNode as ts.CallExpression).arguments.length >= 2
+        ? (dcCallNode as ts.CallExpression).arguments[1]
+        : (dcCallNode as ts.CallExpression).arguments[0];
     if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
       const findReturn = (node: ts.Node) => {
         // Only look at direct returns in this function, not nested functions
@@ -767,9 +803,13 @@ export const transformDefineComponentSource = (
       findReturn(setupArg);
     }
   }
-  
+
   // Track strip result for lean/full registration decision (populated in Step 3a)
-  let stripResult: { source: string; hasStyles: boolean; hasLifecycle: boolean } = { source: result, hasStyles: false, hasLifecycle: false };
+  let stripResult: { source: string; hasStyles: boolean; hasLifecycle: boolean } = {
+    source: result,
+    hasStyles: false,
+    hasLifecycle: false,
+  };
 
   if (exportStart !== null) {
     // ── Step 1: Insert static template declarations before the export ──
@@ -777,7 +817,7 @@ export const transformDefineComponentSource = (
     if (staticTemplateCode.trim()) {
       declarations += staticTemplateCode.trim() + '\n';
     }
-    
+
     if (declarations) {
       result = result.substring(0, exportStart) + declarations + '\n' + result.substring(exportStart);
       // Adjust downstream positions for the inserted text
@@ -785,7 +825,7 @@ export const transformDefineComponentSource = (
       if (returnObjectBracePos !== null) returnObjectBracePos = returnObjectBracePos + offset;
       if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + offset;
     }
-    
+
     // ── Step 2: Inject __bindings into the return object ──
     if (hasAnyBindings && processedBindings.trim() && returnObjectBracePos !== null) {
       const bindingsFnBody = `\n  __b: (ctx) => {\n  ${processedBindings.trim()}\n  },`;
@@ -793,7 +833,7 @@ export const transformDefineComponentSource = (
       // Adjust closing paren position
       if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + bindingsFnBody.length;
     }
-    
+
     // ── Step 3: Pass flags + __tpl + repeat templates as extra args to defineComponent() ──
     //
     // New signature: defineComponent(selector, setup, flags, __tpl, ...repeatTemplates)
@@ -807,7 +847,7 @@ export const transformDefineComponentSource = (
       // Must happen before we insert extra args (positions would shift)
       const hasCompiledTemplate = !!lastProcessedTemplateContent;
       stripResult = stripDeadPropertiesAndDetectFeatures(result, hasCompiledTemplate);
-      
+
       // Adjust dcCallCloseParen for any characters removed by stripping
       const charDelta = stripResult.source.length - result.length;
       result = stripResult.source;
@@ -819,11 +859,11 @@ export const transformDefineComponentSource = (
       if (lastProcessedTemplateContent) {
         extraArgs += ', __tpl';
       }
-      
+
       for (const name of repeatTemplateNames) {
         extraArgs += `, '${name}', ${name}`;
       }
-      
+
       if (extraArgs) {
         result = result.substring(0, dcCallCloseParen) + extraArgs + result.substring(dcCallCloseParen);
       }
@@ -834,9 +874,9 @@ export const transformDefineComponentSource = (
       }
     }
   }
-  
+
   // Step 4 is now integrated into Step 3a (stripDeadPropertiesAndDetectFeatures)
-  
+
   // ── Final step: rename defineComponent → __registerComponent ──
   // Done AFTER all AST-based injections that rely on isDefineComponentCall()
   // matching the `defineComponent` identifier.
@@ -845,7 +885,7 @@ export const transformDefineComponentSource = (
 
   // Fix up the placeholder import to the actual registration function
   result = result.replace('__REGISTER_PLACEHOLDER__', registerFnName);
-  
+
   return result;
 };
 

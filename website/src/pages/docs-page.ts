@@ -560,7 +560,8 @@ export const DocsPage = defineComponent('docs-page', ({ root }) => {
         margin-bottom: 0;
       }
 
-      .doc-section h1, .doc-section h2 {
+      .doc-section h1,
+      .doc-section h2 {
         margin-bottom: 16px;
       }
 
@@ -613,7 +614,8 @@ export const DocsPage = defineComponent('docs-page', ({ root }) => {
         font-size: 14px;
       }
 
-      .doc-table th, .doc-table td {
+      .doc-table th,
+      .doc-table td {
         padding: 10px 16px;
         text-align: left;
         border-bottom: 1px solid var(--border-color);
@@ -643,26 +645,40 @@ export const DocsPage = defineComponent('docs-page', ({ root }) => {
         max-width: 500px;
       }
 
-      .browser-table th, .browser-table td {
+      .browser-table th,
+      .browser-table td {
         text-align: center;
         font-size: 16px;
       }
 
       @media (max-width: 768px) {
-        .docs-sidebar-desktop { display: none; }
-        .docs-mobile-toggle { display: flex; }
-        .docs-sidebar { display: flex; flex-direction: column; }
+        .docs-sidebar-desktop {
+          display: none;
+        }
+        .docs-mobile-toggle {
+          display: flex;
+        }
+        .docs-sidebar {
+          display: flex;
+          flex-direction: column;
+        }
 
         .docs-content {
           padding: 24px 16px 64px;
         }
 
-        .doc-section h1 { font-size: 1.75rem; }
-        .doc-section h2 { font-size: 1.3rem; }
+        .doc-section h1 {
+          font-size: 1.75rem;
+        }
+        .doc-section h2 {
+          font-size: 1.3rem;
+        }
       }
 
       @media (min-width: 769px) {
-        .docs-sidebar { display: none !important; }
+        .docs-sidebar {
+          display: none !important;
+        }
       }
     `,
   };

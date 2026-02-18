@@ -14,7 +14,11 @@ export const StyledChild = defineComponent('styled-child', () => ({
     <div data-testid="css-child-inherits" class="parent-scoped">cascade-check</div>
   `,
   styles: css`
-    [data-testid="css-child-styled"] { color: rgb(0, 0, 255); }
-    .leak-target { background-color: rgb(255, 0, 0); }
+    [data-testid='css-child-styled'] {
+      color: rgb(0, 0, 255);
+    }
+    .leak-target {
+      background-color: rgb(255, 0, 0);
+    }
   `,
 }));

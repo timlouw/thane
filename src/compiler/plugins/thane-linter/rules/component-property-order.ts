@@ -18,9 +18,7 @@ import { FN } from '../../../utils/constants.js';
 /** Canonical property order. Properties not in this list are ignored. */
 const CANONICAL_ORDER = ['template', 'styles', 'onMount', 'onDestroy'] as const;
 
-const orderIndex = new Map<string, number>(
-  CANONICAL_ORDER.map((name, i) => [name, i]),
-);
+const orderIndex = new Map<string, number>(CANONICAL_ORDER.map((name, i) => [name, i]));
 
 /**
  * Walk the AST to find all object-literal return values inside
@@ -122,7 +120,8 @@ export const componentPropertyOrder: LintRuleDefinition = {
     code: ErrorCode.COMPONENT_PROPERTY_ORDER,
     name: 'component-property-order',
     severity: 'error',
-    description: 'Enforce canonical property order in defineComponent return objects (template → styles → onMount → onDestroy).',
+    description:
+      'Enforce canonical property order in defineComponent return objects (template → styles → onMount → onDestroy).',
   },
   check,
 };

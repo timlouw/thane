@@ -75,7 +75,10 @@ export const MinificationPlugin = (ctx: BuildContext): Plugin => ({
       const savedKB = (totalSaved / 1024).toFixed(2);
 
       if (totalSaved > 0) {
-        logger.info(NAME, `Minified ${result.outputFiles.filter((f) => f.path.endsWith('.js')).length} file(s), saved ${savedKB} KB in ${elapsed}ms`);
+        logger.info(
+          NAME,
+          `Minified ${result.outputFiles.filter((f) => f.path.endsWith('.js')).length} file(s), saved ${savedKB} KB in ${elapsed}ms`,
+        );
       }
       if (selectorMap.size > 0) {
         const mappings: string[] = [];
