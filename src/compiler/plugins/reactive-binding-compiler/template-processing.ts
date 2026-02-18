@@ -236,7 +236,11 @@ export const processConditionalElementHtml = (
       }
     }
   }
-  html = html.replace(/\s+/g, ' ').replace(/\s+>/g, '>').replace(/\s>/g, '>');
+  html = html
+    .replace(/\s+/g, ' ')
+    .replace(/>\s+</g, '><')
+    .replace(/(<!--[ib]\d+-->)(<!---->)/g, '$1 $2')
+    .replace(/\s+>/g, '>');
 
   return { html, eventBindings };
 };

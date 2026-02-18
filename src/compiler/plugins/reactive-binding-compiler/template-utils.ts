@@ -360,7 +360,12 @@ export const applyTemplateEdits = (
   for (const edit of edits) {
     result = result.substring(0, edit.start) + edit.replacement + result.substring(edit.end);
   }
-  return result.replace(/\s+/g, ' ').trim();
+  return result
+    .replace(/\s+/g, ' ')
+    .replace(/>\s+</g, '><')
+    .replace(/(<!--[ib]\d+-->)(<!---->)/g, '$1 $2')
+    .replace(/\s+>/g, '>')
+    .trim();
 };
 
 /**

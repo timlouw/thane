@@ -18,6 +18,8 @@ declare module 'bun:test' {
     toHaveLength(expected: number): void;
     toContain(expected: unknown): void;
     toBeGreaterThan(expected: number): void;
+    toBeTruthy(): void;
+    toBeFalsy(): void;
     toMatch(expected: string | RegExp): void;
     toThrow(expected?: string | RegExp): void;
     toHaveBeenCalled(): void;

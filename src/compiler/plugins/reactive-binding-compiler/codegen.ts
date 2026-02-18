@@ -834,14 +834,26 @@ export const generateInitBindingsFunction = (
         // Generate inlined navigation code for each bound element
         const navVarNames: string[] = [];
         const navStatements: string[] = [];
+        const navExprs: string[] = [];
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
           const varName = `_e${i}`;
           navVarNames.push(varName);
-          if (eb.path.length === 0) {
-            navStatements.push(`const ${varName} = _el`);
-          } else {
-            navStatements.push(`const ${varName} = ${pathToSiblingNav('_el', eb.path)}`);
+          const expr = eb.path.length === 0 ? '_el' : pathToSiblingNav('_el', eb.path);
+          navExprs.push(expr);
+          navStatements.push(`const ${varName} = ${expr}`);
+        }
+        // Optimize: reuse earlier navigation variables for shared path prefixes
+        // e.g., _e0 = _el.firstElementChild, _e1 = _el.firstElementChild.nextElementSibling.firstElementChild
+        // becomes _e1 = _e0.nextElementSibling.firstElementChild (saves one DOM property access per row)
+        for (let j = 1; j < navExprs.length; j++) {
+          for (let i = j - 1; i >= 0; i--) {
+            const prefix = navExprs[i]!;
+            if (navExprs[j]!.startsWith(prefix + '.')) {
+              const suffix = navExprs[j]!.substring(prefix.length);
+              navStatements[j] = `const ${navVarNames[j]} = ${navVarNames[i]}${suffix}`;
+              break;
+            }
           }
         }
         
