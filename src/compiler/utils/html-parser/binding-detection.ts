@@ -468,7 +468,7 @@ export function findBindingsInText(
 
 export function findBindingsInAttributes(element: HtmlElement, bindings: BindingInfo[]): void {
   if (element.whenDirective) {
-    const whenMatch = element.whenDirective.match(/^"\$\{when\((.+)\)\}"$/);
+    const whenMatch = element.whenDirective.match(/^\$\{when\((.+)\)\}$/);
     if (whenMatch) {
       const innerExpr = whenMatch[1];
       if (!innerExpr) return;

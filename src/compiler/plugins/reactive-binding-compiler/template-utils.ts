@@ -381,7 +381,7 @@ export const applyTemplateEdits = (source: string, edits: TemplateEdit[]): strin
   }
   return result
     .replace(/\s+/g, ' ')
-    .replace(/>\s+</g, '><')
+    .replace(/>\s+<(?![!-])/g, '><')
     .replace(/(<!--[ib]\d+-->)(<!---->)/g, '$1 $2')
     .replace(/\s+>/g, '>')
     .trim();

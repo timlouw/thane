@@ -321,16 +321,17 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           pos++;
           textContent = '';
           textStart = pos + 1;
-        } else if (char === '"' && html.substring(pos, pos + 8) === '"${when(') {
+        } else if (char === '$' && html.substring(pos, pos + 7) === '${when(') {
           const directiveStart = pos;
           let braceDepth = 0;
-          let i = pos + 2;
+          let i = pos;
           while (i < html.length) {
+            if (html[i] === '$' && html[i + 1] === '{') { braceDepth++; i += 2; continue; }
             if (html[i] === '{') braceDepth++;
             else if (html[i] === '}') {
               braceDepth--;
-              if (braceDepth === 0 && html[i + 1] === '"') {
-                const directiveEnd = i + 2;
+              if (braceDepth === 0) {
+                const directiveEnd = i + 1;
                 const directive = html.substring(directiveStart, directiveEnd);
                 currentElement!.whenDirective = directive;
                 currentElement!.whenDirectiveStart = directiveStart;

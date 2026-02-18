@@ -43,19 +43,19 @@ export const App = defineComponent('thane-app', () => {
       <div class="app-shell">
         ${SiteNav({})}
 
-        <div class="page-wrapper" "${when(isHome())}">
+        <div class="page-wrapper" ${when(isHome())}>
           ${HomePage({})}
         </div>
 
-        <div class="page-wrapper" "${when(isDocs())}">
+        <div class="page-wrapper" ${when(isDocs())}>
           ${DocsPage({})}
         </div>
 
-        <div class="page-wrapper" "${when(isPlayground())}">
+        <div class="page-wrapper" ${when(isPlayground())}>
           ${PlaygroundPage({})}
         </div>
 
-        <div class="page-wrapper" "${when(isReleases())}">
+        <div class="page-wrapper" ${when(isReleases())}>
           ${ReleasesPage({})}
         </div>
 

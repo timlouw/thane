@@ -288,7 +288,7 @@ ${TodoItem({ label: labelSignal, done: doneSignal })}
 
 ```typescript
 // Show/hide based on signal
-<div "${when(isVisible())}">Only shown when truthy</div>
+<div ${when(isVisible())}>Only shown when truthy</div>
 
 // If/else branches
 ${whenElse(

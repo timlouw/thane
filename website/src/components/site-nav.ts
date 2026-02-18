@@ -34,7 +34,7 @@ export const SiteNav = defineComponent('site-nav', ({ root }) => {
           </button>
         </div>
 
-        <div class="mobile-menu" "${when(mobileOpen())}">
+        <div class="mobile-menu" ${when(mobileOpen())}>
           <a href="#/docs" class="mobile-link" @click=${closeMobile}>Docs</a>
           <a href="#/playground" class="mobile-link" @click=${closeMobile}>Playground</a>
           <a href="#/releases" class="mobile-link" @click=${closeMobile}>Releases</a>

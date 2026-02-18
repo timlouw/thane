@@ -2,7 +2,7 @@ export const minifyHTML = (html: string): string => {
   return (
     html
       .replace(/\s+/g, ' ')
-      .replace(/>\s+</g, '><')
+      .replace(/>\s+<(?![!-])/g, '><')
       // Strip non-binding HTML comments (preserve <!--bN-->, <!--iN-->, <!--[if]-->, and <!----> boundary)
       .replace(/<!--(?!b\d)(?!i\d)(?!\[)(?!--)[\s\S]*?-->/g, '')
       // Repair: aggressive strip may have merged binding markers with boundary comments;

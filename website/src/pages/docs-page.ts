@@ -111,7 +111,7 @@ const EVENT_CODE = `<button @click=\${handleClick}>Click me</button>
 <!-- Combine: @keydown.ctrl.shift.enter=\${fn} -->`;
 
 const WHEN_CODE = `// Show/hide based on signal
-<div "\${when(isVisible())}">
+<div \${when(isVisible())}>
   Only shown when truthy
 </div>
 
@@ -204,7 +204,7 @@ export const DocsPage = defineComponent('docs-page', ({ root }) => {
           Documentation
         </button>
 
-        <aside class="docs-sidebar" "${when(sidebarOpen())}">
+        <aside class="docs-sidebar" ${when(sidebarOpen())}>
           <nav class="sidebar-nav">
             <div class="sidebar-section">
               <span class="sidebar-heading">Getting Started</span>

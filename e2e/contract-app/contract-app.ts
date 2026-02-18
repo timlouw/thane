@@ -232,7 +232,7 @@ export const ContractApp = defineComponent('contract-app', () => {
 
         <section data-testid="when-section">
           <button data-testid="toggle-when" @click=${toggleWhen}>toggle when</button>
-          <div data-testid="when-block" "${when(showWhen())}">when-visible-${count()}</div>
+          <div data-testid="when-block" ${when(showWhen())}>when-visible-${count()}</div>
         </section>
 
         <section data-testid="when-else-section">
@@ -322,7 +322,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                 <li data-testid="nested-row">
                   <span data-testid="nested-label">${item.label}-${index}</span>
                   <span data-testid="nested-parent-a">${exprA()}</span>
-                  <div data-testid="nested-when" "${when(showWhen())}">visible</div>
+                  <div data-testid="nested-when" ${when(showWhen())}>visible</div>
                   ${whenElse(showWhen(), html`<b data-testid="nested-branch">then</b>`, html`<b data-testid="nested-branch">else</b>`)}
                   <ol data-testid="nested-children">
                     ${repeat(

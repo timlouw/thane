@@ -200,7 +200,7 @@ export const processConditionalElementHtml = (
   if (nestedConditionalBlocks && nestedConditionalBlocks.length > 0) {
     for (const nestedCond of nestedConditionalBlocks) {
       // Build the exact when() attribute value to search for as a literal string
-      const whenAttrValue = `"\${when(${nestedCond.jsExpression})}"`;
+      const whenAttrValue = `\${when(${nestedCond.jsExpression})}`;
       const whenAttrIdx = html.indexOf(whenAttrValue);
       if (whenAttrIdx !== -1) {
         // Find the enclosing element for this when() directive
@@ -253,7 +253,7 @@ export const processConditionalElementHtml = (
   }
   html = html
     .replace(/\s+/g, ' ')
-    .replace(/>\s+</g, '><')
+    .replace(/>\s+<(?![!-])/g, '><')
     .replace(/(<!--[ib]\d+-->)(<!---->)/g, '$1 $2')
     .replace(/\s+>/g, '>');
 
