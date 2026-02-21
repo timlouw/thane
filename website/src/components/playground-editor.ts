@@ -179,7 +179,7 @@ export const PlaygroundEditor = defineComponent<PlaygroundEditorProps>('playgrou
 
   return {
     template: html`
-      <div class="playground ${isCompact ? 'pg-compact' : 'pg-full'}">
+      <div class="playground">
         <div class="pg-editor">
           <div class="pg-header">
             <span class="pg-dot red"></span>
@@ -351,6 +351,8 @@ export const PlaygroundEditor = defineComponent<PlaygroundEditorProps>('playgrou
       }
     `,
     onMount: () => {
+      root.querySelector('.playground')?.classList.add(isCompact ? 'pg-compact' : 'pg-full');
+
       const textarea = root.querySelector('.pg-textarea') as HTMLTextAreaElement;
       if (textarea) {
         textarea.value = code();

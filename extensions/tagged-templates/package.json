@@ -27,6 +27,12 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "typescriptServerPlugins": [
+      {
+        "name": "thane-ts-plugin",
+        "enableForWorkspaceTypeScriptVersions": true
+      }
+    ],
     "configuration": {
       "title": "Tagged Template Literals",
       "properties": {
@@ -92,7 +98,9 @@
           "meta.embedded.block.dockerfile": "dockerfile",
           "meta.embedded.block.ini": "ini",
           "meta.embedded.block.toml": "toml",
-          "meta.embedded.block.regex": "regex"
+          "meta.embedded.block.regex": "regex",
+          "meta.template.expression.ts": "typescript",
+          "meta.embedded.line.ts": "typescript"
         },
         "tokenTypes": {
           "meta.embedded.block.html": "other",
@@ -141,7 +149,8 @@
         "scopeName": "inline.tagged-templates.reinjection",
         "path": "./syntaxes/template-reinjection.json",
         "embeddedLanguages": {
-          "meta.template.expression.ts": "typescript"
+          "meta.template.expression.ts": "typescript",
+          "meta.embedded.line.ts": "typescript"
         }
       }
     ]
@@ -152,12 +161,10 @@
     "typecheck": "tsc -p ./",
     "package": "bun run build && bunx @vscode/vsce package"
   },
-  "dependencies": {
-    "typescript": "^5.0.0"
-  },
   "devDependencies": {
     "@types/node": "^25.2.2",
     "@types/vscode": "^1.75.0",
-    "esbuild": "^0.25.0"
+    "esbuild": "^0.25.0",
+    "typescript": "^5.0.0"
   }
 }

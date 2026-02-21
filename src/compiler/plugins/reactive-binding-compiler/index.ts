@@ -698,6 +698,11 @@ export const transformDefineComponentSource = (
       requiredFunctions.push(BIND_FN.ENABLE_STYLES);
     }
 
+    // ── Child destroy helper — only when this component has child mounts ──
+    if (childMounts && childMounts.length > 0) {
+      requiredFunctions.push(BIND_FN.DESTROY_CHILD);
+    }
+
     const newImport = generateUpdatedImport(filteredImport, requiredFunctions);
     edits.push({
       start: servicesImport.start,
@@ -740,9 +745,17 @@ export const transformDefineComponentSource = (
       const varName = `_cm${globalIndex}`;
       mountLines.push(`const ${varName} = document.createElement('${cm.selector}');`);
       mountLines.push(`_gid('${cm.anchorId}').replaceWith(${varName});`);
-      mountLines.push(`${cm.componentName}.__f(${varName}, ${cm.propsExpression});`);
+      mountLines.push(`_subs.push(${BIND_FN.DESTROY_CHILD}(${cm.componentName}.__f(${varName}, ${cm.propsExpression})));`);
     }
-    processedBindings += '\n    ' + mountLines.join('\n    ');
+    const mountCode = '\n    ' + mountLines.join('\n    ');
+    // Insert BEFORE the return statement so code is reachable
+    const returnIdx = processedBindings.lastIndexOf('return () =>');
+    if (returnIdx !== -1) {
+      processedBindings =
+        processedBindings.substring(0, returnIdx) + mountCode.trimStart() + '\n    ' + processedBindings.substring(returnIdx);
+    } else {
+      processedBindings += mountCode;
+    }
   }
 
   // Collect repeat static template names
@@ -790,17 +803,29 @@ export const transformDefineComponentSource = (
         ? (dcCallNode as ts.CallExpression).arguments[1]
         : (dcCallNode as ts.CallExpression).arguments[0];
     if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
-      const findReturn = (node: ts.Node) => {
-        // Only look at direct returns in this function, not nested functions
-        if (ts.isArrowFunction(node) && node !== setupArg) return;
-        if (ts.isFunctionExpression(node) && node !== setupArg) return;
-        if (ts.isFunctionDeclaration(node)) return;
-        if (ts.isReturnStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression)) {
-          returnObjectBracePos = node.expression.getStart(injectionSf) + 1; // after {
+      // Handle concise arrow: () => ({...}) — no ReturnStatement in AST
+      if (ts.isArrowFunction(setupArg) && !ts.isBlock(setupArg.body)) {
+        let bodyExpr: ts.Expression = setupArg.body;
+        while (ts.isParenthesizedExpression(bodyExpr)) {
+          bodyExpr = bodyExpr.expression;
         }
-        ts.forEachChild(node, findReturn);
-      };
-      findReturn(setupArg);
+        if (ts.isObjectLiteralExpression(bodyExpr)) {
+          returnObjectBracePos = bodyExpr.getStart(injectionSf) + 1; // after {
+        }
+      } else {
+        // Block body: () => { return {...}; }
+        const findReturn = (node: ts.Node) => {
+          // Only look at direct returns in this function, not nested functions
+          if (ts.isArrowFunction(node) && node !== setupArg) return;
+          if (ts.isFunctionExpression(node) && node !== setupArg) return;
+          if (ts.isFunctionDeclaration(node)) return;
+          if (ts.isReturnStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression)) {
+            returnObjectBracePos = node.expression.getStart(injectionSf) + 1; // after {
+          }
+          ts.forEachChild(node, findReturn);
+        };
+        findReturn(setupArg);
+      }
     }
   }
 

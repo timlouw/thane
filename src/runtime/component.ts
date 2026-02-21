@@ -58,7 +58,7 @@ export type ComponentReturnType = {
  */
 interface InternalComponentResult extends ComponentReturnType {
   /** Compiler-injected binding initializer (short name for bundle size) */
-  __b?: (ctx: ComponentContext) => void;
+  __b?: (ctx: ComponentContext) => (() => void) | void;
 }
 
 /**
@@ -72,6 +72,7 @@ type SetupFunction<P = {}> = (ctx: ComponentContext<P>) => ComponentReturnType;
 interface ComponentInstance {
   root: ComponentRoot;
   __onDestroy?: () => void;
+  __bindingsCleanup?: () => void;
 }
 
 /**
@@ -113,7 +114,7 @@ export function registerGlobalStyles(...styles: string[]): void {
       _globalRegistered.add(cssText);
       const sheet = new CSSStyleSheet();
       sheet.replaceSync(cssText);
-      (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     }
   }
 }
@@ -151,7 +152,7 @@ export function __enableComponentStyles(): void {
       const normalized = cssText.replace(/:host\b/g, '&').replace(/:host\(/g, '&(');
       const sheet = new CSSStyleSheet();
       sheet.replaceSync(`.${selector} { ${normalized} }`);
-      (document.adoptedStyleSheets as CSSStyleSheet[]).push(sheet);
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     }
   };
 }
@@ -263,8 +264,9 @@ export function defineComponent<P extends ComponentProps = {}>(
     }
 
     // Initialize reactive bindings (injected by the compiler into the return object)
+    let bindingsCleanup: (() => void) | void | undefined;
     if (result.__b) {
-      result.__b(ctx);
+      bindingsCleanup = result.__b(ctx);
     }
 
     // Lifecycle: onMount
@@ -273,6 +275,9 @@ export function defineComponent<P extends ComponentProps = {}>(
     }
 
     const instance: ComponentInstance = { root };
+    if (bindingsCleanup) {
+      instance.__bindingsCleanup = bindingsCleanup;
+    }
     if (result.onDestroy) {
       instance.__onDestroy = result.onDestroy;
     }
@@ -326,10 +331,13 @@ export function __registerComponent(
     }
 
     root.appendChild(compiledTemplate.content.cloneNode(true));
-    if (result.__b) result.__b(ctx);
+    const bindingsCleanup = result.__b ? result.__b(ctx) : undefined;
     if (result.onMount) result.onMount();
 
     const instance: ComponentInstance = { root };
+    if (bindingsCleanup) {
+      instance.__bindingsCleanup = bindingsCleanup;
+    }
     if (result.onDestroy) {
       instance.__onDestroy = result.onDestroy;
     }
@@ -342,6 +350,53 @@ export function __registerComponent(
   }
   return ref;
 }
+
+/**
+ * Lean component registration — no styles, no lifecycle hooks, no extra templates.
+ *
+ * The compiler emits this variant when `stripDeadPropertiesAndDetectFeatures`
+ * confirms the component has no `styles` property and no non-empty lifecycle
+ * hooks.  Because the lean function never references `_onStyles`, esbuild
+ * can tree-shake the entire styles subsystem when no component in the app
+ * uses it.  The extra-templates for-loop is omitted because the generated
+ * binding code captures repeat templates directly via closure.
+ *
+ * @internal — emitted by the compiler; not part of the public API.
+ */
+export function __registerComponentLean(
+  selector: string,
+  setup: SetupFunction,
+  compiledTemplate: HTMLTemplateElement,
+): any {
+  const factory = (target: HTMLElement, props?: Record<string, any>): ComponentInstance => {
+    target.classList.add(selector);
+    const root = target as ComponentRoot;
+    const ctx: ComponentContext = { root, props: (props || {}) as Readonly<any> };
+    const result = setup(ctx) as InternalComponentResult;
+    root.appendChild(compiledTemplate.content.cloneNode(true));
+    const bindingsCleanup = result.__b ? result.__b(ctx) : undefined;
+    const instance: ComponentInstance = { root };
+    if (bindingsCleanup) instance.__bindingsCleanup = bindingsCleanup;
+    return instance;
+  };
+  return { __f: factory };
+}
+
+/**
+ * Destroy-child helper — returns a cleanup thunk for a child ComponentInstance.
+ *
+ * The compiler injects `_subs.push(__dc(Child.__f(el, props)))` so that the
+ * parent's cleanup chain automatically tears down every child.
+ *
+ * Only imported when the component actually has child mounts — otherwise
+ * esbuild tree-shakes it entirely.
+ *
+ * @internal — emitted by the compiler; not part of the public API.
+ */
+export const __dc = (i: ComponentInstance): (() => void) => () => {
+  if (i.__bindingsCleanup) i.__bindingsCleanup();
+  if (i.__onDestroy) i.__onDestroy();
+};
 
 /**
  * Handle returned by mount(), allowing the caller to destroy the mounted
@@ -366,27 +421,46 @@ export interface MountHandle {
  *
  * @param component - Component selector function returned by defineComponent
  * @param target - DOM element to mount to (defaults to document.body)
- * @returns A MountHandle with the root element and a destroy() function,
- *          or null if mounting failed.
+ * @returns A MountHandle with the root element and a destroy() function
+ * @throws {Error} If the component argument is not a valid defineComponent() result
  */
 export function mount(
   component: ComponentHTMLSelector<any>,
   target: HTMLElement = document.body,
   props?: Record<string, any>,
-): MountHandle | null {
+): MountHandle {
   // Both registration paths (defineComponent, __registerComponent)
   // store the factory as __f on the ref.
   const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (
     component as unknown as ComponentRef
   ).__f;
-  if (!factory) return null;
+  if (!factory) {
+    throw new Error(
+      'mount(): invalid component — expected the return value of defineComponent(). ' +
+      'Received: ' + typeof component,
+    );
+  }
 
   const instance = factory(target, props);
   return {
     root: instance.root,
     destroy: () => {
+      if (instance.__bindingsCleanup) instance.__bindingsCleanup();
       if (instance.__onDestroy) instance.__onDestroy();
       instance.root.innerHTML = '';
     },
   };
+}
+
+/**
+ * Convenience function to tear down a mounted component.
+ *
+ * Equivalent to calling `handle.destroy()` on the MountHandle returned
+ * by `mount()`.  Exported so that teardown is discoverable in the public
+ * API alongside `mount()`.
+ *
+ * @param handle - MountHandle returned by mount()
+ */
+export function unmount(handle: MountHandle): void {
+  handle.destroy();
 }

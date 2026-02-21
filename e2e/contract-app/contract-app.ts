@@ -1,9 +1,14 @@
 import { defineComponent, signal, registerGlobalStyles } from 'thane';
 import { batch, computed, effect } from 'thane';
+import { mount } from 'thane';
+import type { MountHandle } from 'thane';
 import { ChildCounter } from './child-counter.js';
 import { StyledChild } from './styled-child.js';
 import { CssImportChild } from './css-import-child.js';
 import { PropParent } from './prop-parent.js';
+import { DestroyParentSimple } from './destroy-parent-simple.js';
+import { DestroyParentConditional } from './destroy-parent-conditional.js';
+import { DestroyParentNested } from './destroy-parent-nested.js';
 
 // Register global styles (verifies registerGlobalStyles e2e)
 registerGlobalStyles(`
@@ -151,12 +156,8 @@ export const ContractApp = defineComponent('contract-app', () => {
   const compB = signal(4);
   const compSum = computed(() => compA() + compB());
 
-  // Display proxy signals — compiler only generates reactive bindings for signal(),
-  // so computed results are piped through regular signals for template reactivity.
-  const compFullDisplay = signal('John Doe');
-  const compSumDisplay = signal(7);
-  compFull.subscribe((v) => compFullDisplay(v), true);
-  compSum.subscribe((v) => compSumDisplay(v), true);
+  // Computed signals work directly in templates — the compiler detects any
+  // bare function call (e.g. compFull()) and generates reactive bindings.
 
   const setCompFirst = () => compFirst('Jane');
   const setCompLast = () => compLast('Smith');
@@ -404,10 +405,10 @@ export const ContractApp = defineComponent('contract-app', () => {
           <button data-testid="comp-set-first" @click=${setCompFirst}>setFirst</button>
           <button data-testid="comp-set-last" @click=${setCompLast}>setLast</button>
           <button data-testid="comp-inc-a" @click=${incCompA}>compA++</button>
-          <p data-testid="comp-full">${compFullDisplay()}</p>
+          <p data-testid="comp-full">${compFull()}</p>
           <p data-testid="comp-first">${compFirst()}</p>
           <p data-testid="comp-last">${compLast()}</p>
-          <p data-testid="comp-sum">${compSumDisplay()}</p>
+          <p data-testid="comp-sum">${compSum()}</p>
           <p data-testid="comp-a">${compA()}</p>
           <p data-testid="comp-b">${compB()}</p>
         </section>
@@ -435,6 +436,12 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="exc-before">${excBefore()}</p>
           <p data-testid="exc-after">${excAfter()}</p>
         </section>
+
+        <section data-testid="destroy-section">
+          <div data-testid="destroy-simple-target"></div>
+          <div data-testid="destroy-conditional-target"></div>
+          <div data-testid="destroy-nested-target"></div>
+        </section>
       </main>
     `,
     styles: css`
@@ -442,5 +449,28 @@ export const ContractApp = defineComponent('contract-app', () => {
         color: rgb(0, 128, 0);
       }
     `,
+    onMount: () => {
+      // Expose destroy-test mount functions on window for Playwright
+      const win = window as any;
+      win.__destroyLog = [];
+      win.__activeTrackers = new Set();
+      win.__intervalTicks = {};
+
+      win.__mountSimple = () => {
+        const t = document.createElement('div');
+        document.querySelector('[data-testid="destroy-simple-target"]')!.appendChild(t);
+        return mount(DestroyParentSimple, t);
+      };
+      win.__mountConditional = () => {
+        const t = document.createElement('div');
+        document.querySelector('[data-testid="destroy-conditional-target"]')!.appendChild(t);
+        return mount(DestroyParentConditional, t);
+      };
+      win.__mountNested = () => {
+        const t = document.createElement('div');
+        document.querySelector('[data-testid="destroy-nested-target"]')!.appendChild(t);
+        return mount(DestroyParentNested, t);
+      };
+    },
   };
 });

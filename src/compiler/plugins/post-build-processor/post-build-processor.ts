@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { Metafile, Plugin } from 'esbuild';
-import { sourceCache, PLUGIN_NAME, consoleColors } from '../../utils/index.js';
+import { sourceCache, PLUGIN_NAME, consoleColors, logger } from '../../utils/index.js';
 import type { BuildContext } from '../../types.js';
 
 import {
@@ -40,6 +40,11 @@ export interface PostBuildOptions {
   isProd?: boolean | undefined;
   useGzip?: boolean | undefined;
   buildContext?: BuildContext | undefined;
+  port?: number | undefined;
+  open?: boolean | undefined;
+  host?: string | undefined;
+  emptyOutDir?: boolean | undefined;
+  base?: string | undefined;
 }
 
 export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
@@ -51,6 +56,9 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
     distDir: config.distDir,
     isProd: config.isProd,
     useGzip: config.useGzip,
+    port: config.port,
+    open: config.open,
+    host: config.host,
   });
 
   let watchersStarted = false;
@@ -146,7 +154,9 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
       try {
         const stats = await fs.promises.stat(fullPath);
         sizeInBytes = stats.size;
-      } catch {}
+      } catch (statErr) {
+        logger.verbose(`Could not stat ${fullPath}, using metafile size: ${(statErr as Error).message}`);
+      }
 
       totalBundleSizeInBytes += sizeInBytes;
       fileSizeLog.push({ fileName, sizeInBytes });
@@ -173,7 +183,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
       build.onStart(async () => {
         sourceCache.clear();
 
-        if (fs.existsSync(distDir)) {
+        if (config.emptyOutDir !== false && fs.existsSync(distDir)) {
           await fs.promises.rm(distDir, { recursive: true });
         }
         await fs.promises.mkdir(distDir, { recursive: true });

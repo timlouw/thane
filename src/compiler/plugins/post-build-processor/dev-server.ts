@@ -35,6 +35,9 @@ export interface DevServerOptions {
   distDir: string;
   isProd?: boolean | undefined;
   useGzip?: boolean | undefined;
+  port?: number | undefined;
+  open?: boolean | undefined;
+  host?: string | undefined;
 }
 
 interface SSEController {
@@ -46,11 +49,16 @@ export class DevServer {
   private serverStarted = false;
   private sseClients: SSEController[] = [];
   private server: Server<undefined> | null = null;
-  private readonly serverPort = 4200;
+  private readonly serverPort: number;
+  private readonly serverHost: string;
+  private readonly autoOpen: boolean;
   private readonly options: DevServerOptions;
 
   constructor(options: DevServerOptions) {
     this.options = options;
+    this.serverPort = options.port ?? 4200;
+    this.serverHost = options.host ?? 'localhost';
+    this.autoOpen = options.open ?? false;
   }
 
   get isStarted(): boolean {
@@ -119,6 +127,7 @@ export class DevServer {
     try {
       this.server = Bun.serve({
         port,
+        hostname: this.serverHost,
         fetch: async (req: Request) => {
           const url = new URL(req.url);
           const requestedUrl = url.pathname;
@@ -188,6 +197,18 @@ export class DevServer {
       console.info('');
       console.info('');
       this.serverStarted = true;
+
+      if (this.autoOpen) {
+        const url = this.server.url.href;
+        // Cross-platform browser open — use spawn with arg array to avoid injection
+        const { platform } = process;
+        const cmd = platform === 'win32' ? 'cmd' : platform === 'darwin' ? 'open' : 'xdg-open';
+        const args = platform === 'win32' ? ['/c', 'start', '', url] : [url];
+        import('node:child_process').then(({ spawn }) => {
+          const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
+          child.unref();
+        }).catch(() => {});
+      }
     } catch (err: unknown) {
       const error = err as Error & { code?: string };
       if (error.code === 'EADDRINUSE') {

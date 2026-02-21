@@ -64,41 +64,62 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   const diagnostics: Diagnostic[] = [];
 
   // Only check entry-point files (files that call mount())
-  // Collect all mount() calls
-  const mountCalls: Array<{ call: ts.CallExpression; targetKey: string; line: number; character: number }> = [];
+  // Collect all mount() calls, scoped to the function/arrow body they appear in.
+  // mount() calls inside different closures may legally use variables with the
+  // same name (e.g. `const t = document.createElement('div')` in three separate
+  // arrow functions) — these must NOT be flagged as duplicates.
+
+  const scopeStack: Array<Map<string, { line: number; character: number }>> = [new Map()];
+  const pendingDiagnostics: Diagnostic[] = [];
+
+  const currentScope = () => scopeStack[scopeStack.length - 1]!;
 
   const visit = (node: ts.Node) => {
+    // Push a new scope for function-like boundaries (function declarations,
+    // arrow functions, method declarations). This means mount() calls inside
+    // different closures get independent duplicate tracking.
+    const isScopeBoundary =
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node);
+
+    if (isScopeBoundary) {
+      scopeStack.push(new Map());
+    }
+
     if (ts.isCallExpression(node) && isMountCall(node)) {
       const targetKey = getTargetKey(node, sourceFile);
       const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-      mountCalls.push({ call: node, targetKey, line, character });
+      const scope = currentScope();
+      const existing = scope.get(targetKey);
+      if (existing) {
+        const targetDesc = targetKey === '__default_body__' ? 'document.body (default)' : targetKey;
+        pendingDiagnostics.push(
+          createWarning(
+            `Duplicate mount() call targeting ${targetDesc}. ` +
+              `A previous mount() to the same target was found at line ${existing.line + 1}. ` +
+              'Mounting multiple components to the same target appends duplicate content ' +
+              'and causes binding collisions. Use a different target element for each mount().',
+            { file: filePath, line: line + 1, column: character + 1 },
+            ErrorCode.DUPLICATE_MOUNT_TARGET,
+          ),
+        );
+      } else {
+        scope.set(targetKey, { line, character });
+      }
     }
+
     ts.forEachChild(node, visit);
+
+    if (isScopeBoundary) {
+      scopeStack.pop();
+    }
   };
 
   visit(sourceFile);
 
-  // Check for duplicate targets
-  const seenTargets = new Map<string, { line: number; character: number }>();
-
-  for (const mc of mountCalls) {
-    const existing = seenTargets.get(mc.targetKey);
-    if (existing) {
-      const targetDesc = mc.targetKey === '__default_body__' ? 'document.body (default)' : mc.targetKey;
-      diagnostics.push(
-        createWarning(
-          `Duplicate mount() call targeting ${targetDesc}. ` +
-            `A previous mount() to the same target was found at line ${existing.line + 1}. ` +
-            'Mounting multiple components to the same target appends duplicate content ' +
-            'and causes binding collisions. Use a different target element for each mount().',
-          { file: filePath, line: mc.line + 1, column: mc.character + 1 },
-          ErrorCode.DUPLICATE_MOUNT_TARGET,
-        ),
-      );
-    } else {
-      seenTargets.set(mc.targetKey, { line: mc.line, character: mc.character });
-    }
-  }
+  diagnostics.push(...pendingDiagnostics);
 
   return diagnostics;
 };

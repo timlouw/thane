@@ -1,6 +1,6 @@
 {
   "name": "thane",
-  "version": "0.0.90",
+  "version": "0.0.113",
   "description": "Lightweight compile-time optimized component framework",
   "author": "Tim Louw",
   "license": "MIT",
@@ -45,6 +45,11 @@
     },
     "./client": {
       "types": "./client.d.ts"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/internal.d.ts",
+      "import": "./dist/runtime/internal.js",
+      "default": "./dist/runtime/internal.js"
     },
     "./compiler": {
       "types": "./dist/compiler/index.d.ts",

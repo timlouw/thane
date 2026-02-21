@@ -417,9 +417,28 @@ Default paths (when flags are omitted):
 | `--html` | HTML file to inject the bundle into |
 | `--config` | Path to config file (`thane.config.json` / `thane.config.jsonc`) |
 | `--assets` | Static assets directory to copy |
-| `--prod, -p` | Production mode (minification + tree-shaking) |
+| `--prod, -p` | Production mode (minification + tree-shaking). **Note:** all `console.*` and `debugger` statements are stripped from production builds by default. |
 | `--gzip` | Enable gzip compression (production only) |
 | `--app` | Application name (default: `client`) |
+| `--drop-console` | Strip `console.*` calls (default: on in prod, off in dev) |
+| `--no-drop-console` | Keep `console.*` calls even in production builds |
+| `--drop-debugger` | Strip `debugger` statements (default: on in prod, off in dev) |
+| `--no-drop-debugger` | Keep `debugger` statements even in production builds |
+| `--sourcemap` | Generate source maps (default: on in dev, off in prod) |
+| `--no-sourcemap` | Disable source maps even in dev builds |
+| `--strict-type-check` | Fail the build on TypeScript type errors (default: warn only) |
+| `--port <number>` | Dev server port (default: `4200`) |
+| `--open` / `--no-open` | Auto-open the browser on dev server start (default: off) |
+| `--host <addr>` | Dev server hostname (default: `localhost`). Pass `--host` with no value to listen on `0.0.0.0`. |
+| `--base <path>` | Public base path for asset URLs (default: `/`) |
+| `--target <targets>` | Comma-separated esbuild browser targets, e.g. `chrome120,firefox117` (default: built-in evergreen set) |
+| `--hash-file-names` / `--no-hash-file-names` | Append content hash to output filenames for cache-busting (default: on) |
+| `--define <JSON>` | Compile-time constant replacements as a JSON object, e.g. `'{"API_URL":"https://api.example.com"}'` |
+| `--env-prefix <prefix>` | Environment variable prefix to inject as `import.meta.env.*` (default: `THANE_`) |
+| `--empty-out-dir` / `--no-empty-out-dir` | Clear the output directory before each build (default: on) |
+| `--splitting` / `--no-splitting` | Enable code-splitting for dynamic imports (default: on) |
+| `--legal-comments <mode>` | How to handle license comments: `none`, `eof`, `linked`, `external` (default: `none`) |
+| `--analyze` / `--no-analyze` | Write an esbuild `metafile.json` for bundle analysis (default: off) |
 | `--verbose, -V` | Verbose output (show debug info) |
 | `--quiet, -q` | Suppress all non-error output |
 
@@ -440,8 +459,26 @@ Example config:
   "assetsDir": "./src/assets",
   "htmlTemplate": "./index.html",
   "prod": false,
+  "dropConsole": true,
+  "sourcemap": true,
+  "strictTypeCheck": false,
+  "port": 4200,
+  "open": false,
+  "host": "localhost",
+  "base": "/",
+  "target": ["chrome120", "firefox117", "safari17.2"],
+  "hashFileNames": true,
+  "define": {
+    "API_URL": "https://api.example.com"
+  },
+  "envPrefix": "THANE_",
+  "emptyOutDir": true,
+  "splitting": true,
+  "legalComments": "none",
+  "analyze": false,
   "commands": {
-    "build": { "prod": true }
+    "build": { "prod": true },
+    "dev": { "open": true, "port": 3000 }
   }
 }
 ```
@@ -457,7 +494,7 @@ Precedence is:
 
 ## 🧪 Testing
 
-All features are validated by **end-to-end browser tests** across Chromium, Firefox, and WebKit, plus **158+ unit tests** covering signals, computed, batch, effect, reactivity, and lint rules.
+All features are validated by **end-to-end browser tests** across Chromium, Firefox, and WebKit, plus **204 unit tests** covering signals, computed, batch, effect, reactivity, CLI parsing, build config, and lint rules.
 
 ```bash
 bun run test          # Unit tests

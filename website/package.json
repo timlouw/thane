@@ -11,6 +11,6 @@
     "preview": "thane serve --prod --entry ./main.ts --out ./dist --html ./index.html"
   },
   "dependencies": {
-    "thane": "file:./thane-0.0.92.tgz"
+    "thane": "file:.."
   }
 }

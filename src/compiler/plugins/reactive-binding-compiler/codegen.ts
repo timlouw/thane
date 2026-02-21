@@ -487,14 +487,17 @@ export const generateInitBindingsFunction = (
   const staticTemplates: string[] = []; // Collect static templates for repeat optimizations
 
   // ── Helper: generate child component mount lines for directive-nested mounts ──
-  const generateMountLines = (
+  // Returns { setupLines, cleanupExprs } — consumers add setupLines as statements
+  // and route cleanupExprs into the appropriate cleanup array/return value.
+  const generateMountInfo = (
     directiveId: string,
     indent: string,
     repeatCtx?: { itemVar: string; indexVar: string },
-  ): string[] => {
+  ): { setupLines: string[]; cleanupExprs: string[] } => {
     const mounts = childMountsByDirective?.get(directiveId);
-    if (!mounts || mounts.length === 0) return [];
-    const result: string[] = [];
+    if (!mounts || mounts.length === 0) return { setupLines: [], cleanupExprs: [] };
+    const setupLines: string[] = [];
+    const cleanupExprs: string[] = [];
     for (const { cm, globalIndex } of mounts) {
       const varName = `_cm${globalIndex}`;
       let propsExpr = cm.propsExpression;
@@ -505,11 +508,11 @@ export const generateInitBindingsFunction = (
           propsExpr = renameIdentifierInExpression(propsExpr, repeatCtx.indexVar, '_idx');
         }
       }
-      result.push(`${indent}const ${varName} = document.createElement('${cm.selector}');`);
-      result.push(`${indent}_gid('${cm.anchorId}').replaceWith(${varName});`);
-      result.push(`${indent}${cm.componentName}.__f(${varName}, ${propsExpr});`);
+      setupLines.push(`${indent}const ${varName} = document.createElement('${cm.selector}');`);
+      setupLines.push(`${indent}_gid('${cm.anchorId}').replaceWith(${varName});`);
+      cleanupExprs.push(`${BIND_FN.DESTROY_CHILD}(${cm.componentName}.__f(${varName}, ${propsExpr}))`);
     }
-    return result;
+    return { setupLines, cleanupExprs };
   };
 
   const buildEventListenerStatements = (events: EventBinding[], _rootVar: string): string[] => {
@@ -557,13 +560,10 @@ export const generateInitBindingsFunction = (
   const conditionalEventIds = new Set(collectConditionalEventBindings(conditionals).map((evt) => evt.id));
   lines.push('  initializeBindings = () => {');
   lines.push(`    ${ap.rootAlias}`);
-  lines.push(`    const _gid = (id) => document.getElementById(id);`);
-  // Collect all comment markers (<!--bN-->) into a map for O(1) lookup.
-  // NodeFilter.SHOW_COMMENT = 128
-  lines.push(
-    `    const _fcm = (root) => { const m = {}; const w = document.createTreeWalker(root, 128); let n; while (n = w.nextNode()) m[n.data] = n; return m; };`,
-  );
-  lines.push(`    const _cm = _fcm(r);`);
+  lines.push(`    const _gid = (id) => r.querySelector('#' + id);`);
+  // Collect top-level subscription unsubscribe handles for cleanup on destroy
+  lines.push(`    const _subs = [];`);
+  // Compute top-level binding info early so we can decide whether to emit the comment walker
   const topLevelBindings = bindings.filter((b) => !b.isInsideConditional);
   // Separate expression bindings (multi-signal) from simple bindings
   const simpleBindings = topLevelBindings.filter(isSimpleBinding);
@@ -572,6 +572,36 @@ export const generateInitBindingsFunction = (
   const textBindingIds = new Set<string>();
   for (const b of topLevelBindings) {
     if (b.type === 'text') textBindingIds.add(b.id);
+  }
+  // Check if _fcm (comment marker factory) is needed at any level — conditionals and
+  // whenElse branches may reference it even when top-level text bindings don't exist.
+  const hasConditionalTextBindings = (() => {
+    const checkCond = (cond: ConditionalBlock): boolean => {
+      if (cond.nestedBindings?.some((b) => b.type === 'text')) return true;
+      if (cond.nestedConditionals?.some((nc) => checkCond(nc))) return true;
+      return false;
+    };
+    if (conditionals.some(checkCond)) return true;
+    const checkWE = (we: WhenElseBlock): boolean => {
+      if (we.thenBindings?.some((b) => b.type === 'text')) return true;
+      if (we.elseBindings?.some((b) => b.type === 'text')) return true;
+      if (we.nestedConditionals?.some((nc) => checkCond(nc))) return true;
+      if (we.nestedWhenElse?.some((nwe) => checkWE(nwe))) return true;
+      return false;
+    };
+    if (whenElseBlocks.some(checkWE)) return true;
+    return false;
+  })();
+  const needsFcm = textBindingIds.size > 0 || hasConditionalTextBindings;
+  // Collect all comment markers (<!--bN-->) into a map for O(1) lookup.
+  // NodeFilter.SHOW_COMMENT = 128 — only emit when text bindings exist somewhere.
+  if (needsFcm) {
+    lines.push(
+      `    const _fcm = (root) => { const m = {}; const w = document.createTreeWalker(root, 128); let n; while (n = w.nextNode()) m[n.data] = n; return m; };`,
+    );
+    if (textBindingIds.size > 0) {
+      lines.push(`    const _cm = _fcm(r);`);
+    }
   }
   const topLevelIds = [...new Set(topLevelBindings.map((b) => b.id))];
   if (topLevelIds.length > 0) {
@@ -586,7 +616,7 @@ export const generateInitBindingsFunction = (
   }
   const signalGroups = groupBindingsBySignal(simpleBindings);
   for (const [signalName, signalBindings] of signalGroups) {
-    lines.push(`    ${generateConsolidatedSubscription(signalName, signalBindings, ap)};`);
+    lines.push(`    _subs.push(${generateConsolidatedSubscription(signalName, signalBindings, ap)});`);
   }
   // Expression bindings: multi-subscribe pattern
   // e.g. const _upd_b2 = () => { b2.nextSibling.data = count() + 1; };
@@ -606,7 +636,7 @@ export const generateInitBindingsFunction = (
     }
     lines.push(`    ${updFn}();`);
     for (const sig of signals) {
-      lines.push(`    ${ap.signal(sig)}.subscribe(${updFn}, true);`);
+      lines.push(`    _subs.push(${ap.signal(sig)}.subscribe(${updFn}, true));`);
     }
   }
   for (const cond of conditionals) {
@@ -614,8 +644,9 @@ export const generateInitBindingsFunction = (
     const nestedConds = cond.nestedConditionals || [];
     const escapedTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
     let nestedCode = '() => []';
-    const condMountLines = generateMountLines(cond.id, '      ');
-    if (nestedBindings.length > 0 || nestedConds.length > 0 || condMountLines.length > 0) {
+    const condMountInfo = generateMountInfo(cond.id, '      ');
+    const hasCondMounts = condMountInfo.setupLines.length > 0;
+    if (nestedBindings.length > 0 || nestedConds.length > 0 || hasCondMounts) {
       const nestedTextIds = new Set(nestedBindings.filter((b) => b.type === 'text').map((b) => b.id));
       const nestedIds = [...new Set(nestedBindings.map((b) => b.id))];
       const nestedLines: string[] = [];
@@ -643,12 +674,15 @@ export const generateInitBindingsFunction = (
           nestedLines.push(`      ${line}`);
         }
       }
-      for (const ml of condMountLines) {
-        nestedLines.push(ml);
+      for (const sl of condMountInfo.setupLines) {
+        nestedLines.push(sl);
       }
       nestedLines.push('      return [');
       for (const [signalName, signalBindings] of nestedSignalGroups) {
         nestedLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
+      }
+      for (const ce of condMountInfo.cleanupExprs) {
+        nestedLines.push(`        ${ce},`);
       }
       for (const binding of nestedExpressionBindings) {
         const updFn = `_upd_${binding.id}`;
@@ -722,12 +756,12 @@ export const generateInitBindingsFunction = (
 
     if (isSimpleExpr) {
       lines.push(
-        `    ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`,
+        `    _subs.push(${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode}));`,
       );
     } else {
       const signalsArray = cond.signalNames.map((s) => ap.signal(s)).join(', ');
       lines.push(
-        `    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode});`,
+        `    _subs.push(${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${escapedTemplate}\`, ${nestedCode}));`,
       );
     }
   }
@@ -742,8 +776,9 @@ export const generateInitBindingsFunction = (
       nestedWE: WhenElseBlock[],
       directiveId?: string,
     ): string => {
-      const weMountLines = directiveId ? generateMountLines(directiveId, '      ') : [];
-      if (bindings.length === 0 && nestedConds.length === 0 && nestedWE.length === 0 && weMountLines.length === 0) {
+      const weMountInfo = directiveId ? generateMountInfo(directiveId, '      ') : { setupLines: [], cleanupExprs: [] };
+      const hasWeMounts = weMountInfo.setupLines.length > 0;
+      if (bindings.length === 0 && nestedConds.length === 0 && nestedWE.length === 0 && !hasWeMounts) {
         return '() => []';
       }
 
@@ -766,14 +801,17 @@ export const generateInitBindingsFunction = (
         const updFn = `_upd_${binding.id}`;
         initLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${binding.expression}; };`);
       }
-      for (const ml of weMountLines) {
-        initLines.push(ml);
+      for (const sl of weMountInfo.setupLines) {
+        initLines.push(sl);
       }
 
       initLines.push('      return [');
       const signalGroups = groupBindingsBySignal(simpleNestedBindings);
       for (const [signalName, signalBindings] of signalGroups) {
         initLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
+      }
+      for (const ce of weMountInfo.cleanupExprs) {
+        initLines.push(`        ${ce},`);
       }
       for (const binding of exprNestedBindings) {
         const updFn = `_upd_${binding.id}`;
@@ -828,10 +866,10 @@ export const generateInitBindingsFunction = (
 
     const signalsArray = we.signalNames.map((s) => ap.signal(s)).join(', ');
     lines.push(
-      `    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThenTemplate}\`, ${thenCode});`,
+      `    _subs.push(${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThenTemplate}\`, ${thenCode}));`,
     );
     lines.push(
-      `    ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElseTemplate}\`, ${elseCode});`,
+      `    _subs.push(${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElseTemplate}\`, ${elseCode}));`,
     );
   }
   // Cached prototype methods for repeat block hot paths (avoids prototype chain lookup per call)
@@ -1054,13 +1092,14 @@ export const generateInitBindingsFunction = (
         const _keyProp = rep.trackByFn ? extractKeyProperty(rep.trackByFn) : null;
         const keyFnExpr = _keyProp ? `'${_keyProp}'` : rep.trackByFn || '(_, i) => i';
 
-        const repMountLines = generateMountLines(rep.id, '        ', {
+        const repMountInfo = generateMountInfo(rep.id, '        ', {
           itemVar: rep.itemVar,
           indexVar: rep.indexVar || '_idx',
         });
+        const hasRepMounts = repMountInfo.setupLines.length > 0;
         const hasSignalSubs = signalSubscriptions.length > 0;
         const needsCleanups =
-          hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0;
+          hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0 || hasRepMounts;
 
         const updateParts = [...updateStatements, ...commentUpdateStatements];
         if (useDelegation) {
@@ -1096,11 +1135,14 @@ export const generateInitBindingsFunction = (
           lines.push(`        ${eventAddStatements.join('; ')};`);
         }
         lines.push(`        ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref);`);
-        for (const ml of repMountLines) {
-          lines.push(ml);
+        for (const sl of repMountInfo.setupLines) {
+          lines.push(sl);
         }
         if (needsCleanups) {
           lines.push(`        const _cleanups = [];`);
+          for (const ce of repMountInfo.cleanupExprs) {
+            lines.push(`        _cleanups.push(${ce});`);
+          }
           for (const sub of signalSubscriptions) {
             lines.push(`        ${sub};`);
           }
@@ -1326,7 +1368,7 @@ export const generateInitBindingsFunction = (
             }
           }
           lines.push(
-            `            return { itemSignal: null, el: _nrEl, cleanups: ${hasInnerSignalSubs ? '_nrCleanups' : '[]'}, value: _nrItem,`,
+            `            return { el: _nrEl, cleanups: ${hasInnerSignalSubs ? '_nrCleanups' : '[]'}, value: _nrItem,`,
           );
           lines.push(
             `              update: (_nrItem) => { ${innerUpdateParts.join('; ')}${innerUpdateParts.length ? ';' : ''} } };`,
@@ -1340,12 +1382,12 @@ export const generateInitBindingsFunction = (
           lines.push(`        _nrRc_${nr.id}.reconcile(${nrItemsExpr});`);
           // If the nested repeat is driven by a signal, subscribe
           if (nr.signalName) {
-            lines.push(`        ${nrSignalRef}.subscribe(() => { _nrRc_${nr.id}.reconcile(${nrItemsExpr}); }, true);`);
+            lines.push(`        _cleanups.push(${nrSignalRef}.subscribe(() => { _nrRc_${nr.id}.reconcile(${nrItemsExpr}); }, true));`);
           }
           lines.push(`        _cleanups.push(() => { _nrRc_${nr.id}.clearAll(); });`);
         }
         lines.push(
-          `        return { itemSignal: null, el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`,
+          `        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`,
         );
         lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
         lines.push(`      },`);
@@ -1362,12 +1404,12 @@ export const generateInitBindingsFunction = (
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
           lines.push(`    _syncEmpty_${rep.id}(${ap.signal(rep.signalName)}());`);
           lines.push(
-            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true);`,
+            `    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true));`,
           );
         } else {
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
           lines.push(
-            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`,
+            `    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true));`,
           );
         }
         // Emit delegated event listeners on the container (after reconciler is ready)
@@ -1423,14 +1465,18 @@ export const generateInitBindingsFunction = (
         lines.push(`        const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true);`);
         lines.push(`        ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref);`);
         // Child component mounts inside repeat items (Step 7 + Step 10)
-        const repMountLines = generateMountLines(rep.id, '        ', {
+        const fbRepMountInfo = generateMountInfo(rep.id, '        ', {
           itemVar: rep.itemVar,
           indexVar: rep.indexVar || '_idx',
         });
-        for (const ml of repMountLines) {
-          lines.push(ml);
+        for (const sl of fbRepMountInfo.setupLines) {
+          lines.push(sl);
         }
-        lines.push(`        return { itemSignal: null, el: _el, cleanups: [], value: item, update: () => {} };`);
+        if (fbRepMountInfo.cleanupExprs.length > 0) {
+          lines.push(`        return { el: _el, cleanups: [${fbRepMountInfo.cleanupExprs.join(', ')}], value: item, update: () => {} };`);
+        } else {
+          lines.push(`        return { el: _el, cleanups: [], value: item, update: () => {} };`);
+        }
         lines.push(`      },`);
         lines.push(`    ${keyFnArg});`);
 
@@ -1445,12 +1491,12 @@ export const generateInitBindingsFunction = (
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
           lines.push(`    _syncEmpty_${rep.id}(${ap.signal(rep.signalName)}());`);
           lines.push(
-            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true);`,
+            `    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); _syncEmpty_${rep.id}(items); }, true));`,
           );
         } else {
           lines.push(`    ${reconcilerVar}.reconcile(${ap.signal(rep.signalName)}());`);
           lines.push(
-            `    ${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true);`,
+            `    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${reconcilerVar}.reconcile(items); }, true));`,
           );
         }
 
@@ -1511,13 +1557,13 @@ export const generateInitBindingsFunction = (
         lines.push('      }');
         lines.push('    };');
         lines.push(`    ${renderVar}(${ap.signal(rep.signalName)}());`);
-        lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true);`);
+        lines.push(`    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true));`);
 
         const fallbackSignals = [
           ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
         ];
         for (const sig of fallbackSignals) {
-          lines.push(`    ${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true);`);
+          lines.push(`    _subs.push(${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true));`);
         }
         continue;
       }
@@ -1575,12 +1621,12 @@ export const generateInitBindingsFunction = (
     lines.push('      }');
     lines.push('    };');
     lines.push(`    ${renderVar}(${ap.signal(rep.signalName)}());`);
-    lines.push(`    ${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true);`);
+    lines.push(`    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true));`);
     const fallbackSignals = [
       ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
     ];
     for (const sig of fallbackSignals) {
-      lines.push(`    ${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true);`);
+      lines.push(`    _subs.push(${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true));`);
     }
   }
   if (eventBindings.length > 0) {
@@ -1592,6 +1638,8 @@ export const generateInitBindingsFunction = (
     }
   }
 
+  // Return cleanup function that unsubscribes all top-level subscriptions
+  lines.push(`    return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };`);
   lines.push('  };');
 
   return { code: '\n\n' + lines.join('\n'), staticTemplates };
@@ -1608,9 +1656,28 @@ export const generateStaticTemplate = (content: string, ap: AccessPattern = CLOS
 };
 
 /**
- * Generate an updated import statement with additional bind functions
+ * Generate updated import statements — splits user-facing imports (from 'thane')
+ * and compiler-internal imports (from 'thane/runtime') into two separate lines.
+ *
+ * This keeps the public API surface clean: `import { signal } from 'thane'`
+ * never shows __registerComponent or __bindIf in IDE autocomplete.
  */
 export const generateUpdatedImport = (importInfo: ImportInfo, requiredBindFunctions: string[]): string => {
-  const allImports = [...importInfo.namedImports, ...requiredBindFunctions];
-  return `import { ${allImports.join(', ')} } from ${importInfo.quoteChar}${importInfo.moduleSpecifier}${importInfo.quoteChar}`;
+  const q = importInfo.quoteChar;
+  const userImports = importInfo.namedImports;
+  const internalImports = requiredBindFunctions;
+
+  // Resolve the internal specifier from the user's module specifier.
+  // 'thane' → 'thane/runtime', relative paths stay unchanged (dev/test).
+  const spec = importInfo.moduleSpecifier;
+  const internalSpec = spec === 'thane' ? 'thane/runtime' : spec;
+
+  const lines: string[] = [];
+  if (userImports.length > 0) {
+    lines.push(`import { ${userImports.join(', ')} } from ${q}${spec}${q}`);
+  }
+  if (internalImports.length > 0) {
+    lines.push(`import { ${internalImports.join(', ')} } from ${q}${internalSpec}${q}`);
+  }
+  return lines.join('\n');
 };

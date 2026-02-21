@@ -15,14 +15,11 @@ const getTempEl = (): HTMLTemplateElement => {
   return tempEl;
 };
 
-// Reusable Set for keyed reconciliation (avoids allocation per reconcile pass)
-const _keySet = new Set<string | number>();
-
 /**
  * Internal helper for conditional binding (when/whenElse)
  */
 const bindConditional = (
-  _root: ComponentRoot,
+  root: ComponentRoot,
   id: string,
   template: string,
   initNested: (contentEl?: Element) => (() => void)[],
@@ -33,8 +30,8 @@ const bindConditional = (
   let cleanups: (() => void)[] = [];
   let bindingsInitialized = false;
 
-  // Use provided anchor element (for repeat-nested conditionals) or global getElementById
-  let currentNode: Element | null = anchorEl || document.getElementById(id);
+  // Use provided anchor element (for repeat-nested conditionals) or scoped lookup within component root
+  let currentNode: Element | null = anchorEl || (root as Element).querySelector('#' + id);
   if (!currentNode) return () => {};
   const initiallyShowing = currentNode.tagName !== 'TEMPLATE';
 
@@ -75,6 +72,13 @@ const bindConditional = (
       p.id = id;
       currentNode.replaceWith(p);
       currentNode = p;
+    }
+    // Dispose nested subscriptions so hidden computed/effects don't keep
+    // firing against detached DOM. They will re-initialize on next show().
+    if (bindingsInitialized) {
+      for (let i = 0; i < cleanups.length; i++) cleanups[i]?.();
+      cleanups = [];
+      bindingsInitialized = false;
     }
   };
 
@@ -141,7 +145,6 @@ export const __bindIfExpr = (
  * Managed item in a repeat directive
  */
 interface ManagedItem<T> {
-  itemSignal: Signal<T> | null;
   el: Element;
   cleanups: (() => void)[];
   /** Direct update function — bypasses signal when set (A7 optimization) */
@@ -357,19 +360,20 @@ export function createKeyedReconciler<T>(
       }
     }
 
-    // General keyed reconciliation
-    for (let i = 0; i < newLength; i++) _keySet.add(keyFn(newItems[i]!, i));
+    // General keyed reconciliation — use a local Set to avoid reentrancy
+    // corruption if removeItem() triggers nested reconcile calls.
+    const retainedKeys = new Set<string | number>();
+    for (let i = 0; i < newLength; i++) retainedKeys.add(keyFn(newItems[i]!, i));
 
     const kept: ManagedItem<T>[] = [];
     for (let i = 0; i < oldLength; i++) {
       const managed = managedItems[i]!;
-      if (_keySet.has(managed.key!)) kept.push(managed);
+      if (retainedKeys.has(managed.key!)) kept.push(managed);
       else {
         removeItem(managed);
         keyMap.delete(managed.key!);
       }
     }
-    _keySet.clear();
     managedItems.length = kept.length;
     for (let i = 0; i < kept.length; i++) managedItems[i] = kept[i]!;
 

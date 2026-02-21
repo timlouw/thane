@@ -1,4 +1,4 @@
-import { defineComponent } from 'thane';
+import { defineComponent as dc } from 'thane';
 import { InstallTabs } from '../components/install-tabs.js';
 import { FeatureCard } from '../components/feature-card.js';
 import { LiveDemo } from '../components/live-demo.js';
@@ -112,7 +112,7 @@ const PLAYGROUND_SNIPPET = `const Greeting = defineComponent(() => {
 
 mount(Greeting);`;
 
-export const HomePage = defineComponent('home-page', ({ root }) => ({
+export const HomePage = dc('home-page', ({ root }) => ({
   template: html`
     <div class="home-page">
       <!-- Hero Section -->

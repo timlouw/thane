@@ -3,6 +3,8 @@
  */
 
 import { build, context, type BuildOptions } from 'esbuild';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { BuildConfig } from './types.js';
 import { consoleColors, createBuildContext, BROWSER_TARGETS } from '../utils/index.js';
 
@@ -29,7 +31,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
 
   // Create plugins with config
   const basePlugins = [
-    TypeCheckPlugin({ ...(config.strictTypeCheck != null && { strict: config.strictTypeCheck }) }),
+    TypeCheckPlugin({ strict: config.strictTypeCheck }),
     ThaneLinterPlugin(),
     RoutesPrecompilerPlugin,
     ComponentPrecompilerPlugin(buildContext),
@@ -48,6 +50,11 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     isProd: config.isProd,
     useGzip: config.useGzip,
     buildContext,
+    port: config.port,
+    open: config.open,
+    host: config.host,
+    emptyOutDir: config.emptyOutDir,
+    base: config.base,
   };
 
   const prodPlugins = [
@@ -59,21 +66,29 @@ export async function runBuild(config: BuildConfig): Promise<void> {
 
   const devPlugins = [...basePlugins, PostBuildPlugin(postBuildOptions)];
 
+  // Resolve esbuild targets: user-specified or built-in defaults
+  const targets = config.target.length > 0 ? config.target : [...BROWSER_TARGETS];
+
+  // Resolve entry/chunk naming pattern based on hashFileNames
+  const entryNames = config.hashFileNames ? '[name]-[hash]' : '[name]';
+  const chunkNames = config.hashFileNames ? '[name]-[hash]' : '[name]';
+
   const baseEsbuildConfig: BuildOptions = {
     entryPoints: config.entryPoints,
     bundle: true,
     platform: 'browser',
-    target: [...BROWSER_TARGETS],
+    target: targets,
     outdir: config.outDir,
     treeShaking: true,
     logLevel: 'error',
-    splitting: true,
+    splitting: config.splitting,
     format: 'esm',
-    sourcemap: config.isProd ? false : true,
+    sourcemap: config.sourcemap,
     metafile: true,
-    entryNames: '[name]-[hash]',
-    chunkNames: '[name]-[hash]',
-    legalComments: 'none',
+    entryNames,
+    chunkNames,
+    legalComments: config.legalComments,
+    ...(Object.keys(config.define).length > 0 && { define: config.define }),
   };
 
   const devBuildConfig: BuildOptions = {
@@ -83,13 +98,17 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     plugins: devPlugins,
   };
 
+  const prodDrop: ('console' | 'debugger')[] = [];
+  if (config.dropConsole) prodDrop.push('console');
+  if (config.dropDebugger) prodDrop.push('debugger');
+
   const prodBuildConfig: BuildOptions = {
     ...baseEsbuildConfig,
     minify: true,
     minifyWhitespace: true,
     minifyIdentifiers: true,
     minifySyntax: true,
-    drop: ['console', 'debugger'],
+    ...(prodDrop.length > 0 && { drop: prodDrop }),
     write: false,
     plugins: prodPlugins,
   };
@@ -98,12 +117,26 @@ export async function runBuild(config: BuildConfig): Promise<void> {
 
   try {
     if (!config.serve) {
-      await build(buildConfig);
+      const result = await build(buildConfig);
       console.info(consoleColors.green, `\n⏱️  Build completed in ${(performance.now() - startTime).toFixed(2)}ms`);
+
+      // Write metafile for bundle analysis when --analyze is enabled
+      if (config.analyze && result.metafile) {
+        const metafilePath = join(config.outDir, 'metafile.json');
+        await writeFile(metafilePath, JSON.stringify(result.metafile, null, 2), 'utf8');
+        console.info(consoleColors.blue, `📊 Metafile written to ${metafilePath}`);
+      }
     } else {
       const ctx = await context(buildConfig);
       await ctx.watch({});
       console.info(consoleColors.blue, 'Watching for changes...');
+
+      // Graceful shutdown — dispose esbuild watcher on SIGINT/SIGTERM
+      const shutdown = () => {
+        ctx.dispose().then(() => process.exit(0));
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     }
   } catch (err) {
     throw new Error(`Build failed: ${err instanceof Error ? err.message : err}`);

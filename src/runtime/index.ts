@@ -52,22 +52,73 @@ declare global {
 }
 
 // Export types
-export type { Signal, ComponentRoot } from './types.js';
+export type { Signal, ReadonlySignal, ComponentRoot } from './types.js';
 
 // Export signal and reactive primitives
-export { signal, batch, computed, effect } from './signal.js';
+export { signal, batch, computed, effect, untrack } from './signal.js';
 
-// Export component
+// Export component (public API only — internal symbols live in ./internal.ts)
 export {
   defineComponent,
-  __registerComponent,
   registerGlobalStyles,
   mount,
-  __enableComponentStyles,
+  unmount,
   type ComponentContext,
   type ComponentReturnType,
   type MountHandle,
 } from './component.js';
 
-// Export DOM binding utilities
-export { __bindIf, __bindIfExpr, createKeyedReconciler } from './dom-binding.js';
+// ─────────────────────────────────────────────────────────────
+//  Template tag shims
+//
+//  The compiler replaces html`` and css`` at build time.  These
+//  runtime shims exist so that:
+//    - Unit tests work without the full build pipeline
+//    - Non-compiled contexts (SSR, REPL) get a sensible fallback
+//    - TypeScript is satisfied at the call site
+//
+//  The html shim escapes interpolated values to prevent XSS.
+//  In compiled builds, the compiler generates direct DOM bindings
+//  that bypass innerHTML entirely, so this is a non-compiled-only
+//  safety net.
+// ─────────────────────────────────────────────────────────────
+
+/** Escape HTML-significant characters in interpolated values. */
+const _esc = (val: unknown): string => {
+  const s = String(val);
+  if (s.length === 0) return s;
+  // Only allocate a new string when at least one special char is present.
+  // The 5 characters checked are the full set required by the HTML spec.
+  if (!/[&<>"']/.test(s)) return s;
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+};
+
+/**
+ * Runtime shim for the `html` tagged template literal.
+ *
+ * In compiled builds this is replaced by the compiler.  In tests or
+ * non-compiled environments it concatenates the template literal with
+ * HTML-escaped interpolated values to prevent XSS injection.
+ */
+export const html = (strings: TemplateStringsArray, ...values: unknown[]): string => {
+  let result = strings[0]!;
+  for (let i = 0; i < values.length; i++) {
+    result += _esc(values[i]) + strings[i + 1]!;
+  }
+  return result;
+};
+
+/**
+ * Runtime shim for the `css` tagged template literal.
+ *
+ * Identical behaviour to the old html shim — returns a plain concatenated
+ * string (CSS values are not HTML-escaped since they are applied via
+ * CSSStyleSheet, not innerHTML).
+ */
+export const css = (strings: TemplateStringsArray, ...values: unknown[]): string =>
+  String.raw({ raw: strings }, ...values);

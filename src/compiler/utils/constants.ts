@@ -32,9 +32,14 @@ export const BIND_FN = {
   KEYED_RECONCILER: 'createKeyedReconciler',
   ENABLE_STYLES: '__enableComponentStyles',
   REGISTER_COMPONENT: '__registerComponent',
+  REGISTER_COMPONENT_LEAN: '__registerComponentLean',
+  DESTROY_CHILD: '__dc',
 } as const;
 
-/** Shared browser targets used by the esbuild build runner. */
-export const BROWSER_TARGETS = ['es2022', 'chrome94', 'firefox93', 'safari15', 'edge94'] as const;
+/** Shared browser targets used by the esbuild build runner.
+ * Minimum versions are set to support CSS Nesting (used by component scoped styles)
+ * and modern JS features (optional chaining, nullish coalescing, etc.).
+ */
+export const BROWSER_TARGETS = ['es2022', 'chrome120', 'firefox117', 'safari17.2', 'edge120'] as const;
 
 export const generateSelectorHTML = (selector: string): string => `<${selector}></${selector}>`;

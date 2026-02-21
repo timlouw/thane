@@ -1,10 +1,10 @@
-import { defineComponent } from 'thane';
+import { defineComponent as dc } from 'thane';
 
 /**
  * ReleasesPage — Release notes with links to GitHub.
  */
 
-export const ReleasesPage = defineComponent('releases-page', () => ({
+export const ReleasesPage = dc('releases-page', () => ({
   template: html`
     <div class="releases-page">
       <div class="container">

@@ -65,7 +65,7 @@ export const CodeBlock = defineComponent<CodeBlockProps>('code-block', ({ root, 
     template: html`
       <div class="code-block">
         <div class="code-header">
-          <span class="code-lang">${props.lang || 'typescript'}</span>
+          <span class="code-lang"></span>
           <div class="code-actions">
             <button class="code-copy-btn" @click=${copyCode}>
               ${whenElse(
@@ -140,6 +140,11 @@ export const CodeBlock = defineComponent<CodeBlockProps>('code-block', ({ root, 
       }
     `,
     onMount: () => {
+      const langEl = root.querySelector('.code-lang');
+      if (langEl) {
+        langEl.textContent = props.lang || 'typescript';
+      }
+
       const codeEl = root.querySelector('.code-content');
       if (codeEl) {
         codeEl.textContent = props.code;

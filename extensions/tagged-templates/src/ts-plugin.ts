@@ -19,6 +19,9 @@ function init(modules: { typescript: typeof import('typescript') }) {
   const ts = modules.typescript;
 
   function create(info: ts.server.PluginCreateInfo) {
+    const log = (msg: string) => info.project.projectService.logger.info(`[thane-ts-plugin] ${msg}`);
+    log('Plugin loaded successfully');
+
     const ls = info.languageService;
 
     // Create a proxy that delegates everything to the real language service
@@ -35,17 +38,20 @@ function init(modules: { typescript: typeof import('typescript') }) {
       options: ts.GetCompletionsAtPositionOptions | undefined,
       formattingSettings?: ts.FormatCodeSettings,
     ) => {
+      log(`getCompletionsAtPosition called: ${fileName}:${position}`);
       const original = ls.getCompletionsAtPosition(fileName, position, options, formattingSettings);
       if (!original) return original;
 
       try {
         const program = ls.getProgram();
-        if (!program) return original;
+        if (!program) { log('No program'); return original; }
 
         const sourceFile = program.getSourceFile(fileName);
-        if (!sourceFile) return original;
+        if (!sourceFile) { log('No source file'); return original; }
 
-        if (!isInsideTaggedTemplateExpression(sourceFile, position)) {
+        const inside = isInsideTaggedTemplateExpression(sourceFile, position);
+        log(`isInsideTaggedTemplate: ${inside}, entries: ${original.entries.length}`);
+        if (!inside) {
           return original;
         }
 
@@ -71,8 +77,10 @@ function init(modules: { typescript: typeof import('typescript') }) {
           return true;
         });
 
+        log(`Filtered: ${original.entries.length} -> ${filtered.length}`);
         return { ...original, entries: filtered };
-      } catch {
+      } catch (e) {
+        log(`Error: ${e}`);
         // On any error, fall back to unfiltered completions
         return original;
       }
@@ -97,6 +105,7 @@ function init(modules: { typescript: typeof import('typescript') }) {
         if (ts.isTaggedTemplateExpression(node)) {
           const tag = node.tag;
           const tagName = ts.isIdentifier(tag) ? tag.text : '';
+          log(`Found tagged template: tag=${tagName}, range=${start}-${end}`);
 
           if (tagName === 'html' || tagName === 'css') {
             const template = node.template;

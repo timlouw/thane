@@ -4,7 +4,7 @@ type InstallTabsProps = {
   size?: string;
 };
 
-export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ props }) => {
+export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ root, props }) => {
   const activeTab = signal('bun');
   const copied = signal(false);
 
@@ -17,11 +17,6 @@ export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ 
 
   const command = computed(() => commands[activeTab()] || commands.bun);
 
-  const bunActive = computed(() => (activeTab() === 'bun' ? 'tab-active' : ''));
-  const npmActive = computed(() => (activeTab() === 'npm' ? 'tab-active' : ''));
-  const yarnActive = computed(() => (activeTab() === 'yarn' ? 'tab-active' : ''));
-  const pnpmActive = computed(() => (activeTab() === 'pnpm' ? 'tab-active' : ''));
-
   const copyCommand = () => {
     navigator.clipboard.writeText(command()).catch(() => {});
     copied(true);
@@ -32,12 +27,12 @@ export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ 
 
   return {
     template: html`
-      <div class="install-tabs ${compact ? 'install-compact' : ''}">
+      <div class="install-tabs">
         <div class="tab-bar">
-          <button class="tab-btn ${bunActive()}" @click=${() => activeTab('bun')}>bun</button>
-          <button class="tab-btn ${npmActive()}" @click=${() => activeTab('npm')}>npm</button>
-          <button class="tab-btn ${yarnActive()}" @click=${() => activeTab('yarn')}>yarn</button>
-          <button class="tab-btn ${pnpmActive()}" @click=${() => activeTab('pnpm')}>pnpm</button>
+          <button id="tab-bun" class="tab-btn" @click=${() => activeTab('bun')}>bun</button>
+          <button id="tab-npm" class="tab-btn" @click=${() => activeTab('npm')}>npm</button>
+          <button id="tab-yarn" class="tab-btn" @click=${() => activeTab('yarn')}>yarn</button>
+          <button id="tab-pnpm" class="tab-btn" @click=${() => activeTab('pnpm')}>pnpm</button>
         </div>
         <div class="command-bar">
           <span class="command-prompt">$</span>
@@ -143,5 +138,19 @@ export const InstallTabs = defineComponent<InstallTabsProps>('install-tabs', ({ 
         background: var(--bg-surface);
       }
     `,
+    onMount: () => {
+      if (compact) {
+        root.querySelector('.install-tabs')?.classList.add('install-compact');
+      }
+
+      const updateActiveTabs = (tab: string) => {
+        root.querySelector('#tab-bun')?.classList.toggle('tab-active', tab === 'bun');
+        root.querySelector('#tab-npm')?.classList.toggle('tab-active', tab === 'npm');
+        root.querySelector('#tab-yarn')?.classList.toggle('tab-active', tab === 'yarn');
+        root.querySelector('#tab-pnpm')?.classList.toggle('tab-active', tab === 'pnpm');
+      };
+
+      activeTab.subscribe(updateActiveTabs);
+    },
   };
 });

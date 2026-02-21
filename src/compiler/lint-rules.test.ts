@@ -365,6 +365,22 @@ describe('THANE409 — no-aliased-component-export', () => {
     const src = `export { helper } from './utils.js';`;
     expect(noAliasedComponentExport.check(parse(src), 'test.ts')).toEqual([]);
   });
+
+  test('passes with type-only re-export declaration', () => {
+    const src = `export type { Signal, ReadonlySignal } from './types.js';`;
+    expect(noAliasedComponentExport.check(parse(src), 'test.ts')).toEqual([]);
+  });
+
+  test('passes with inline type-only specifiers in re-export', () => {
+    const src = `export { defineComponent, type ComponentContext, type MountHandle } from './component.js';`;
+    // defineComponent is not PascalCase so it's skipped; the type specifiers should also be skipped
+    expect(noAliasedComponentExport.check(parse(src), 'test.ts')).toEqual([]);
+  });
+
+  test('passes with type-only re-export of PascalCase names', () => {
+    const src = `export type { ComponentRoot } from './types.js';`;
+    expect(noAliasedComponentExport.check(parse(src), 'test.ts')).toEqual([]);
+  });
 });
 
 // ============================================================================
@@ -455,6 +471,40 @@ describe('THANE411 — duplicate-mount-target', () => {
   test('passes with no mount calls', () => {
     const src = `const x = 42;`;
     expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
+  });
+
+  test('passes with same variable name in different closure scopes', () => {
+    const src = `
+      import { mount } from 'thane';
+      const win = window;
+      win.__mountA = () => {
+        const t = document.createElement('div');
+        return mount(AppA, t);
+      };
+      win.__mountB = () => {
+        const t = document.createElement('div');
+        return mount(AppB, t);
+      };
+      win.__mountC = () => {
+        const t = document.createElement('div');
+        return mount(AppC, t);
+      };
+    `;
+    expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
+  });
+
+  test('still flags duplicate mount in the same closure scope', () => {
+    const src = `
+      import { mount } from 'thane';
+      const setup = () => {
+        const el = document.getElementById('root')!;
+        mount(AppA, el);
+        mount(AppB, el);
+      };
+    `;
+    const d = duplicateMountTarget.check(parse(src), 'test.ts');
+    expect(d).toHaveLength(1);
+    expect(codes(d)).toEqual([ErrorCode.DUPLICATE_MOUNT_TARGET]);
   });
 });
 

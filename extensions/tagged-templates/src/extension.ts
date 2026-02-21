@@ -43,14 +43,16 @@ function generateReinjectionGrammar(mappings: TagMapping[]): object {
   const embeddedScopes = mappings.map((m) => m.embeddedScope);
 
   // Build the injection selector: inject into all embedded block scopes
-  // across all JS/TS source types
+  // across all JS/TS source types.
+  // IMPORTANT: every selector part needs the L: prefix for left-injection
+  // priority, so ${...} expressions get TypeScript scoping over the
+  // embedded language (HTML, CSS, etc.).
   const sourceScopes = ['source.js', 'source.jsx', 'source.js.jsx', 'source.ts', 'source.tsx'];
   const selectorParts: string[] = [];
 
   for (const source of sourceScopes) {
-    if (embeddedScopes.length > 0) {
-      const embedded = embeddedScopes.join(`, ${source} `);
-      selectorParts.push(`L:${source} ${embedded}`);
+    for (const scope of embeddedScopes) {
+      selectorParts.push(`L:${source} ${scope}`);
     }
   }
 
@@ -720,9 +722,36 @@ function promptReload(message: string): void {
   });
 }
 
+// Output channel for extension diagnostics (visible in Output panel dropdown)
+let outputChannel: vscode.OutputChannel;
+
+function log(msg: string): void {
+  const ts = new Date().toISOString().replace('T', ' ').substring(0, 23);
+  outputChannel.appendLine(`[${ts}] ${msg}`);
+}
+
 export function activate(context: vscode.ExtensionContext): void {
+  outputChannel = vscode.window.createOutputChannel('Tagged Templates');
+  context.subscriptions.push(outputChannel);
+  log('Extension activating...');
+  log(`Extension path: ${context.extensionPath}`);
+
+  // Verify ts-plugin is in node_modules
+  const pluginPath = path.join(context.extensionPath, 'node_modules', 'thane-ts-plugin', 'index.js');
+  const pluginExists = fs.existsSync(pluginPath);
+  log(`TS plugin at ${pluginPath}: ${pluginExists ? 'FOUND' : 'MISSING'}`);
+  if (!pluginExists) {
+    log('WARNING: thane-ts-plugin not found! Completion filtering inside ${} will not work.');
+    vscode.window.showWarningMessage(
+      'Tagged Templates: thane-ts-plugin not found in node_modules. Completion filtering inside ${} will not work.',
+    );
+  }
+
   // Generate grammars on first activation
+  const tags = getTagConfig();
+  log(`Tag config: ${JSON.stringify(tags)}`);
   const changed = regenerateGrammars(context);
+  log(`Grammars regenerated: ${changed ? 'YES (files changed)' : 'NO (unchanged)'}`);
   if (changed) {
     promptReload('Tagged Templates: Grammar files have been updated. Reload the window to apply syntax highlighting.');
   }

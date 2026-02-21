@@ -19,19 +19,21 @@
  */
 
 import type { Plugin } from 'esbuild';
+import esbuild from 'esbuild';
 import { logger } from '../../utils/index.js';
 
 const NAME = 'js-output-optimizer';
 
 /**
  * Validate that a string is syntactically valid JavaScript.
- * Uses `new Function()` as a lightweight parse check — no execution occurs.
+ * Uses esbuild's parser — no code execution, no CSP issues.
  * Returns true if valid, false if a syntax error is detected.
  */
 const isValidJS = (source: string): boolean => {
   try {
-    // new Function() parses but does not execute — used purely for syntax validation
-    new Function(source);
+    // transformSync with no transforms is a pure syntax check.
+    // Loader 'js' parses as a script (not module) for maximum compat.
+    esbuild.transformSync(source, { loader: 'js' });
     return true;
   } catch {
     return false;

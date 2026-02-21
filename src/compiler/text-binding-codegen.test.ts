@@ -37,6 +37,21 @@ const buildAndReadJs = async (source: string): Promise<string> => {
       serve: false,
       useGzip: false,
       strictTypeCheck: false,
+      dropConsole: true,
+      dropDebugger: true,
+      sourcemap: false,
+      port: 4200,
+      open: false,
+      host: 'localhost',
+      base: '/',
+      target: [],
+      hashFileNames: true,
+      define: {},
+      envPrefix: 'THANE_',
+      emptyOutDir: true,
+      splitting: true,
+      legalComments: 'none',
+      analyze: false,
     });
 
     const jsFiles: string[] = [];

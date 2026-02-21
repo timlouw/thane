@@ -7,5 +7,6 @@ extension-test.ts
 **/*.map
 **/*.ts
 !dist/**
-!node_modules/**
 !syntaxes/**
+node_modules/**
+!node_modules/thane-ts-plugin/**

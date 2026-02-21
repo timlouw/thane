@@ -1,8 +1,8 @@
 import { serve } from 'bun';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
 
-const root = join(process.cwd(), 'dist', 'e2e');
+const root = resolve(process.cwd(), 'dist', 'e2e');
 const port = Number(process.env.PORT || 4173);
 
 if (!existsSync(root)) {
@@ -16,14 +16,20 @@ serve({
     '/*': async (req) => {
       const pathname = new URL(req.url).pathname;
       const clean = pathname === '/' ? '/index.html' : pathname;
-      const filePath = join(root, clean);
+      const filePath = resolve(root, '.' + clean);
+
+      // Prevent path traversal — resolved path must stay within root
+      if (!filePath.startsWith(root)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+
       const file = Bun.file(filePath);
 
       if (await file.exists()) {
         return new Response(file);
       }
 
-      return new Response(Bun.file(join(root, 'index.html')));
+      return new Response(Bun.file(resolve(root, 'index.html')));
     },
   },
 });

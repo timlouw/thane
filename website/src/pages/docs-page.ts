@@ -1,4 +1,4 @@
-import { defineComponent, signal } from 'thane';
+import { defineComponent as dc, signal } from 'thane';
 import { CodeBlock } from '../components/code-block.js';
 
 // ── Code Examples ──
@@ -189,7 +189,7 @@ const SECTIONS = [
   { id: 'browser-support', label: 'Browser Support' },
 ];
 
-export const DocsPage = defineComponent('docs-page', ({ root }) => {
+export const DocsPage = dc('docs-page', ({ root }) => {
   const sidebarOpen = signal(false);
   const toggleSidebar = () => sidebarOpen(!sidebarOpen());
   const closeSidebar = () => sidebarOpen(false);

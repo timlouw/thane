@@ -69,6 +69,22 @@ const coerceConfigToCLIOptions = (cfg: ThaneBuildOptions | undefined): Partial<C
     ...(cfg.outDir != null && { outDir: cfg.outDir }),
     ...(cfg.assetsDir != null && { assetsDir: cfg.assetsDir }),
     ...(cfg.htmlTemplate != null && { htmlTemplate: cfg.htmlTemplate }),
+    ...(cfg.dropConsole != null && { dropConsole: cfg.dropConsole }),
+    ...(cfg.dropDebugger != null && { dropDebugger: cfg.dropDebugger }),
+    ...(cfg.sourcemap != null && { sourcemap: cfg.sourcemap }),
+    ...(cfg.strictTypeCheck != null && { strictTypeCheck: cfg.strictTypeCheck }),
+    ...(cfg.port != null && { port: cfg.port }),
+    ...(cfg.open != null && { open: cfg.open }),
+    ...(cfg.host != null && { host: cfg.host }),
+    ...(cfg.base != null && { base: cfg.base }),
+    ...(cfg.target != null && { target: cfg.target }),
+    ...(cfg.hashFileNames != null && { hashFileNames: cfg.hashFileNames }),
+    ...(cfg.define != null && { define: cfg.define }),
+    ...(cfg.envPrefix != null && { envPrefix: cfg.envPrefix }),
+    ...(cfg.emptyOutDir != null && { emptyOutDir: cfg.emptyOutDir }),
+    ...(cfg.splitting != null && { splitting: cfg.splitting }),
+    ...(cfg.legalComments != null && { legalComments: cfg.legalComments }),
+    ...(cfg.analyze != null && { analyze: cfg.analyze }),
   };
 };
 
@@ -140,6 +156,29 @@ const mergeCLIAndConfig = (args: string[], parsedCLI: CLIOptions): CLIOptions =>
   if (hasValueFlag(args, '--config') && parsedCLI.configPath) {
     merged.configPath = toAbsoluteIfRelative(parsedCLI.configPath, process.cwd());
   }
+  if (hasFlag(args, '--drop-console')) merged.dropConsole = true;
+  if (hasFlag(args, '--no-drop-console')) merged.dropConsole = false;
+  if (hasFlag(args, '--drop-debugger')) merged.dropDebugger = true;
+  if (hasFlag(args, '--no-drop-debugger')) merged.dropDebugger = false;
+  if (hasFlag(args, '--sourcemap')) merged.sourcemap = true;
+  if (hasFlag(args, '--no-sourcemap')) merged.sourcemap = false;
+  if (hasFlag(args, '--strict-type-check')) merged.strictTypeCheck = true;
+  if (hasFlag(args, '--open')) merged.open = true;
+  if (hasFlag(args, '--no-open')) merged.open = false;
+  if (hasFlag(args, '--hash-file-names')) merged.hashFileNames = true;
+  if (hasFlag(args, '--no-hash-file-names')) merged.hashFileNames = false;
+  if (hasFlag(args, '--empty-out-dir')) merged.emptyOutDir = true;
+  if (hasFlag(args, '--no-empty-out-dir')) merged.emptyOutDir = false;
+  if (hasFlag(args, '--splitting')) merged.splitting = true;
+  if (hasFlag(args, '--no-splitting')) merged.splitting = false;
+  if (hasFlag(args, '--analyze')) merged.analyze = true;
+  if (hasFlag(args, '--no-analyze')) merged.analyze = false;
+  if (hasValueFlag(args, '--port') && parsedCLI.port != null) merged.port = parsedCLI.port;
+  if (hasValueFlag(args, '--host') && parsedCLI.host != null) merged.host = parsedCLI.host;
+  if (hasValueFlag(args, '--base') && parsedCLI.base != null) merged.base = parsedCLI.base;
+  if (hasValueFlag(args, '--target') && parsedCLI.target != null) merged.target = parsedCLI.target;
+  if (hasValueFlag(args, '--env-prefix') && parsedCLI.envPrefix != null) merged.envPrefix = parsedCLI.envPrefix;
+  if (hasValueFlag(args, '--legal-comments') && parsedCLI.legalComments != null) merged.legalComments = parsedCLI.legalComments;
 
   return applyCommandModeDefaults(merged);
 };
@@ -165,8 +204,44 @@ export function parseArgs(args: string[]): CLIOptions {
     '--quiet',
     '-q',
     '--config',
+    '--drop-console',
+    '--no-drop-console',
+    '--drop-debugger',
+    '--no-drop-debugger',
+    '--sourcemap',
+    '--no-sourcemap',
+    '--strict-type-check',
+    '--port',
+    '--open',
+    '--no-open',
+    '--host',
+    '--base',
+    '--target',
+    '--hash-file-names',
+    '--no-hash-file-names',
+    '--env-prefix',
+    '--empty-out-dir',
+    '--no-empty-out-dir',
+    '--splitting',
+    '--no-splitting',
+    '--legal-comments',
+    '--analyze',
+    '--no-analyze',
   ]);
-  const flagsWithValue = new Set(['--app', '--entry', '--out', '--assets', '--html', '--config']);
+  const flagsWithValue = new Set([
+    '--app',
+    '--entry',
+    '--out',
+    '--assets',
+    '--html',
+    '--config',
+    '--port',
+    '--host',
+    '--base',
+    '--target',
+    '--env-prefix',
+    '--legal-comments',
+  ]);
 
   const commandArg = getPositionalCommand(args, flagsWithValue);
   if (commandArg) {
@@ -201,6 +276,75 @@ export function parseArgs(args: string[]): CLIOptions {
         break;
       case '--config':
         options.configPath = args[++i];
+        break;
+      case '--drop-console':
+        options.dropConsole = true;
+        break;
+      case '--no-drop-console':
+        options.dropConsole = false;
+        break;
+      case '--drop-debugger':
+        options.dropDebugger = true;
+        break;
+      case '--no-drop-debugger':
+        options.dropDebugger = false;
+        break;
+      case '--sourcemap':
+        options.sourcemap = true;
+        break;
+      case '--no-sourcemap':
+        options.sourcemap = false;
+        break;
+      case '--strict-type-check':
+        options.strictTypeCheck = true;
+        break;
+      case '--port':
+        options.port = parseInt(args[++i] || '4200', 10);
+        break;
+      case '--open':
+        options.open = true;
+        break;
+      case '--no-open':
+        options.open = false;
+        break;
+      case '--host':
+        options.host = args[++i] || '0.0.0.0';
+        break;
+      case '--base':
+        options.base = args[++i] || '/';
+        break;
+      case '--target':
+        options.target = (args[++i] || '').split(',').map((t) => t.trim()).filter(Boolean);
+        break;
+      case '--hash-file-names':
+        options.hashFileNames = true;
+        break;
+      case '--no-hash-file-names':
+        options.hashFileNames = false;
+        break;
+      case '--env-prefix':
+        options.envPrefix = args[++i] || 'THANE_';
+        break;
+      case '--empty-out-dir':
+        options.emptyOutDir = true;
+        break;
+      case '--no-empty-out-dir':
+        options.emptyOutDir = false;
+        break;
+      case '--splitting':
+        options.splitting = true;
+        break;
+      case '--no-splitting':
+        options.splitting = false;
+        break;
+      case '--legal-comments':
+        options.legalComments = (args[++i] || 'none') as CLIOptions['legalComments'];
+        break;
+      case '--analyze':
+        options.analyze = true;
+        break;
+      case '--no-analyze':
+        options.analyze = false;
         break;
       case '--verbose':
       case '-V':
@@ -255,6 +399,29 @@ Options:
   --assets <dir>      Assets directory (default: ./src/assets)
   --html <path>       HTML template file (default: ./index.html)
   --config <path>     Path to thane config file (default: ./thane.config.json or .jsonc)
+  --drop-console      Strip console.* calls from the bundle (default: on in prod)
+  --no-drop-console   Keep console.* calls in the bundle (even in prod)
+  --drop-debugger     Strip debugger statements (default: on in prod)
+  --no-drop-debugger  Keep debugger statements (even in prod)
+  --sourcemap         Generate source maps (default: on in dev)
+  --no-sourcemap      Disable source maps (even in dev)
+  --strict-type-check Fail build on TypeScript type errors (default: warn only)
+  --port <number>     Dev server port (default: 4200)
+  --open              Auto-open browser on dev server start
+  --no-open           Do not auto-open browser
+  --host <addr>       Dev server host address (default: localhost; use 0.0.0.0 for LAN)
+  --base <path>       Public base path for deployed assets (default: /)
+  --target <targets>  Comma-separated esbuild targets (e.g. es2022,chrome120)
+  --hash-file-names   Include content hashes in output filenames (default: on)
+  --no-hash-file-names  Disable content hashes in output filenames
+  --env-prefix <pre>  Only env vars with this prefix are injected as defines (default: THANE_)
+  --empty-out-dir     Clear output directory before building (default: on)
+  --no-empty-out-dir  Keep existing output directory contents
+  --splitting         Enable code splitting (default: on)
+  --no-splitting      Disable code splitting (single bundle)
+  --legal-comments <mode>  Handle license comments: none, eof, linked, external (default: none)
+  --analyze           Write esbuild metafile to dist for bundle analysis
+  --no-analyze        Do not write metafile (default)
   --verbose, -V       Verbose output (show debug info)
   --quiet, -q         Suppress all non-error output
   --help, -h          Show this help message
@@ -289,6 +456,15 @@ export function createBuildConfig(options: CLIOptions): BuildConfig {
   const outputHTMLFilePath = `${distDir}/${indexHTMLFileName}`;
   const entryPoints = options.entry ? [options.entry] : ['./src/main.ts'];
 
+  // Collect THANE_* (or custom prefix) env vars as compile-time defines
+  const envPrefix = options.envPrefix ?? 'THANE_';
+  const envDefines: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith(envPrefix) && value !== undefined) {
+      envDefines[`import.meta.env.${key}`] = JSON.stringify(value);
+    }
+  }
+
   return {
     entryPoints,
     outDir: distDir,
@@ -299,6 +475,22 @@ export function createBuildConfig(options: CLIOptions): BuildConfig {
     isProd: options.prod,
     serve: options.serve,
     useGzip: options.gzip,
+    dropConsole: options.dropConsole ?? options.prod,
+    dropDebugger: options.dropDebugger ?? options.prod,
+    sourcemap: options.sourcemap ?? !options.prod,
+    strictTypeCheck: options.strictTypeCheck ?? false,
+    port: options.port ?? 4200,
+    open: options.open ?? false,
+    host: typeof options.host === 'boolean' ? (options.host ? '0.0.0.0' : 'localhost') : (options.host ?? 'localhost'),
+    base: options.base ?? '/',
+    target: options.target ?? [],
+    hashFileNames: options.hashFileNames ?? true,
+    define: { ...envDefines, ...(options.define ?? {}) },
+    envPrefix,
+    emptyOutDir: options.emptyOutDir ?? true,
+    splitting: options.splitting ?? true,
+    legalComments: options.legalComments ?? 'none',
+    analyze: options.analyze ?? false,
   };
 }
 
@@ -308,6 +500,18 @@ export function resolveCLIOptions(args: string[]): CLIOptions {
 }
 
 export async function cliMain(): Promise<void> {
+  // Thane requires the Bun runtime — fail fast with a clear message.
+  if (typeof globalThis.Bun === 'undefined') {
+    console.error(
+      'Error: Thane CLI requires the Bun runtime.\n\n' +
+      '  Install Bun: https://bun.sh\n' +
+      '    curl -fsSL https://bun.sh/install | bash   (macOS/Linux)\n' +
+      '    powershell -c "irm bun.sh/install.ps1 | iex"  (Windows)\n\n' +
+      '  Then run: bun thane <command>\n',
+    );
+    process.exit(1);
+  }
+
   const args = process.argv.slice(2);
   const cliOptions = resolveCLIOptions(args);
 

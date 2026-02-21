@@ -49,7 +49,13 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   // Check for re-exports: export { X } from './file.js' (any re-export of a defineComponent)
   for (const stmt of sourceFile.statements) {
     if (ts.isExportDeclaration(stmt) && stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+      // Skip type-only export declarations: export type { ... } from '...'
+      if (stmt.isTypeOnly) continue;
+
       for (const spec of stmt.exportClause.elements) {
+        // Skip inline type-only specifiers: export { type X } from '...'
+        if (spec.isTypeOnly) continue;
+
         const localName = (spec.propertyName ?? spec.name).text;
         const exportedName = spec.name.text;
 

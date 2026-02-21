@@ -1,4 +1,4 @@
-import { defineComponent, signal, effect } from 'thane';
+import { defineComponent as dc, signal } from 'thane';
 import { PlaygroundEditor } from '../components/playground-editor.js';
 
 // ── Example Snippets ──
@@ -178,19 +178,8 @@ const EXAMPLES: Record<string, { label: string; code: string }> = {
   greeting: { label: 'Greeting', code: GREETING_EXAMPLE },
 };
 
-export const PlaygroundPage = defineComponent('playground-page', ({ root }) => {
+export const PlaygroundPage = dc('playground-page', ({ root }) => {
   const activeExample = signal('counter');
-
-  const counterActive = signal('example-active');
-  const todoActive = signal('');
-  const greetingActive = signal('');
-
-  effect(() => {
-    const ex = activeExample();
-    counterActive(ex === 'counter' ? 'example-active' : '');
-    todoActive(ex === 'todo' ? 'example-active' : '');
-    greetingActive(ex === 'greeting' ? 'example-active' : '');
-  });
 
   return {
     template: html`
@@ -206,9 +195,9 @@ export const PlaygroundPage = defineComponent('playground-page', ({ root }) => {
 
           <div class="example-bar">
             <span class="example-label">Examples:</span>
-            <button class="example-btn ${counterActive()}" @click=${() => activeExample('counter')}>Counter</button>
-            <button class="example-btn ${todoActive()}" @click=${() => activeExample('todo')}>Todo List</button>
-            <button class="example-btn ${greetingActive()}" @click=${() => activeExample('greeting')}>Greeting</button>
+            <button id="example-counter" class="example-btn" @click=${() => activeExample('counter')}>Counter</button>
+            <button id="example-todo" class="example-btn" @click=${() => activeExample('todo')}>Todo List</button>
+            <button id="example-greeting" class="example-btn" @click=${() => activeExample('greeting')}>Greeting</button>
           </div>
 
           <div class="pg-main"> ${PlaygroundEditor({ initialCode: COUNTER_EXAMPLE })} </div>
@@ -313,6 +302,14 @@ export const PlaygroundPage = defineComponent('playground-page', ({ root }) => {
       }
     `,
     onMount: () => {
+      const updateExampleButtons = (key: string) => {
+        root.querySelector('#example-counter')?.classList.toggle('example-active', key === 'counter');
+        root.querySelector('#example-todo')?.classList.toggle('example-active', key === 'todo');
+        root.querySelector('#example-greeting')?.classList.toggle('example-active', key === 'greeting');
+      };
+
+      activeExample.subscribe(updateExampleButtons);
+
       // When example changes, update the playground textarea + re-run
       activeExample.subscribe((key) => {
         const example = EXAMPLES[key];

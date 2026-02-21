@@ -107,6 +107,59 @@ describe('parseArgs', () => {
     // Should still default to build
     expect(opts.command).toBe('build');
   });
+
+  test('parses --port flag with value', () => {
+    expect(parseArgs(['--port', '3000']).port).toBe(3000);
+  });
+
+  test('parses --open flag', () => {
+    expect(parseArgs(['--open']).open).toBe(true);
+  });
+
+  test('parses --no-open flag', () => {
+    expect(parseArgs(['--no-open']).open).toBe(false);
+  });
+
+  test('parses --host flag with value', () => {
+    expect(parseArgs(['--host', '0.0.0.0']).host).toBe('0.0.0.0');
+  });
+
+  test('parses --base flag with value', () => {
+    expect(parseArgs(['--base', '/app/']).base).toBe('/app/');
+  });
+
+  test('parses --target flag with comma-separated values', () => {
+    const opts = parseArgs(['--target', 'es2020,chrome100']);
+    expect(opts.target).toEqual(['es2020', 'chrome100']);
+  });
+
+  test('parses --hash-file-names and --no-hash-file-names flags', () => {
+    expect(parseArgs(['--hash-file-names']).hashFileNames).toBe(true);
+    expect(parseArgs(['--no-hash-file-names']).hashFileNames).toBe(false);
+  });
+
+  test('parses --env-prefix flag with value', () => {
+    expect(parseArgs(['--env-prefix', 'MY_APP_']).envPrefix).toBe('MY_APP_');
+  });
+
+  test('parses --empty-out-dir and --no-empty-out-dir flags', () => {
+    expect(parseArgs(['--empty-out-dir']).emptyOutDir).toBe(true);
+    expect(parseArgs(['--no-empty-out-dir']).emptyOutDir).toBe(false);
+  });
+
+  test('parses --splitting and --no-splitting flags', () => {
+    expect(parseArgs(['--splitting']).splitting).toBe(true);
+    expect(parseArgs(['--no-splitting']).splitting).toBe(false);
+  });
+
+  test('parses --legal-comments flag with value', () => {
+    expect(parseArgs(['--legal-comments', 'eof']).legalComments).toBe('eof');
+  });
+
+  test('parses --analyze and --no-analyze flags', () => {
+    expect(parseArgs(['--analyze']).analyze).toBe(true);
+    expect(parseArgs(['--no-analyze']).analyze).toBe(false);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -132,6 +185,22 @@ describe('createBuildConfig', () => {
     expect(config.useGzip).toBe(false);
     expect(config.inputHTMLFilePath).toBe('./index.html');
     expect(config.outputHTMLFilePath).toBe('./dist/index.html');
+    expect(config.dropConsole).toBe(false);
+    expect(config.dropDebugger).toBe(false);
+    expect(config.sourcemap).toBe(true);
+    expect(config.strictTypeCheck).toBe(false);
+    expect(config.port).toBe(4200);
+    expect(config.open).toBe(false);
+    expect(config.host).toBe('localhost');
+    expect(config.base).toBe('/');
+    expect(config.target).toEqual([]);
+    expect(config.hashFileNames).toBe(true);
+    expect(config.define).toEqual({});
+    expect(config.envPrefix).toBe('THANE_');
+    expect(config.emptyOutDir).toBe(true);
+    expect(config.splitting).toBe(true);
+    expect(config.legalComments).toBe('none');
+    expect(config.analyze).toBe(false);
   });
 
   test('uses custom entry point', () => {
@@ -168,6 +237,108 @@ describe('createBuildConfig', () => {
   test('sets serve flag correctly', () => {
     const config = createBuildConfig({ ...baseOptions, serve: true });
     expect(config.serve).toBe(true);
+  });
+
+  test('prod mode defaults dropConsole, dropDebugger to true and sourcemap to false', () => {
+    const config = createBuildConfig({ ...baseOptions, prod: true });
+    expect(config.dropConsole).toBe(true);
+    expect(config.dropDebugger).toBe(true);
+    expect(config.sourcemap).toBe(false);
+  });
+
+  test('dropConsole can be overridden independently of prod', () => {
+    const config = createBuildConfig({ ...baseOptions, prod: true, dropConsole: false });
+    expect(config.dropConsole).toBe(false);
+    expect(config.dropDebugger).toBe(true);
+  });
+
+  test('dropDebugger can be overridden independently of prod', () => {
+    const config = createBuildConfig({ ...baseOptions, prod: true, dropDebugger: false });
+    expect(config.dropDebugger).toBe(false);
+    expect(config.dropConsole).toBe(true);
+  });
+
+  test('sourcemap can be enabled in prod', () => {
+    const config = createBuildConfig({ ...baseOptions, prod: true, sourcemap: true });
+    expect(config.sourcemap).toBe(true);
+  });
+
+  test('sourcemap can be disabled in dev', () => {
+    const config = createBuildConfig({ ...baseOptions, prod: false, sourcemap: false });
+    expect(config.sourcemap).toBe(false);
+  });
+
+  test('strictTypeCheck defaults to false', () => {
+    const config = createBuildConfig(baseOptions);
+    expect(config.strictTypeCheck).toBe(false);
+  });
+
+  test('strictTypeCheck can be enabled', () => {
+    const config = createBuildConfig({ ...baseOptions, strictTypeCheck: true });
+    expect(config.strictTypeCheck).toBe(true);
+  });
+
+  test('port defaults to 4200 and can be overridden', () => {
+    expect(createBuildConfig(baseOptions).port).toBe(4200);
+    expect(createBuildConfig({ ...baseOptions, port: 3000 }).port).toBe(3000);
+  });
+
+  test('open defaults to false and can be enabled', () => {
+    expect(createBuildConfig(baseOptions).open).toBe(false);
+    expect(createBuildConfig({ ...baseOptions, open: true }).open).toBe(true);
+  });
+
+  test('host defaults to localhost and resolves boolean true to 0.0.0.0', () => {
+    expect(createBuildConfig(baseOptions).host).toBe('localhost');
+    expect(createBuildConfig({ ...baseOptions, host: '0.0.0.0' }).host).toBe('0.0.0.0');
+    expect(createBuildConfig({ ...baseOptions, host: true }).host).toBe('0.0.0.0');
+    expect(createBuildConfig({ ...baseOptions, host: false }).host).toBe('localhost');
+  });
+
+  test('base defaults to / and can be set', () => {
+    expect(createBuildConfig(baseOptions).base).toBe('/');
+    expect(createBuildConfig({ ...baseOptions, base: '/app/' }).base).toBe('/app/');
+  });
+
+  test('target defaults to empty array and can be overridden', () => {
+    expect(createBuildConfig(baseOptions).target).toEqual([]);
+    expect(createBuildConfig({ ...baseOptions, target: ['es2020', 'chrome100'] }).target).toEqual(['es2020', 'chrome100']);
+  });
+
+  test('hashFileNames defaults to true and can be disabled', () => {
+    expect(createBuildConfig(baseOptions).hashFileNames).toBe(true);
+    expect(createBuildConfig({ ...baseOptions, hashFileNames: false }).hashFileNames).toBe(false);
+  });
+
+  test('define defaults to empty and merges env defines', () => {
+    expect(createBuildConfig(baseOptions).define).toEqual({});
+    const config = createBuildConfig({ ...baseOptions, define: { '__VERSION__': '"1.0.0"' } });
+    expect(config.define['__VERSION__']).toBe('"1.0.0"');
+  });
+
+  test('envPrefix defaults to THANE_', () => {
+    expect(createBuildConfig(baseOptions).envPrefix).toBe('THANE_');
+    expect(createBuildConfig({ ...baseOptions, envPrefix: 'MY_APP_' }).envPrefix).toBe('MY_APP_');
+  });
+
+  test('emptyOutDir defaults to true and can be disabled', () => {
+    expect(createBuildConfig(baseOptions).emptyOutDir).toBe(true);
+    expect(createBuildConfig({ ...baseOptions, emptyOutDir: false }).emptyOutDir).toBe(false);
+  });
+
+  test('splitting defaults to true and can be disabled', () => {
+    expect(createBuildConfig(baseOptions).splitting).toBe(true);
+    expect(createBuildConfig({ ...baseOptions, splitting: false }).splitting).toBe(false);
+  });
+
+  test('legalComments defaults to none and can be set', () => {
+    expect(createBuildConfig(baseOptions).legalComments).toBe('none');
+    expect(createBuildConfig({ ...baseOptions, legalComments: 'eof' }).legalComments).toBe('eof');
+  });
+
+  test('analyze defaults to false and can be enabled', () => {
+    expect(createBuildConfig(baseOptions).analyze).toBe(false);
+    expect(createBuildConfig({ ...baseOptions, analyze: true }).analyze).toBe(true);
   });
 });
 

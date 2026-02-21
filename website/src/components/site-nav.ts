@@ -5,11 +5,9 @@ export const SiteNav = defineComponent('site-nav', ({ root }) => {
   const toggleMobile = () => mobileOpen(!mobileOpen());
   const closeMobile = () => mobileOpen(false);
 
-  const scrolledClass = signal('');
-
   return {
     template: html`
-      <nav class="site-nav ${scrolledClass()}">
+      <nav class="site-nav">
         <div class="nav-inner container">
           <a href="#/" class="nav-logo" @click=${closeMobile}>
             <span class="logo-icon">⚡</span>
@@ -179,13 +177,16 @@ export const SiteNav = defineComponent('site-nav', ({ root }) => {
       }
     `,
     onMount: () => {
+      const nav = root.querySelector('.site-nav');
       window.addEventListener(
         'scroll',
         () => {
-          scrolledClass(window.scrollY > 20 ? 'nav-scrolled' : '');
+          nav?.classList.toggle('nav-scrolled', window.scrollY > 20);
         },
         { passive: true },
       );
+
+      nav?.classList.toggle('nav-scrolled', window.scrollY > 20);
     },
   };
 });
