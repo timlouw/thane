@@ -75,12 +75,6 @@ export function createWarning(message: string, location?: SourceLocation, code?:
   return createDiagnostic('warning', message, location, code);
 }
 
-/**
- * Create an info diagnostic
- */
-export function createInfo(message: string, location?: SourceLocation, code?: string): Diagnostic {
-  return createDiagnostic('info', message, location, code);
-}
 
 /**
  * Format a diagnostic for display
@@ -90,32 +84,22 @@ export function formatDiagnostic(diagnostic: Diagnostic): string {
 
   let result = '';
 
-  // Add severity prefix with color
   const prefix = severity === 'error' ? 'error' : severity === 'warning' ? 'warning' : 'info';
   result += `[${prefix}]`;
 
-  // Add error code if present
   if (code) {
     result += ` ${code}:`;
   }
 
-  // Add location if present (file:line:col format for VS Code clickability)
   if (location) {
     result += ` ${location.file}:${location.line}:${location.column}`;
   }
 
-  // Add message
   result += `\n  ${message}`;
 
   return result;
 }
 
-/**
- * Format multiple diagnostics for display
- */
-export function formatDiagnostics(diagnostics: Diagnostic[]): string {
-  return diagnostics.map(formatDiagnostic).join('\n\n');
-}
 
 /**
  * Check if diagnostics contain any errors
@@ -124,16 +108,3 @@ export function hasErrors(diagnostics: Diagnostic[]): boolean {
   return diagnostics.some((d) => d.severity === 'error');
 }
 
-/**
- * Get only error diagnostics
- */
-export function getErrors(diagnostics: Diagnostic[]): Diagnostic[] {
-  return diagnostics.filter((d) => d.severity === 'error');
-}
-
-/**
- * Get only warning diagnostics
- */
-export function getWarnings(diagnostics: Diagnostic[]): Diagnostic[] {
-  return diagnostics.filter((d) => d.severity === 'warning');
-}

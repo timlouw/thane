@@ -1,14 +1,6 @@
 /**
- * Post-Build Processor Plugin
- *
- * Orchestrates file copying, compression, HTML templating, HTTP server,
- * live reload, and console reporting after esbuild completes.
- *
- * Split into sub-modules:
- * - file-copy.ts        — Asset copying and watcher with debouncing
- * - compression.ts      — Gzip / Brotli compression
- * - dev-server.ts       — HTTP dev server with live reload
- * - console-reporting.ts — File size reporting
+ * Post-Build Processor — orchestrates file copying, compression, HTML templating,
+ * dev server, live reload, and console reporting after esbuild completes.
  */
 
 import fs from 'node:fs';

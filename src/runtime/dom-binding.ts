@@ -1,12 +1,10 @@
 /**
- * DOM Binding utilities for Thane runtime
- *
- * Handles conditional rendering and repeat directives.
+ * DOM Binding utilities — conditional rendering and repeat directives.
  */
 
 import type { Signal, ComponentRoot } from './types.js';
 
-// Temporary element for parsing HTML (lazy initialization)
+/** Lazy template element for HTML parsing. */
 let tempEl: HTMLTemplateElement | null = null;
 const getTempEl = (): HTMLTemplateElement => {
   if (!tempEl) {
@@ -15,9 +13,7 @@ const getTempEl = (): HTMLTemplateElement => {
   return tempEl;
 };
 
-/**
- * Internal helper for conditional binding (when/whenElse)
- */
+/** @internal — Core conditional binding (when/whenElse). */
 const bindConditional = (
   root: ComponentRoot,
   id: string,
@@ -73,8 +69,8 @@ const bindConditional = (
       currentNode.replaceWith(p);
       currentNode = p;
     }
-    // Dispose nested subscriptions so hidden computed/effects don't keep
-    // firing against detached DOM. They will re-initialize on next show().
+    // Dispose nested subscriptions so hidden effects don't
+    // fire against detached DOM. Re-initialized on next show().
     if (bindingsInitialized) {
       for (let i = 0; i < cleanups.length; i++) cleanups[i]?.();
       cleanups = [];
@@ -138,12 +134,10 @@ export const __bindIfExpr = (
   );
 
 // ─────────────────────────────────────────────────────────────
-//  Shared Reconciler
+//  Keyed Reconciler
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Managed item in a repeat directive
- */
+/** Managed item in a repeat directive. */
 interface ManagedItem<T> {
   el: Element;
   cleanups: (() => void)[];
@@ -155,26 +149,11 @@ interface ManagedItem<T> {
   key?: string | number | undefined;
 }
 
-/**
- * Key function type for tracking items in repeat
- */
+/** Key function for tracking items in repeat. */
 type KeyFn<T> = (item: T, index: number) => string | number;
 
 // ─────────────────────────────────────────────────────────────
-//  createKeyedReconciler — Keyed-only, direct-update mode
-//
-//  Used by the optimized compiler path (inlined createItem) when
-//  a keyFn is provided and there is no emptyTemplate.
-//
-//  Compared to createReconciler, this variant strips:
-//  - Index-based fallback (always keyed)
-//  - getValue/setValue signal branching (always .value/.update)
-//  - Cleanup iteration (optimized items have empty cleanups)
-//  - keyFn/keyMap null guards (always present)
-//  - useDetachOptimization parameter (always uses detach)
-//
-//  Keeps the SAME ManagedItem<T> object shape and per-row update
-//  closures — preserves V8 type feedback from the full reconciler.
+//  createKeyedReconciler — keyed-only, direct-update mode
 // ─────────────────────────────────────────────────────────────
 
 export function createKeyedReconciler<T>(
@@ -183,7 +162,7 @@ export function createKeyedReconciler<T>(
   createItemFn: (item: T, index: number, refNode: Node) => ManagedItem<T>,
   keyFnOrProp: KeyFn<T> | string,
 ) {
-  // Resolve key accessor once: string property name → direct access, function → use as-is
+  // Resolve key accessor once: string prop → direct access, function → use as-is
   const keyFn: KeyFn<T> =
     typeof keyFnOrProp === 'string' ? (item: T) => (item as any)[keyFnOrProp] as string | number : keyFnOrProp;
 
@@ -202,7 +181,7 @@ export function createKeyedReconciler<T>(
   const clearAll = () => {
     const len = managedItems.length;
     if (len === 0) return;
-    // Iterate cleanups (subscriptions, nested reconcilers) before clearing DOM
+    // Run cleanups (subscriptions, nested reconcilers) before clearing DOM
     for (let i = 0; i < len; i++) {
       const cleanups = managedItems[i]!.cleanups;
       for (let j = 0, clen = cleanups.length; j < clen; j++) cleanups[j]!();
@@ -360,8 +339,7 @@ export function createKeyedReconciler<T>(
       }
     }
 
-    // General keyed reconciliation — use a local Set to avoid reentrancy
-    // corruption if removeItem() triggers nested reconcile calls.
+    // General keyed reconciliation
     const retainedKeys = new Set<string | number>();
     for (let i = 0; i < newLength; i++) retainedKeys.add(keyFn(newItems[i]!, i));
 

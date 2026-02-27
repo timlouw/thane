@@ -2,6 +2,7 @@
  * HTML Parser — Utility functions for working with parsed HTML
  */
 
+import type { Range } from '../../types.js';
 import type { HtmlElement, BindingInfo, HtmlEdit, ParsedTemplate, EventBindingDescriptor } from './types.js';
 import { SIGNAL_EXPR_REGEX } from './types.js';
 
@@ -120,7 +121,7 @@ export function createEventBindingRemovalEdit(binding: BindingInfo): HtmlEdit | 
 export function createSignalReplacementEdits(
   html: string,
   signalValues: Map<string, string | number | boolean>,
-  excludeRanges: Array<{ start: number; end: number }> = [],
+  excludeRanges: Range[] = [],
 ): HtmlEdit[] {
   const edits: HtmlEdit[] = [];
   const signalExprRegex = SIGNAL_EXPR_REGEX();
@@ -178,7 +179,7 @@ export function groupBindingsByElement(bindings: BindingInfo[]): Map<HtmlElement
   return map;
 }
 
-export function isPositionInRanges(pos: number, ranges: Array<{ start: number; end: number }>): boolean {
+export function isPositionInRanges(pos: number, ranges: Range[]): boolean {
   return ranges.some((r) => pos >= r.start && pos < r.end);
 }
 
@@ -201,6 +202,27 @@ export function createIdGenerator(prefix: string, startFrom = 0): () => string {
 
 export function normalizeHtmlWhitespace(html: string): string {
   return html.replace(/\s+/g, ' ').replace(/\s+>/g, '>').replace(/>\s+</g, '><').trim();
+}
+
+/**
+ * Escape a string so it can be safely embedded inside a JS template literal.
+ * Prevents backticks from breaking the literal and `${` from being
+ * interpreted as a template expression.
+ *
+ * Use this for raw HTML / plain-text content that should appear verbatim
+ * inside a template literal.
+ */
+export function escapeTemplateLiteral(s: string): string {
+  return s.replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
+}
+
+/**
+ * Like {@link escapeTemplateLiteral} but also escapes backslashes.
+ * Use when the source string may contain raw backslash sequences
+ * (e.g., repeat item templates that originate from raw HTML source).
+ */
+export function escapeRawTemplateLiteral(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${');
 }
 
 export function injectIdIntoFirstElement(html: string, id: string): string {

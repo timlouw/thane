@@ -18,18 +18,11 @@ import {
 import { transformDefineComponentSource } from '../reactive-binding-compiler/index.js';
 import { ErrorCode, createError } from '../../errors.js';
 
-/**
- * Sentinel value distinguishing "evaluation failed" from "evaluated to undefined".
- * Using a unique symbol prevents any ambiguity.
- */
+/** Sentinel distinguishing "evaluation failed" from "evaluated to undefined". */
 const EVAL_FAILED = Symbol('EVAL_FAILED');
 type EvalResult<T = any> = T | typeof EVAL_FAILED;
 
 const NAME = PLUGIN_NAME.COMPONENT;
-
-// NOTE: findComponentImports and transformComponentImportsToSideEffects were
-// removed as part of Signal Props (Phase 1, Step 5). Named imports are now
-// preserved so __b can reference Component.__f directly.
 
 const createCTFEContext = (classProperties: Map<string, any>) => {
   const sandbox: Record<string, any> = {
@@ -206,10 +199,7 @@ const extractClassPropertiesCTFE = (
   return resolvedProperties;
 };
 
-/**
- * Information about a child component mount point.
- * Stored by the CTFE and passed to the reactive binding compiler.
- */
+/** Child component mount point data, passed from CTFE to the binding compiler. */
 export interface ChildMountInfo {
   /** Component class name, e.g. "MyElementComponent" */
   componentName: string;
@@ -318,8 +308,6 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
   name: NAME,
   setup(build) {
     const componentDefinitions = new Map<string, ComponentDefinition>();
-
-    const generateHTML = generateComponentHTML;
 
     build.onStart(async () => {
       componentDefinitions.clear();
@@ -435,7 +423,7 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
               const componentDef = componentDefinitions.get(call.componentName);
               if (componentDef) {
                 const anchorId = `b${childIdCounter++}`;
-                const compiledHTML = generateHTML({
+                const compiledHTML = generateComponentHTML({
                   selector: componentDef.selector,
                   props: {},
                   anchorId,
@@ -453,10 +441,6 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
                 });
               }
             }
-
-            // Step 5: Keep named imports — the __b function needs to reference
-            // Component.__f for mount calls. Do NOT call
-            // transformComponentImportsToSideEffects.
 
             childMounts = mounts;
             childMountCount = childIdCounter;

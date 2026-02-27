@@ -221,6 +221,106 @@ export const ContractApp = defineComponent('contract-app', () => {
 
   const triggerExc = () => excSource(excSource() + 1);
 
+  // ── Blocker 1.1: Computed notification-depth tracking ──
+  // A computed with multiple subscribers where one unsubscribes mid-notification.
+  // If _notifyComputedSubs depth tracking is broken, after the first cycle
+  // notifyCount drifts negative and compaction / iteration corruption occurs.
+  const b11Source = signal(0);
+  const b11Computed = computed(() => b11Source() * 100);
+  const b11Log = signal('');
+  let b11Unsub2: (() => void) | null = null;
+
+  // Subscribe three listeners; the second one will self-unsubscribe on first notification
+  const b11Sub1Vals: number[] = [];
+  const b11Sub3Vals: number[] = [];
+  b11Computed.subscribe((v) => { b11Sub1Vals.push(v); b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(',')); }, true);
+  b11Unsub2 = b11Computed.subscribe(() => {
+    // Self-unsubscribe during notification to trigger mid-notification null-slotting
+    if (b11Unsub2) { b11Unsub2(); b11Unsub2 = null; }
+  }, true);
+  b11Computed.subscribe((v) => { b11Sub3Vals.push(v); b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(',')); }, true);
+
+  const b11Trigger = () => b11Source(b11Source() + 1);
+
+  // ── Blocker 1.3: Effect recovery after throw ──
+  // An effect that throws on certain values but should still re-subscribe
+  // and recover when the signal changes to a non-throwing value.
+  const b13Source = signal(0);
+  const b13Log = signal('init');
+  const b13Runs = signal(0);
+  let b13RunCount = 0;
+
+  effect(() => {
+    const val = b13Source();
+    b13RunCount++;
+    b13Runs(b13RunCount);
+    if (val === 1) {
+      throw new Error('b13-intentional-throw');
+    }
+    b13Log(`ok-${val}`);
+  });
+
+  const b13SetThrowing = () => b13Source(1);   // will throw
+  const b13SetRecovery = () => b13Source(2);   // should recover
+
+  // ── Blocker 1.2: Reentrant reconciler ──
+  // Two repeat lists sharing a trigger signal. When list1 changes, an effect
+  // synchronously updates list2. If the reconciler uses a shared module-scoped
+  // Set, the inner reconcile clears it and the outer loses track of retained keys.
+  type B12Item = { id: number; label: string };
+  const b12List1 = signal<B12Item[]>([
+    { id: 1, label: 'L1-A' },
+    { id: 2, label: 'L1-B' },
+    { id: 3, label: 'L1-C' },
+  ]);
+  const b12List2 = signal<B12Item[]>([
+    { id: 10, label: 'L2-X' },
+    { id: 20, label: 'L2-Y' },
+  ]);
+
+  // When list1 changes, synchronously mutate list2 — this triggers reentrant reconcile
+  // because the subscriber notification from list1's reconcile is still in progress.
+  b12List1.subscribe(() => {
+    const current2 = b12List2();
+    if (current2.length === 2) {
+      b12List2([...current2, { id: 30, label: 'L2-Z' }]);
+    }
+  }, true);
+
+  const b12RemoveFromList1 = () => {
+    // Remove the middle item — triggers general keyed reconciliation path
+    b12List1([b12List1()[0]!, b12List1()[2]!]);
+  };
+
+  // ── 2.10: Computed .subscribe() error cleanup ──
+  // When subscribing to a computed whose derivation throws, the subscriber
+  // callback must be cleaned up before the error propagates. Previously the
+  // subscriber was left in the array (leaking) while the unsubscribe function
+  // was never returned because the throw interrupted control flow.
+  const h210Source = signal(0);
+  const h210Computed = computed(() => {
+    if (h210Source() === 0) throw new Error('h210-initial-error');
+    return h210Source() * 10;
+  });
+  const h210Log = signal('init');
+  let h210SubCalled = false;
+
+  try {
+    h210Computed.subscribe((v) => {
+      h210SubCalled = true;
+      h210Log(`sub-${v}`);
+    });
+  } catch (e) {
+    h210Log(`caught:${(e as Error).message}`);
+  }
+
+  const h210Fix = () => {
+    h210Source(1);
+    // If subscriber was properly cleaned up, h210SubCalled stays false.
+    // If subscriber leaked, it fires with value 10 → h210SubCalled becomes true.
+    h210Log(h210SubCalled ? 'leaked' : 'cleaned-up');
+  };
+
   return {
     template: html`
       <main>
@@ -441,6 +541,43 @@ export const ContractApp = defineComponent('contract-app', () => {
           <div data-testid="destroy-simple-target"></div>
           <div data-testid="destroy-conditional-target"></div>
           <div data-testid="destroy-nested-target"></div>
+        </section>
+
+        <section data-testid="blocker-11-section">
+          <button data-testid="b11-trigger" @click=${b11Trigger}>b11 trigger</button>
+          <p data-testid="b11-log">${b11Log()}</p>
+        </section>
+
+        <section data-testid="blocker-13-section">
+          <button data-testid="b13-set-throwing" @click=${b13SetThrowing}>b13 throw</button>
+          <button data-testid="b13-set-recovery" @click=${b13SetRecovery}>b13 recover</button>
+          <p data-testid="b13-log">${b13Log()}</p>
+          <p data-testid="b13-runs">${b13Runs()}</p>
+        </section>
+
+        <section data-testid="blocker-12-section">
+          <button data-testid="b12-remove" @click=${b12RemoveFromList1}>b12 remove</button>
+          <ul data-testid="b12-list1">
+            ${repeat(
+              b12List1(),
+              (item) => html`<li data-testid="b12-item1">${item.label}</li>`,
+              null,
+              (item) => item.id,
+            )}
+          </ul>
+          <ul data-testid="b12-list2">
+            ${repeat(
+              b12List2(),
+              (item) => html`<li data-testid="b12-item2">${item.label}</li>`,
+              null,
+              (item) => item.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="h210-section">
+          <button data-testid="h210-fix" @click=${h210Fix}>h210 fix</button>
+          <p data-testid="h210-log">${h210Log()}</p>
         </section>
       </main>
     `,

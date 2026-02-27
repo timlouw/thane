@@ -5,15 +5,6 @@
 
 import type ts from 'typescript';
 
-/**
- * Application type
- */
-export type Application = 'client' | 'admin';
-
-/**
- * Build environment
- */
-export type Environment = 'dev' | 'prod';
 
 /**
  * Log level for compiler output
@@ -81,15 +72,6 @@ export interface TemplateInfo {
   templateEnd: number;
 }
 
-/**
- * Reactive binding info
- */
-export interface ReactiveBinding {
-  signalName: string;
-  elementSelector: string;
-  propertyType: 'style' | 'attribute' | 'innerText';
-  property?: string;
-}
 
 /**
  * Signal expression in template
@@ -97,6 +79,12 @@ export interface ReactiveBinding {
 export interface SignalExpression {
   signalName: string;
   fullExpression: string;
+  start: number;
+  end: number;
+}
+
+/** A start/end character range for source positions and overlap checking. */
+export interface Range {
   start: number;
   end: number;
 }

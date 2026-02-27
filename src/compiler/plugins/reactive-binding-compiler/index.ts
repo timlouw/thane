@@ -1,9 +1,4 @@
-/**
- * Source transformation for reactive binding compiler
- *
- * Handles TypeScript source file analysis, locating HTML/CSS templates,
- * finding imports, and orchestrating the full component transformation.
- */
+/** Reactive binding compiler — source transformation and template processing. */
 
 import fs from 'node:fs';
 import type { Plugin } from 'esbuild';
@@ -53,16 +48,8 @@ const isEmptyArrowFunction = (node: ts.Node): boolean => {
 };
 
 /**
- * Strip empty lifecycle hooks (onMount, onDestroy) and the `template` property
- * from the return object of defineComponent.
- *
- * When a compiled template is injected, the `template` property is redundant —
- * the runtime clones the pre-compiled template element instead. The `template`
- * key (usually set to an empty string `""` or backtick ``` `` ```) is pure dead
- * weight and is stripped here.
- *
- * @param source - The full component source (post-injection)
- * @param hasCompiledTemplate - Whether a compiled template was injected
+ * Strip empty lifecycle hooks and redundant `template` property from the
+ * defineComponent return object. Also detects styles/lifecycle feature flags.
  */
 const stripDeadPropertiesAndDetectFeatures = (
   source: string,
@@ -175,12 +162,8 @@ import { ErrorCode, createError } from '../../errors.js';
 const NAME = PLUGIN_NAME.REACTIVE;
 
 /**
- * Compute a deterministic starting seed for generated binding ids.
- *
- * Why: generated ids (b0, b1, ...) are looked up with getElementById at runtime.
- * If multiple compiled components reuse the same ids in the same document, lookups
- * can bind to the wrong node. We avoid collisions by assigning each file a stable,
- * non-overlapping numeric id range.
+ * Compute a deterministic starting seed for generated binding ids (b0, b1, …).
+ * Assigns each file a stable, non-overlapping id range to avoid DOM collisions.
  */
 const computeInitialIdSeed = (filePath: string, source: string): number => {
   // FNV-1a 32-bit hash of normalized file path (fast, deterministic)
@@ -208,9 +191,7 @@ const computeInitialIdSeed = (filePath: string, source: string): number => {
   return Math.max(blockBase, maxExisting + 1);
 };
 
-/**
- * Check if a module specifier refers to the Thane runtime
- */
+/** Check if a module specifier refers to the Thane runtime. */
 export const isThaneRuntimeImport = (specifier: string): boolean => {
   return (
     specifier.includes('shadow-dom') ||
@@ -220,9 +201,7 @@ export const isThaneRuntimeImport = (specifier: string): boolean => {
   );
 };
 
-/**
- * Find the Thane runtime import in a source file
- */
+/** Find the Thane runtime import in a source file. */
 export const findServicesImport = (sourceFile: ts.SourceFile): ImportInfo | null => {
   for (const statement of sourceFile.statements) {
     if (
@@ -306,11 +285,8 @@ const resolveTemplateIdentifier = (
 };
 
 /**
- * Find the defineComponent return template(s) only.
- *
- * Important: this intentionally does NOT process every html`` variable in the file,
- * so fragment templates (const piece = html`...`) can be injected via ${piece}
- * without being blanked by this compile pass.
+ * Find html`` templates in the defineComponent return object only.
+ * Fragment templates (const piece = html`...`) are intentionally skipped.
  */
 const findHtmlTemplates = (sourceFile: ts.SourceFile, defineComponentCall: ts.CallExpression): TemplateInfo[] => {
   const templates: TemplateInfo[] = [];
@@ -537,7 +513,7 @@ export const transformDefineComponentSource = (
     }
   }
 
-  // ── Partition child mounts by directive containment (Step 7) ──
+  // ── Partition child mounts by directive containment ──
   const directiveChildMounts = new Map<string, { cm: ChildMountInfo; globalIndex: number }[]>();
   const topLevelChildMounts: { cm: ChildMountInfo; globalIndex: number }[] = [];
 
@@ -671,7 +647,7 @@ export const transformDefineComponentSource = (
       if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
       if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
 
-      // Check for conditionals at top level AND nested inside repeat items (Step 14)
+      // Check for conditionals at top level AND nested inside repeat items
       const allConditionalsIncludingNested = [
         ...allConditionals,
         ...allRepeatBlocks.flatMap((r) => r.nestedConditionals),
@@ -687,7 +663,6 @@ export const transformDefineComponentSource = (
       if (hasComplexConditionals || allWhenElseIncludingNested.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
 
       if (allRepeatBlocks.length > 0) {
-        // Always import createKeyedReconciler — it's the sole reconciler now (Step 16)
         requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
       }
       // Events now use direct addEventListener — no runtime import needed
@@ -714,31 +689,17 @@ export const transformDefineComponentSource = (
   // Apply all edits to the source (no normalization pass — edits are against the original)
   let result = applyEdits(source, edits);
 
-  // ──────────────────────────────────────────────────────────────────────
-  // Injection strategy for defineComponent:
-  //
-  //   Static templates (__tpl, __tpl_b0, …) go BEFORE the export — they are
-  //   pure DOM templates with no closure dependencies.
-  //
-  //   The binding function must live INSIDE the setup closure so it can
-  //   reference local signal variables (rows, run, handleTableClick, …).
-  //   We inject it as a `__bindings` property on the return object, which
-  //   the runtime picks up after cloning the template.
-  //
-  //   The main static template is passed as an extra arg to defineComponent()
-  //   so the runtime can clone it before bindings run.
-  // ──────────────────────────────────────────────────────────────────────
+  // Injection strategy: static templates go BEFORE the export (no closure deps),
+  // __b binding function goes INSIDE the return object (needs closure access),
+  // and __tpl is passed as an extra arg to defineComponent().
 
-  // Transform initializeBindings from class-style wrapper to a plain function body.
-  // The codegen emits `initializeBindings = () => { const r = ctx.root; ... };`
-  // We extract the body and wrap it as a `__bindings: (ctx) => { ... }` arrow function.
+  // Extract initializeBindings body for use as __b arrow function.
   let processedBindings = initBindingsFunction
     .replace(/\s*initializeBindings = \(\) => \{\s*/, '')
     .replace(/\};\s*$/, '');
 
-  // ── Child component mount code (Signal Props) ──
-  // Top-level mounts are appended here. Mounts inside conditionals/whenElse/repeat
-  // are injected into nested initializers by generateInitBindingsFunction (Step 7).
+  // ── Child component mount code ──
+  // Top-level mounts are appended here; directive-nested mounts are handled by codegen.
   if (topLevelChildMounts.length > 0) {
     const mountLines: string[] = [];
     for (const { cm, globalIndex } of topLevelChildMounts) {
@@ -829,7 +790,7 @@ export const transformDefineComponentSource = (
     }
   }
 
-  // Track strip result for lean/full registration decision (populated in Step 3a)
+  // Track strip result for lean/full registration decision
   let stripResult: { source: string; hasStyles: boolean; hasLifecycle: boolean } = {
     source: result,
     hasStyles: false,
@@ -837,7 +798,7 @@ export const transformDefineComponentSource = (
   };
 
   if (exportStart !== null) {
-    // ── Step 1: Insert static template declarations before the export ──
+    // ── Insert static template declarations before the export ──
     let declarations = '';
     if (staticTemplateCode.trim()) {
       declarations += staticTemplateCode.trim() + '\n';
@@ -851,7 +812,7 @@ export const transformDefineComponentSource = (
       if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + offset;
     }
 
-    // ── Step 2: Inject __bindings into the return object ──
+    // ── Inject __bindings into the return object ──
     if (hasAnyBindings && processedBindings.trim() && returnObjectBracePos !== null) {
       const bindingsFnBody = `\n  __b: (ctx) => {\n  ${processedBindings.trim()}\n  },`;
       result = result.substring(0, returnObjectBracePos) + bindingsFnBody + result.substring(returnObjectBracePos);
@@ -859,17 +820,9 @@ export const transformDefineComponentSource = (
       if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + bindingsFnBody.length;
     }
 
-    // ── Step 3: Pass flags + __tpl + repeat templates as extra args to defineComponent() ──
-    //
-    // New signature: defineComponent(selector, setup, flags, __tpl, ...repeatTemplates)
-    //
-    // Strip dead properties (empty lifecycle hooks, template key) from the
-    // return object, then inject extra defineComponent arguments:
-    //   - __tpl (pre-compiled template element)
-    //   - repeat template name/value pairs
+    // Strip dead properties, then pass __tpl + repeat templates as extra args to defineComponent()
     if (dcCallCloseParen !== null) {
-      // ── Step 3a: Strip dead properties ──
-      // Must happen before we insert extra args (positions would shift)
+      // Strip dead properties before inserting extra args (positions would shift)
       const hasCompiledTemplate = !!lastProcessedTemplateContent;
       stripResult = stripDeadPropertiesAndDetectFeatures(result, hasCompiledTemplate);
 
@@ -878,7 +831,6 @@ export const transformDefineComponentSource = (
       result = stripResult.source;
       dcCallCloseParen = dcCallCloseParen + charDelta;
 
-      // ── Step 3b: Build extra arguments ──
       let extraArgs = '';
 
       if (lastProcessedTemplateContent) {
@@ -893,18 +845,13 @@ export const transformDefineComponentSource = (
         result = result.substring(0, dcCallCloseParen) + extraArgs + result.substring(dcCallCloseParen);
       }
 
-      // ── Step 3c: Inject __enableComponentStyles() when component uses styles ──
       if (stripResult.hasStyles) {
         result += '\n__enableComponentStyles();\n';
       }
     }
   }
 
-  // Step 4 is now integrated into Step 3a (stripDeadPropertiesAndDetectFeatures)
-
-  // ── Final step: rename defineComponent → __registerComponent ──
-  // Done AFTER all AST-based injections that rely on isDefineComponentCall()
-  // matching the `defineComponent` identifier.
+  // Rename defineComponent → __registerComponent (must be last — earlier AST passes match the original name)
   const registerFnName = BIND_FN.REGISTER_COMPONENT;
   result = result.replace(/\bdefineComponent\s*(?:<[^(]*>)?\s*\(/, `${registerFnName}(`);
 

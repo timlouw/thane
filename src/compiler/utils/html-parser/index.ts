@@ -54,4 +54,6 @@ export {
   createIdGenerator,
   normalizeHtmlWhitespace,
   injectIdIntoFirstElement,
+  escapeTemplateLiteral,
+  escapeRawTemplateLiteral,
 } from './html-utils.js';

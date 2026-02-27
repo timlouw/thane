@@ -7,22 +7,6 @@ import { formatDiagnostic } from '../errors.js';
 import { ansi } from './colors.js';
 
 /**
- * ANSI color codes for terminal output
- * Uses the shared `ansi` helper from colors.ts which respects TTY / NO_COLOR.
- */
-const colors = {
-  reset: ansi.reset,
-  red: ansi.red,
-  green: ansi.green,
-  yellow: ansi.yellow,
-  blue: ansi.blue,
-  magenta: ansi.magenta,
-  cyan: ansi.cyan,
-  gray: ansi.gray,
-  dim: ansi.dim,
-};
-
-/**
  * Logger class for structured output
  */
 export class Logger {
@@ -66,7 +50,7 @@ export class Logger {
       error = messageOrError;
     }
 
-    console.error(`${colors.red}${tag} ${message}${colors.reset}`);
+    console.error(`${ansi.red}${tag} ${message}${ansi.reset}`);
     if (error) {
       console.error(error);
     }
@@ -80,9 +64,9 @@ export class Logger {
     if (this.level === 'silent') return;
 
     if (message === undefined) {
-      console.warn(`${colors.yellow}[thane] ${messageOrTag}${colors.reset}`);
+      console.warn(`${ansi.yellow}[thane] ${messageOrTag}${ansi.reset}`);
     } else {
-      console.warn(`${colors.yellow}[${messageOrTag}] ${message}${colors.reset}`);
+      console.warn(`${ansi.yellow}[${messageOrTag}] ${message}${ansi.reset}`);
     }
   }
 
@@ -94,11 +78,11 @@ export class Logger {
     if (this.level === 'silent') return;
 
     if (message === undefined) {
-      console.log(`${colors.cyan}[thane]${colors.reset} ${messageOrTag}`);
+      console.log(`${ansi.cyan}[thane]${ansi.reset} ${messageOrTag}`);
     } else if (extra === undefined) {
-      console.log(`${colors.cyan}[${messageOrTag}]${colors.reset} ${message}`);
+      console.log(`${ansi.cyan}[${messageOrTag}]${ansi.reset} ${message}`);
     } else {
-      console.log(`${colors.cyan}[${messageOrTag}]${colors.reset} ${message} ${extra}`);
+      console.log(`${ansi.cyan}[${messageOrTag}]${ansi.reset} ${message} ${extra}`);
     }
   }
 
@@ -107,7 +91,7 @@ export class Logger {
    */
   success(message: string): void {
     if (this.level === 'silent') return;
-    console.log(`${colors.green}[thane]${colors.reset} ${message}`);
+    console.log(`${ansi.green}[thane]${ansi.reset} ${message}`);
   }
 
   /**
@@ -115,7 +99,7 @@ export class Logger {
    */
   verbose(message: string): void {
     if (this.level !== 'verbose') return;
-    console.log(`${colors.dim}[thane] ${message}${colors.reset}`);
+    console.log(`${ansi.dim}[thane] ${message}${ansi.reset}`);
   }
 
   /**
@@ -149,7 +133,7 @@ export class Logger {
    */
   time(label: string): void {
     if (this.level === 'verbose') {
-      console.time(`${colors.dim}[thane] ${label}${colors.reset}`);
+      console.time(`${ansi.dim}[thane] ${label}${ansi.reset}`);
     }
   }
 
@@ -158,7 +142,7 @@ export class Logger {
    */
   timeEnd(label: string): void {
     if (this.level === 'verbose') {
-      console.timeEnd(`${colors.dim}[thane] ${label}${colors.reset}`);
+      console.timeEnd(`${ansi.dim}[thane] ${label}${ansi.reset}`);
     }
   }
 
@@ -167,7 +151,7 @@ export class Logger {
    */
   section(title: string): void {
     if (this.level === 'verbose') {
-      console.log(`\n${colors.magenta}${title}${colors.reset}`);
+      console.log(`\n${ansi.magenta}${title}${ansi.reset}`);
     }
   }
 

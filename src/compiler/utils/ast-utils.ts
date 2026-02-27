@@ -1,23 +1,15 @@
-/**
- * AST Utilities for Thane Compiler
- *
- * Provides helpers for working with TypeScript AST (Abstract Syntax Tree).
- */
+/** Helpers for working with the TypeScript AST. */
 
 import ts from 'typescript';
-import type { ComponentDefinition } from '../types.js';
+import type { ComponentDefinition, Range } from '../types.js';
 import { FN, PROP } from './constants.js';
 
-// Re-export for backwards compatibility
 export { FN, PROP };
 
 // ============================================================================
 // Source File Creation
 // ============================================================================
 
-/**
- * Create a TypeScript source file from code
- */
 export const createSourceFile = (filePath: string, source: string): ts.SourceFile => {
   return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 };
@@ -26,23 +18,14 @@ export const createSourceFile = (filePath: string, source: string): ts.SourceFil
 // Function Call Detection
 // ============================================================================
 
-/**
- * Check if a call expression calls a specific function
- */
 export const isFunctionCall = (node: ts.CallExpression, functionName: string): boolean => {
   return ts.isIdentifier(node.expression) && node.expression.text === functionName;
 };
 
-/**
- * Check if node is a signal() call
- */
 export const isSignalCall = (node: ts.CallExpression): boolean => {
   return isFunctionCall(node, FN.SIGNAL);
 };
 
-/**
- * Check if node is a defineComponent() call
- */
 export const isDefineComponentCall = (node: ts.CallExpression): boolean => {
   return isFunctionCall(node, FN.DEFINE_COMPONENT);
 };
@@ -62,11 +45,7 @@ export const pascalToKebab = (name: string): string => {
 // Signal Detection
 // ============================================================================
 
-/**
- * Get signal name from a bare getter call like count() (defineComponent pattern).
- * Only matches simple identifier calls with no arguments.
- * Returns null if not a bare function call.
- */
+/** Get signal name from a bare getter call like `count()`. Returns null if not a bare call. */
 export const getBareSignalGetterName = (node: ts.CallExpression): string | null => {
   if (ts.isIdentifier(node.expression) && node.arguments.length === 0) {
     return node.expression.text;
@@ -151,9 +130,6 @@ export const findSignalInitializers = (sourceFile: ts.SourceFile): Map<string, s
 // Class Detection
 // ============================================================================
 
-/**
- * Find a class that extends a specific base class
- */
 export const findClassExtending = (
   sourceFile: ts.SourceFile,
   baseClassName: string,
@@ -181,9 +157,6 @@ export const findClassExtending = (
   return foundClass;
 };
 
-/**
- * Find the enclosing class for a given node
- */
 export const findEnclosingClass = (node: ts.Node): ts.ClassExpression | ts.ClassDeclaration | null => {
   let current: ts.Node | undefined = node;
   while (current) {
@@ -199,23 +172,14 @@ export const findEnclosingClass = (node: ts.Node): ts.ClassExpression | ts.Class
 // Template Detection
 // ============================================================================
 
-/**
- * Check if a tagged template is html``
- */
 export const isHtmlTemplate = (node: ts.TaggedTemplateExpression): boolean => {
   return ts.isIdentifier(node.tag) && node.tag.text === FN.HTML;
 };
 
-/**
- * Check if a tagged template is css``
- */
 export const isCssTemplate = (node: ts.TaggedTemplateExpression): boolean => {
   return ts.isIdentifier(node.tag) && node.tag.text === FN.CSS;
 };
 
-/**
- * Check if source code contains html`` templates
- */
 export const hasHtmlTemplates = (source: string): boolean => {
   return source.includes('html`');
 };
@@ -347,16 +311,10 @@ export const extractPageSelector = (sourceFile: ts.SourceFile): string | null =>
 // Utility Functions
 // ============================================================================
 
-/**
- * Convert kebab-case to camelCase
- */
 export const toCamelCase = (str: string): string => {
   return str.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 };
 
-/**
- * Convert camelCase to kebab-case
- */
 export const toKebabCase = (str: string): string => {
   return str.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
 };
@@ -367,15 +325,8 @@ export const toKebabCase = (str: string): string => {
 
 /**
  * Rename all occurrences of an identifier in a JS expression using the TS AST.
- *
- * Unlike `\bname\b` regex, this only renames actual identifier tokens — it will
- * never match inside string literals, template literals, or property-access
- * chains that happen to contain the same text.
- *
- * @param expression - A JavaScript expression string, e.g. `item.label`
- * @param oldName - The identifier to find, e.g. `item`
- * @param newName - The replacement identifier, e.g. `v`
- * @returns The expression with all identifier occurrences renamed
+ * Unlike regex, this only renames actual identifier tokens — not inside strings,
+ * template literals, or property-access chains.
  */
 export const renameIdentifierInExpression = (expression: string, oldName: string, newName: string): string => {
   // Wrap in parens so the expression is parseable as a statement
@@ -383,7 +334,7 @@ export const renameIdentifierInExpression = (expression: string, oldName: string
   const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 
   // Collect all identifier positions that match (in reverse order for safe splicing)
-  const positions: Array<{ start: number; end: number }> = [];
+  const positions: Range[] = [];
 
   const visit = (node: ts.Node) => {
     if (ts.isIdentifier(node) && node.text === oldName) {
@@ -409,11 +360,7 @@ export const renameIdentifierInExpression = (expression: string, oldName: string
   return result;
 };
 
-/**
- * Check whether an expression references a given identifier (AST-based).
- *
- * Unlike `\bname\b` regex, this only matches actual identifier tokens.
- */
+/** Check whether an expression references a given identifier (AST-based, not regex). */
 export const expressionReferencesIdentifier = (expression: string, identifierName: string): boolean => {
   const wrapped = `(${expression})`;
   const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -436,12 +383,8 @@ export const expressionReferencesIdentifier = (expression: string, identifierNam
 };
 
 /**
- * Detect component-level signal call expressions in a JS expression.
- *
- * In class mode, these look like `this._signal()`.
- * In closure mode, these look like `_signal()` (bare calls with no dot-prefix).
- *
- * Returns the set of signal names found.
+ * Detect signal call expressions in a JS expression.
+ * Class mode: `this._signal()`, closure mode: `_signal()`.
  */
 export const findComponentSignalCalls = (expression: string, classStyle: boolean): Set<string> => {
   const wrapped = `(${expression})`;
@@ -480,13 +423,7 @@ export const findComponentSignalCalls = (expression: string, classStyle: boolean
 
 /**
  * Parse an arrow function expression and return its parameter list and body.
- *
- * Unlike regex-based parsing, this correctly handles:
- * - Destructured parameters: `({a, b}) => a + b`
- * - Default values: `(x = 10) => x`
- * - Multi-line bodies: `(x) => { ... }`
- * - Nested parentheses: `(x) => fn(x, y)`
- *
+ * Uses TS AST to correctly handle destructuring, defaults, and nested parens.
  * Returns null if the expression is not an arrow function.
  */
 export const parseArrowFunction = (
@@ -563,11 +500,8 @@ export interface ComponentHTMLConfig {
 
 /**
  * Emit a `<template>` anchor for a child component mount point.
- *
- * The CTFE owns the start of the bN counter and allocates IDs `b0`, `b1`, …
- * for each child component call. The binding compiler starts its `idCounter`
- * at the offset = number of child mounts. The element is later created in JS
- * via `document.createElement` and replaces this anchor at runtime.
+ * CTFE allocates IDs `b0`, `b1`, … and the binding compiler starts its
+ * `idCounter` at the offset = number of child mounts.
  */
 export const generateComponentHTML = (config: ComponentHTMLConfig): string => {
   return `<template id="${config.anchorId}"></template>`;

@@ -1,13 +1,6 @@
 /**
- * Thane Linter — built-in esbuild plugin
- *
- * Runs on every `.ts` file during `thane dev` and `thane build`.
- * Reuses the same TypeScript AST the rest of the compiler uses,
- * so there's zero extra parsing overhead.
- *
- * Rules are pure functions:  (sourceFile, filePath) → Diagnostic[]
- * Add new rules by creating a file in `rules/` and adding it to
- * the `allRules` array in `rules/index.ts`.
+ * Thane Linter — runs on every .ts file, reusing the compiler's AST.
+ * Rules are pure functions: (sourceFile, filePath) → Diagnostic[].
  */
 
 import type { Plugin } from 'esbuild';

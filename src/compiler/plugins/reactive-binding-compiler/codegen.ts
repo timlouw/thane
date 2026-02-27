@@ -26,7 +26,7 @@ import {
   renameIdentifierInExpression,
   parseArrowFunction,
 } from '../../utils/index.js';
-import { injectIdIntoFirstElement } from '../../utils/html-parser/index.js';
+import { injectIdIntoFirstElement, escapeTemplateLiteral, escapeRawTemplateLiteral, normalizeHtmlWhitespace } from '../../utils/html-parser/index.js';
 import type { ImportInfo } from '../../types.js';
 import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
 
@@ -380,8 +380,8 @@ const generateRepeatNestedCondInitFn = (
   // Build comment marker map for text bindings in this conditional
   const itemTextIds = new Set(nestedItemBindings.filter((b) => b.type === 'text').map((b) => b.elementId));
   const signalTextIds = new Set([
-    ...nestedBindings.filter((b) => b.type === 'text' && isSimpleBinding(b)).map((b) => (b as any).id),
-    ...nestedBindings.filter((b) => b.type === 'text' && isExpressionBinding(b)).map((b) => (b as any).id),
+    ...nestedBindings.filter((b) => b.type === 'text' && isSimpleBinding(b)).map((b) => (b as SimpleBinding).id),
+    ...nestedBindings.filter((b) => b.type === 'text' && isExpressionBinding(b)).map((b) => (b as SimpleBinding).id),
   ]);
   const hasTextMarkers = itemTextIds.size > 0 || signalTextIds.size > 0;
   if (hasTextMarkers) {
@@ -642,7 +642,7 @@ export const generateInitBindingsFunction = (
   for (const cond of conditionals) {
     const nestedBindings = cond.nestedBindings;
     const nestedConds = cond.nestedConditionals || [];
-    const escapedTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    const escapedTemplate = escapeTemplateLiteral(cond.templateContent);
     let nestedCode = '() => []';
     const condMountInfo = generateMountInfo(cond.id, '      ');
     const hasCondMounts = condMountInfo.setupLines.length > 0;
@@ -692,7 +692,7 @@ export const generateInitBindingsFunction = (
         }
       }
       for (const nestedCond of nestedConds) {
-        const nestedCondEscaped = nestedCond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        const nestedCondEscaped = escapeTemplateLiteral(nestedCond.templateContent);
         let innerNestedCode = '() => []';
         if (nestedCond.nestedBindings.length > 0) {
           const innerSimple = nestedCond.nestedBindings.filter(isSimpleBinding);
@@ -768,8 +768,8 @@ export const generateInitBindingsFunction = (
   for (const we of whenElseBlocks) {
     const thenTemplateWithId = injectIdIntoFirstElement(we.thenTemplate, we.thenId);
     const elseTemplateWithId = injectIdIntoFirstElement(we.elseTemplate, we.elseId);
-    const escapedThenTemplate = thenTemplateWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    const escapedElseTemplate = elseTemplateWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    const escapedThenTemplate = escapeTemplateLiteral(thenTemplateWithId);
+    const escapedElseTemplate = escapeTemplateLiteral(elseTemplateWithId);
     const generateNestedInitializer = (
       bindings: BindingInfo[],
       nestedConds: ConditionalBlock[],
@@ -821,7 +821,7 @@ export const generateInitBindingsFunction = (
         }
       }
       for (const cond of nestedConds) {
-        const nestedEscapedTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        const nestedEscapedTemplate = escapeTemplateLiteral(cond.templateContent);
         const nestedBindingsCode = generateNestedInitializer(cond.nestedBindings, [], []);
         const isSimple = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
         if (isSimple) {
@@ -838,8 +838,8 @@ export const generateInitBindingsFunction = (
       for (const nestedWe of nestedWE) {
         const nestedThenWithId = injectIdIntoFirstElement(nestedWe.thenTemplate, nestedWe.thenId);
         const nestedElseWithId = injectIdIntoFirstElement(nestedWe.elseTemplate, nestedWe.elseId);
-        const nestedThenTemplate = nestedThenWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-        const nestedElseTemplate = nestedElseWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        const nestedThenTemplate = escapeTemplateLiteral(nestedThenWithId);
+        const nestedElseTemplate = escapeTemplateLiteral(nestedElseWithId);
         const thenInitCode = generateNestedInitializer(
           nestedWe.thenBindings,
           nestedWe.nestedConditionals.filter(
@@ -1153,7 +1153,7 @@ export const generateInitBindingsFunction = (
           if (!condAnchorPath) continue;
           const condNavExpr = pathToSiblingNav('_el', condAnchorPath);
           lines.push(`        const _cond_${cond.id} = ${condNavExpr};`);
-          const condTemplate = cond.templateContent.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+          const condTemplate = escapeTemplateLiteral(cond.templateContent);
           const condInitNested = generateRepeatNestedCondInitFn(
             cond.nestedBindings,
             cond.nestedItemBindings,
@@ -1184,8 +1184,8 @@ export const generateInitBindingsFunction = (
           lines.push(`        const _cond_${we.elseId} = ${elseNavExpr};`);
           const thenTplWithId = injectIdIntoFirstElement(we.thenTemplate, we.thenId);
           const elseTplWithId = injectIdIntoFirstElement(we.elseTemplate, we.elseId);
-          const escapedThen = thenTplWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-          const escapedElse = elseTplWithId.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+          const escapedThen = escapeTemplateLiteral(thenTplWithId);
+          const escapedElse = escapeTemplateLiteral(elseTplWithId);
           const thenInitFn = generateRepeatNestedCondInitFn(we.thenBindings, [], [], rep.itemVar, ap);
           const elseInitFn = generateRepeatNestedCondInitFn(we.elseBindings, [], [], rep.itemVar, ap);
           const weSignals = we.signalNames.map((s) => ap.signal(s)).join(', ');
@@ -1223,13 +1223,11 @@ export const generateInitBindingsFunction = (
               .replace(/\r/g, '\\r');
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           } else {
-            const fallbackHtml = nr.itemTemplate
-              .replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '')
-              .replace(/\s*id="[ib]\d+"/g, '')
-              .replace(/\s+/g, ' ')
-              .replace(/>\s+</g, '><')
-              .replace(/\s+>/g, '>')
-              .trim();
+            const fallbackHtml = normalizeHtmlWhitespace(
+              nr.itemTemplate
+                .replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '')
+                .replace(/\s*id="[ib]\d+"/g, ''),
+            );
             const innerEscaped = fallbackHtml
               .replace(/\\/g, '\\\\')
               .replace(/`/g, '\\`')
@@ -1437,7 +1435,7 @@ export const generateInitBindingsFunction = (
         if (!staticInfo.staticHtml) {
           templateHtml = templateHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
           templateHtml = templateHtml.replace(/\s*id="[ib]\d+"/g, '');
-          templateHtml = templateHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
+          templateHtml = normalizeHtmlWhitespace(templateHtml);
         }
 
         const templateId = `__tpl_${rep.id}`;
@@ -1515,10 +1513,10 @@ export const generateInitBindingsFunction = (
         const renderItemVar = `_ri_${rep.id}`;
         const renderVar = `_rr_${rep.id}`;
         const emptyFlagVar = `_hasEmpty_${rep.id}`;
-        const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+        const sourceTemplate = escapeRawTemplateLiteral(rep.itemTemplate);
         const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
         const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
-        const emptyTemplate = (rep.emptyTemplate || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+        const emptyTemplate = escapeRawTemplateLiteral((rep.emptyTemplate || ''));
 
         lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
@@ -1581,10 +1579,10 @@ export const generateInitBindingsFunction = (
     const renderItemVar = `_ri_${rep.id}`;
     const renderVar = `_rr_${rep.id}`;
     const emptyFlagVar = `_hasEmpty_${rep.id}`;
-    const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+    const sourceTemplate = escapeRawTemplateLiteral(rep.itemTemplate);
     const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
     const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
-    const emptyTemplate = (rep.emptyTemplate || '').replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+    const emptyTemplate = escapeRawTemplateLiteral((rep.emptyTemplate || ''));
 
     lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
     lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);

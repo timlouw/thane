@@ -1,54 +1,40 @@
 /**
- * Signal implementation - core reactive primitive
+ * Signal — core reactive primitive.
  *
- * A signal is a reactive value container. Calling with no args returns the value,
- * calling with an arg sets the value and notifies subscribers.
+ * Memory model:
+ *   - Shared subscribe function (one closure for all signals)
+ *   - Per-signal state via properties on the function object (_v, _s, _nc)
  *
- * Uses a shared subscribe function to reduce per-signal memory allocation.
- * Instead of creating a new closure per signal, all signals share one subscribe
- * function that reads state from properties on the signal function object.
+ * Notification model:
+ *   - Depth counter (_nc) instead of array snapshot → zero-allocation hot path
+ *   - Mid-notification unsubscribes null the slot; compaction after outermost notify
  *
- * Notification loop uses a depth counter (_nc) instead of array snapshot
- * (.slice()) so the hot path is zero-allocation.  Mid-notification unsubscribes
- * null the slot instead of splicing; compaction happens once the outermost
- * notification finishes and only if the array was actually mutated.
+ * Batching:
+ *   - Writes apply immediately; notifications deferred until outermost batch ends
+ *   - Critical for glitch-free computed signals and atomic multi-signal updates
  *
- * Batching: when batch() is active, signal writes are applied immediately
- * (the value changes) but subscriber notifications are deferred until the
- * outermost batch completes. This is critical for glitch-free computed
- * signals and atomic multi-signal updates.
- *
- * Computed: uses a pull-on-read + dirty-marking model to prevent glitches.
- * When a dependency changes, the computed is marked dirty but NOT re-evaluated.
- * Re-evaluation happens lazily on the next read, ensuring all dependencies
- * have settled before the derivation runs.
+ * Computed:
+ *   - Pull-on-read + dirty-marking prevents diamond glitches
+ *   - Re-evaluation is lazy: only on the next read after a dependency changes
  */
 
 import type { Signal, ReadonlySignal } from './types.js';
 
-/**
- * Internal shape of a signal function object.
- * @internal
- */
+/** @internal */
 type SignalInternal<T> = Signal<T> & {
   _v: T; // current value
   _s: ((val: T) => void)[]; // subscribers (may contain nulls mid-notification)
   _nc: number; // notification depth counter (0 = idle)
 };
 
-/**
- * Shared subscribe function — assigned to every signal, uses `this` to access
- * the signal's internal state (_v for value, _s for subscribers array).
- */
+/** Shared subscribe — uses `this` to access the signal's _v, _s, _nc state. */
 function sharedSubscribe<T>(this: SignalInternal<T>, callback: (val: T) => void, skipInitial?: boolean): () => void {
   this._s.push(callback);
 
-  // Call with current value unless skipInitial is true
   if (!skipInitial) {
     callback(this._v);
   }
 
-  // Return unsubscribe function — capture `this` via local
   const self = this;
   return () => {
     const subs = self._s;
@@ -66,28 +52,18 @@ function sharedSubscribe<T>(this: SignalInternal<T>, callback: (val: T) => void,
   };
 }
 
-/**
- * Create a reactive signal with an initial value
- *
- * @param initialValue - The initial value of the signal
- * @returns A signal function that gets/sets the value
- */
+/** Create a reactive signal with an initial value. */
 export const signal = <T>(initialValue: T): Signal<T> => {
   const fn = function reactiveFunction(newValue?: T): T {
-    // Get value when called with no arguments
     if (arguments.length === 0) {
-      // Register with active tracker (computed / effect) if one exists
       const tracker = _activeTracker;
       if (tracker !== null) tracker._track(fn as unknown as Signal<unknown>);
       return fn._v;
     }
 
-    // Set value and notify subscribers when value changes
-    // Use Object.is for equality — handles NaN, -0/+0 correctly
     if (!Object.is(fn._v, newValue)) {
       fn._v = newValue!;
 
-      // If inside a batch or a notification cascade, defer notification
       if (_batchDepth > 0 || _notificationDepth > 0) {
         _pendingSignals.add(fn as unknown as SignalInternal<unknown>);
         return fn._v;
@@ -98,45 +74,26 @@ export const signal = <T>(initialValue: T): Signal<T> => {
     return fn._v;
   } as SignalInternal<T>;
 
-  // Per-signal state stored as properties instead of closure variables
   fn._v = initialValue;
   fn._s = [];
   fn._nc = 0;
 
-  // Shared subscribe function — one function object referenced by all signals
   fn.subscribe = sharedSubscribe;
 
   return fn as Signal<T>;
 };
 
-/**
- * Internal: notify all subscribers of a signal.
- * Extracted to be reusable by both direct set and batch flush.
- *
- * Uses a global notification depth to auto-batch cascading updates:
- * if a subscriber callback sets another signal, that signal's
- * notification is deferred until the current notification cycle completes.
- * This prevents diamond glitch in computed signals.
- * @internal
- */
+/** @internal — cascading updates are auto-batched via notification depth. */
 let _notificationDepth = 0;
 
 /**
- * Hook for computed-signal deferred notification flush.
- *
- * Starts as null — `computed()` installs a real flush function on first use
- * via `_installComputedFlush`.  If `computed()` is never imported, this
- * stays null and `_notifySubscribers` skips the call entirely — esbuild
- * tree-shakes the computed flush infrastructure from the bundle.
+ * Hook for computed-signal deferred-notification flush.
+ * Stays null (tree-shaken) when `computed()` is never imported.
  * @internal
  */
 let _computedFlushHook: (() => void) | null = null;
 
-/**
- * Called once by `computed()` to install its deferred-notification
- * flush callback into the core notification loop.
- * @internal
- */
+/** @internal — called once by `computed()` to wire into the notification loop. */
 export function _installComputedFlush(hook: () => void): void {
   _computedFlushHook = hook;
 }
@@ -153,9 +110,7 @@ function _notifySubscribers<T>(fn: SignalInternal<T>): void {
         try {
           cb(fn._v);
         } catch (err) {
-          // Re-throw asynchronously so the error surfaces in devtools
-          // without interrupting the notification loop. Using throw instead
-          // of console.error ensures it survives prod minifier stripping.
+          // Re-throw asynchronously to avoid interrupting the notification loop
           queueMicrotask(() => {
             throw err;
           });
@@ -163,7 +118,7 @@ function _notifySubscribers<T>(fn: SignalInternal<T>): void {
       }
     }
     if (--fn._nc === 0) {
-      // Compact null slots left by mid-notification unsubscribes
+      // Compact null slots from mid-notification unsubscribes
       const curLen = subs.length;
       let r = 0;
       while (r < curLen && subs[r] !== null) r++;
@@ -176,10 +131,7 @@ function _notifySubscribers<T>(fn: SignalInternal<T>): void {
       }
     }
     if (--_notificationDepth === 0) {
-      // Flush signals that were deferred during the notification cascade.
-      // Guard against infinite loops from circular dependencies — if a
-      // subscriber write triggers another write that cycles back, the
-      // pending set never empties. Cap iterations to surface the bug.
+      // Flush deferred cascade signals (cap iterations to catch circular deps)
       let flushIterations = 0;
       while (_pendingSignals.size > 0) {
         if (++flushIterations > 100) {
@@ -195,15 +147,14 @@ function _notifySubscribers<T>(fn: SignalInternal<T>): void {
           _notifySubscribers(pending[i]!);
         }
       }
-      // Flush computed notifications deferred during the cascade
+      // Flush deferred computed notifications
       if (_computedFlushHook) _computedFlushHook();
     }
   }
 }
 
 /**
- * Helper to notify subscribers of a computed signal.
- * Uses a local depth counter to correctly track nested notification depth.
+ * Notify computed subscribers with local depth tracking.
  * @internal
  */
 function _notifyComputedSubs<T>(
@@ -244,29 +195,20 @@ function _notifyComputedSubs<T>(
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Batching — defers subscriber notifications until batch ends
+//  Batching
 // ─────────────────────────────────────────────────────────────
 
-/** Active batch depth counter — 0 means not batching */
 let _batchDepth = 0;
 
 /**
- * Set of signals whose values changed during the current batch.
- * Using a Set ensures each signal is notified at most once even if
- * written multiple times within a batch.
+ * Signals whose values changed during the current batch.
  * @internal
  */
 const _pendingSignals = new Set<SignalInternal<unknown>>();
 
 /**
- * Batch multiple signal updates so subscriber notifications fire only once
- * after the batch completes. Batches can be nested; notifications flush
- * when the outermost batch ends.
- *
- * The value of each signal is updated immediately (so reads inside the
- * batch see the new value), but subscriber callbacks are deferred.
- *
- * Tree-shakable: if your app never imports `batch`, this code is eliminated.
+ * Batch multiple signal updates — notifications fire once after the batch completes.
+ * Batches nest; flush happens when the outermost batch ends.
  *
  * @example
  * batch(() => {
@@ -281,10 +223,6 @@ export function batch(fn: () => void): void {
     fn();
   } finally {
     if (--_batchDepth === 0) {
-      // Flush all pending signals. Copy into an array first so that
-      // if a subscriber triggers another signal write it enters a new
-      // implicit "non-batch" context and fires synchronously (no stale
-      // iteration issues).
       const pending = Array.from(_pendingSignals);
       _pendingSignals.clear();
       for (let i = 0; i < pending.length; i++) {
@@ -295,58 +233,33 @@ export function batch(fn: () => void): void {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Computed — derived signal that auto-tracks dependencies
+//  Computed
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Currently executing computed/effect tracker — used for auto-tracking.
- * @internal
- */
+/** @internal */
 let _activeTracker: { _track: (sig: Signal<unknown>) => void } | null = null;
 
 /**
- * Module-local state for the computed flush hook — lazily initialised by the
- * first `computed()` call so that the pending queue + flush loop live inside
- * `computed`'s tree-shakable scope.
+ * Lazily initialised state for computed flush hook — lives inside
+ * `computed()`'s tree-shakable scope.
  */
 let _computedFlushInstalled = false;
 let _computedPendingQueue: (() => void)[] = [];
 
 /**
- * Create a computed (derived) signal that automatically tracks its
- * signal dependencies and re-evaluates when any of them change.
+ * Create a derived signal that auto-tracks dependencies and re-evaluates lazily.
  *
- * Uses a dirty-marking + pull-on-read model to prevent diamond glitches:
- * when a dependency changes, the computed is marked dirty but NOT
- * re-evaluated immediately. Re-evaluation happens lazily on the next
- * read, ensuring all dependencies have settled first.
- *
- * The returned value is a ReadonlySignal — calling it returns the
- * current derived value. It has a `.dispose()` method to unsubscribe
- * from all dependencies and prevent further re-evaluation.
- *
- * Error handling: if the derivation throws, the error is cached and
- * re-thrown on every read until a dependency changes and the derivation
- * succeeds again.
- *
- * Tree-shakable: if your app never imports `computed`, this code is
- * eliminated by esbuild.
- *
- * @param derivation - Function that reads one or more signals and returns a derived value
- * @returns A ReadonlySignal containing the derived value, with `.dispose()`
+ * Uses dirty-marking + pull-on-read to prevent diamond glitches.
+ * Returned value is a ReadonlySignal with `.dispose()` to unsubscribe.
  *
  * @example
  * const firstName = signal('John');
  * const lastName = signal('Doe');
  * const fullName = computed(() => `${firstName()} ${lastName()}`);
  * fullName(); // 'John Doe'
- * firstName('Jane');
- * fullName(); // 'Jane Doe'
  */
 export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose: () => void } {
-  // Install the deferred-notification flush hook the first time any
-  // computed signal is created.  This keeps the flush infrastructure out
-  // of the bundle when `computed` is never imported.
+  // Install deferred-notification flush hook on first computed creation
   if (!_computedFlushInstalled) {
     _computedFlushInstalled = true;
     const q: (() => void)[] = [];
@@ -364,30 +277,29 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
   let disposed = false;
   let error: unknown = undefined;
   let hasError = false;
-  const unsubs: (() => void)[] = [];
+  // Dep map: signal → unsubscribe fn (supports O(1) differential updates)
+  const depUnsubs = new Map<Signal<unknown>, () => void>();
   const subscribers: ((val: T) => void)[] = [];
   let notifyCount = 0;
 
-  // Dependencies tracked during last evaluation
-  const deps = new Set<Signal<unknown>>();
+  // Deps set populated during evaluation (null outside evaluate)
+  let _evalDeps: Set<Signal<unknown>> | null = null;
   const tracker = {
     _track: (sig: Signal<unknown>) => {
-      deps.add(sig);
+      _evalDeps!.add(sig);
     },
   };
 
   /**
-   * Mark dirty and notify subscribers that value *may* have changed.
-   * If we're inside a notification cascade (another signal is being
-   * notified), defer by just marking dirty. The cascade flush will
-   * eventually reach us.
+   * Mark dirty and schedule notification.
+   * During a notification cascade, defers to the computed pending queue.
    */
   let pendingNotify = false;
   const markDirty = () => {
     if (disposed) return;
     dirty = true;
     if (subscribers.length === 0) return;
-    // If we're inside a notification cascade, schedule deferred notification
+    // During a cascade, defer notification
     if (_notificationDepth > 0) {
       if (!pendingNotify) {
         pendingNotify = true;
@@ -398,7 +310,7 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
     notifyIfChanged();
   };
 
-  /** Check if value actually changed and notify subscribers */
+  /** Re-evaluate if value changed and notify subscribers. */
   const notifyIfChanged = () => {
     pendingNotify = false;
     if (disposed || subscribers.length === 0) return;
@@ -409,23 +321,21 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
     }
   };
 
-  /** Subscribe to all tracked dependencies */
-  const subscribeToDeps = () => {
-    for (const dep of deps) {
-      unsubs.push(dep.subscribe(markDirty, true));
-    }
-  };
-
-  /** Unsubscribe from all current dependencies */
+  /** Unsubscribe from all tracked dependencies and clear the map */
   const unsubscribeAll = () => {
-    for (let i = 0; i < unsubs.length; i++) unsubs[i]!();
-    unsubs.length = 0;
+    for (const unsub of depUnsubs.values()) unsub();
+    depUnsubs.clear();
   };
 
-  /** Evaluate the derivation, tracking dependencies */
+  /**
+   * Evaluate with differential dependency tracking.
+   *
+   * Diffs old deps against newly-tracked deps — only subscribes/unsubscribes
+   * the delta. When the dep set is stable (common case), this is O(0) work.
+   */
   const evaluate = () => {
-    unsubscribeAll();
-    deps.clear();
+    const newDeps = new Set<Signal<unknown>>();
+    _evalDeps = newDeps;
     const prev = _activeTracker;
     _activeTracker = tracker;
     try {
@@ -433,7 +343,7 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
       error = undefined;
       hasError = false;
       dirty = false;
-      // Only notify downstream if value actually changed
+      // Only update downstream if value actually changed
       if (!Object.is(value, newVal)) {
         value = newVal;
       }
@@ -443,8 +353,22 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
       dirty = false;
     } finally {
       _activeTracker = prev;
+      _evalDeps = null;
     }
-    subscribeToDeps();
+
+    // Subscribe to newly-added deps
+    for (const dep of newDeps) {
+      if (!depUnsubs.has(dep)) {
+        depUnsubs.set(dep, dep.subscribe(markDirty, true));
+      }
+    }
+    // Unsubscribe from removed deps
+    for (const [dep, unsub] of depUnsubs) {
+      if (!newDeps.has(dep)) {
+        unsub();
+        depUnsubs.delete(dep);
+      }
+    }
   };
 
   // Initial evaluation
@@ -471,16 +395,7 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
   // Subscribe method — mimics signal.subscribe interface
   fn.subscribe = (cb: (val: T) => void, skipInitial?: boolean): (() => void) => {
     subscribers.push(cb);
-    if (!skipInitial) {
-      // Re-evaluate if dirty before calling subscriber
-      if (dirty && !disposed) evaluate();
-      if (hasError) {
-        throw error;
-      } else {
-        cb(value);
-      }
-    }
-    return () => {
+    const unsubscribe = () => {
       const idx = subscribers.indexOf(cb);
       if (idx !== -1) {
         if (notifyCount > 0) {
@@ -490,13 +405,25 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
         }
       }
     };
+    if (!skipInitial) {
+      // Re-evaluate if dirty before calling subscriber
+      if (dirty && !disposed) evaluate();
+      if (hasError) {
+        // Clean up the subscriber before throwing so no orphan subscription leaks.
+        // The caller catches the error and knows the subscribe failed cleanly.
+        unsubscribe();
+        throw error;
+      } else {
+        cb(value);
+      }
+    }
+    return unsubscribe;
   };
 
   // Dispose method — unsubscribe from all dependencies
   fn.dispose = () => {
     disposed = true;
     unsubscribeAll();
-    deps.clear();
     subscribers.length = 0;
   };
 
@@ -504,36 +431,24 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Effect — auto-tracked side effect
+//  Effect
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Run a side-effect function that automatically tracks which signals it
- * reads and re-runs whenever any of those signals change.
- *
- * Returns a dispose function that unsubscribes from all tracked signals.
- *
- * Tree-shakable: if your app never imports `effect`, this code is
- * eliminated by esbuild.
- *
- * @param fn - Side-effect function that reads signals
- * @returns A dispose function to stop the effect
+ * Auto-tracked side effect that re-runs when any read signal changes.
+ * Returns a dispose function.
  *
  * @example
  * const name = signal('world');
- * const dispose = effect(() => {
- *   console.log(`Hello, ${name()}!`);
- * });
- * // logs: "Hello, world!"
- * name('Thane');
- * // logs: "Hello, Thane!"
- * dispose(); // stops the effect
+ * const dispose = effect(() => console.log(`Hello, ${name()}!`));
+ * name('Thane'); // logs: "Hello, Thane!"
+ * dispose();
  */
 export function effect(fn: () => void): () => void {
   const unsubs: (() => void)[] = [];
   let disposed = false;
 
-  // Reusable tracking objects — same optimization as computed().
+  // Reusable tracking objects
   const deps = new Set<Signal<unknown>>();
   const tracker = {
     _track: (sig: Signal<unknown>) => {
@@ -544,20 +459,19 @@ export function effect(fn: () => void): () => void {
   const run = () => {
     if (disposed) return;
 
-    // Unsubscribe from old dependencies
+    // Unsubscribe from old deps
     for (let i = 0; i < unsubs.length; i++) unsubs[i]!();
     unsubs.length = 0;
 
-    // Track new dependencies (reuse existing Set)
+    // Track new deps
     deps.clear();
     const prev = _activeTracker;
     _activeTracker = tracker;
     try {
       fn();
     } catch (err) {
-      // Surface the error without killing the effect — re-subscription
-      // below keeps the effect alive so it can recover on the next
-      // dependency change (matching _notifySubscribers error semantics).
+      // Surface error without killing the effect — re-subscription below
+      // keeps it alive for recovery on next dependency change
       queueMicrotask(() => {
         throw err;
       });
@@ -565,9 +479,7 @@ export function effect(fn: () => void): () => void {
       _activeTracker = prev;
     }
 
-    // Subscribe to all tracked dependencies — pass `run` directly.
-    // This MUST run even after an error so the effect re-fires when
-    // the dependency that caused the failure changes.
+    // Subscribe to tracked deps (MUST run even after error)
     for (const dep of deps) {
       unsubs.push(dep.subscribe(run, true));
     }
@@ -583,25 +495,15 @@ export function effect(fn: () => void): () => void {
 }
 
 // ─────────────────────────────────────────────────────────────
-//  Untrack — escape hatch to read signals without tracking
+//  Untrack
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Run a function without tracking any signal reads. Use this inside
- * computed() or effect() when you need to read a signal's value
- * without creating a dependency on it.
- *
- * Tree-shakable: if your app never imports `untrack`, this code is
- * eliminated by esbuild.
- *
- * @param fn - Function to run without tracking
- * @returns The return value of `fn`
+ * Read signals without tracking. Use inside computed/effect
+ * to avoid creating a dependency.
  *
  * @example
- * const count = signal(0);
- * const label = signal('Count');
  * const display = computed(() => {
- *   // Re-evaluates when count changes, but NOT when label changes
  *   const labelText = untrack(() => label());
  *   return `${labelText}: ${count()}`;
  * });

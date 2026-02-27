@@ -12,7 +12,6 @@ export type ParserState =
   | 'ATTR_VALUE_Q'
   | 'ATTR_VALUE_UQ'
   | 'TAG_CLOSE'
-  | 'SELF_CLOSE'
   | 'COMMENT';
 
 export interface AttributeInfo {
@@ -149,9 +148,6 @@ export const VOID_ELEMENTS = new Set([
   'wbr',
 ]);
 
-/**
- * HTML entity map for decoding common entities
- */
 export const HTML_ENTITIES: Record<string, string> = {
   '&amp;': '&',
   '&lt;': '<',
@@ -174,9 +170,6 @@ export const HTML_ENTITIES: Record<string, string> = {
   '&darr;': '\u2193',
 };
 
-/**
- * Decode HTML entities in a string
- */
 export function decodeHtmlEntities(text: string): string {
   // Named entities
   let result = text.replace(/&[a-zA-Z]+;/g, (entity) => {
@@ -195,12 +188,10 @@ export function decodeHtmlEntities(text: string): string {
   return result;
 }
 
-// Pre-compiled regex factories — return fresh instances to avoid stale lastIndex bugs with /g
-// These match BARE signal calls: signalName() — NOT this.signalName()
-// The compiler pipeline natively supports closure-based (defineComponent) access patterns.
+// Regex factories — fresh instances to avoid stale lastIndex bugs with /g.
+// Match BARE signal calls: signalName() — NOT this.signalName()
 export const WHEN_ELSE_REGEX = () => /\$\{whenElse\(/g;
 export const REPEAT_REGEX = () => /\$\{repeat\(/g;
 export const SIGNAL_EXPR_REGEX = () => /\$\{(\w+)\(\)\}/g;
 export const SIGNAL_CALL_REGEX = () => /(?<!\.)(\w+)\(\)/g;
-export const STYLE_EXPR_REGEX = () => /([\w-]+)\s*:\s*(\$\{(\w+)\(\)\})/g;
-export const ATTR_EXPR_REGEX = () => /\$\{(\w+)\(\)\}/g;
+

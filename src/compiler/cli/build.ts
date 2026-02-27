@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import type { BuildConfig } from './types.js';
 import { consoleColors, createBuildContext, BROWSER_TARGETS } from '../utils/index.js';
 
-// Import plugins
+import { clearAllDebounceTimers } from '../plugins/post-build-processor/file-copy.js';
 import { TypeCheckPlugin } from '../plugins/tsc-type-checker/tsc-type-checker.js';
 import { RoutesPrecompilerPlugin } from '../plugins/routes-precompiler/routes-precompiler.js';
 import { ComponentPrecompilerPlugin } from '../plugins/component-precompiler/component-precompiler.js';
@@ -26,10 +26,8 @@ export async function runBuild(config: BuildConfig): Promise<void> {
 
   console.info(consoleColors.blue, `Running ${environment} build...`);
 
-  // Create shared build context (single filesystem scan)
   const buildContext = await createBuildContext();
 
-  // Create plugins with config
   const basePlugins = [
     TypeCheckPlugin({ strict: config.strictTypeCheck }),
     ThaneLinterPlugin(),
@@ -131,9 +129,15 @@ export async function runBuild(config: BuildConfig): Promise<void> {
       await ctx.watch({});
       console.info(consoleColors.blue, 'Watching for changes...');
 
-      // Graceful shutdown — dispose esbuild watcher on SIGINT/SIGTERM
+      // Graceful shutdown — dispose esbuild watcher on SIGINT/SIGTERM.
+      // Use ctx.dispose() without process.exit() so that registered cleanup
+      // handlers (beforeExit, close callbacks) run naturally.
+      let shuttingDown = false;
       const shutdown = () => {
-        ctx.dispose().then(() => process.exit(0));
+        if (shuttingDown) return; // guard against duplicate signals
+        shuttingDown = true;
+        clearAllDebounceTimers();
+        ctx.dispose().catch(() => {/* ignore dispose errors during shutdown */});
       };
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);

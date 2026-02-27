@@ -356,12 +356,12 @@ export function parseArgs(args: string[]): CLIOptions {
         break;
       case '--help':
       case '-h':
-        printHelp();
-        process.exit(0);
+        options.exitRequested = 'help';
+        break;
       case '--version':
       case '-v':
-        printVersion();
-        process.exit(0);
+        options.exitRequested = 'version';
+        break;
       default:
         if (arg && (arg.startsWith('--') || (arg.startsWith('-') && arg.length === 2))) {
           // Skip values consumed by flags with arguments
@@ -500,20 +500,18 @@ export function resolveCLIOptions(args: string[]): CLIOptions {
 }
 
 export async function cliMain(): Promise<void> {
-  // Thane requires the Bun runtime — fail fast with a clear message.
-  if (typeof globalThis.Bun === 'undefined') {
-    console.error(
-      'Error: Thane CLI requires the Bun runtime.\n\n' +
-      '  Install Bun: https://bun.sh\n' +
-      '    curl -fsSL https://bun.sh/install | bash   (macOS/Linux)\n' +
-      '    powershell -c "irm bun.sh/install.ps1 | iex"  (Windows)\n\n' +
-      '  Then run: bun thane <command>\n',
-    );
-    process.exit(1);
-  }
-
   const args = process.argv.slice(2);
   const cliOptions = resolveCLIOptions(args);
+
+  // Handle --help / --version (print and exit without building)
+  if (cliOptions.exitRequested === 'help') {
+    printHelp();
+    return;
+  }
+  if (cliOptions.exitRequested === 'version') {
+    printVersion();
+    return;
+  }
 
   // Wire log level from CLI flags
   logger.setLevel(cliOptions.logLevel);

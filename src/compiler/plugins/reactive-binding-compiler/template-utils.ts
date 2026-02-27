@@ -5,6 +5,7 @@
  * eliminate ~300 lines of near-identical conditional/whenElse/edit logic.
  */
 
+import type { Range } from '../../types.js';
 import type { ConditionalBlock, WhenElseBlock, BindingInfo, EventBinding } from './types.js';
 import {
   findElementsWithWhenDirective,
@@ -346,10 +347,8 @@ export const collectWhenElseBlocks = (
 // buildRangeOverlapChecker
 // ============================================================================
 
-export interface Range {
-  start: number;
-  end: number;
-}
+// Re-export Range from shared compiler types for backward compatibility
+export type { Range } from '../../types.js';
 
 /**
  * Build a fast predicate for checking whether a position falls inside any of

@@ -774,3 +774,140 @@ test('a throwing subscriber does not prevent subsequent subscribers from firing'
   await expect(section.getByTestId('exc-before')).toHaveText('before-3');
   await expect(section.getByTestId('exc-after')).toHaveText('after-3');
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Blocker 1.1: Computed notification-depth tracking
+//
+// _notifyComputedSubs must correctly track notification depth even when a
+// subscriber unsubscribes mid-notification. If the depth counter drifts
+// negative (by-value parameter bug), subsequent notifications corrupt
+// iteration — subscribers get skipped or the compaction never fires.
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('Blocker 1.1: computed subscriber that unsubscribes mid-notification does not break remaining subscribers', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('blocker-11-section');
+
+  // Initial state: all subscribers used skipInitial=true, so log is empty
+  await expect(section.getByTestId('b11-log')).toHaveText('');
+
+  // First trigger: source becomes 1, computed becomes 100.
+  // During notification: sub1 logs 100, sub2 self-unsubscribes (null-slotted), sub3 logs 100.
+  // b11Sub1Vals=[100], b11Sub3Vals=[100] → "100,100"
+  await section.getByTestId('b11-trigger').click();
+  await expect(section.getByTestId('b11-log')).toHaveText('100,100');
+
+  // Second trigger: source becomes 2, computed becomes 200.
+  // Sub2 is gone (compacted). Sub1 and Sub3 should BOTH still fire.
+  // If depth tracking was broken (notifyCount drifts negative), mid-notification
+  // unsubscribes use splice → corrupts iteration → sub3 gets skipped.
+  // b11Sub1Vals=[100,200], b11Sub3Vals=[100,200] → "100,200,100,200"
+  await section.getByTestId('b11-trigger').click();
+  await expect(section.getByTestId('b11-log')).toHaveText('100,200,100,200');
+
+  // Third trigger: source=3, computed=300 — both still fire
+  await section.getByTestId('b11-trigger').click();
+  await expect(section.getByTestId('b11-log')).toHaveText('100,200,300,100,200,300');
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Blocker 1.2: Reentrant reconciler does not corrupt key tracking
+//
+// When removeItem() in the reconciler runs cleanup callbacks that trigger
+// a signal update → subscriber notification → another reconcile() call,
+// the inner reconcile must not corrupt the outer reconcile's key tracking.
+// A module-scoped shared Set would be cleared by the inner call, causing
+// the outer to incorrectly remove all remaining items (data loss).
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('Blocker 1.2: reentrant reconciler calls do not cause data loss in either list', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('blocker-12-section');
+
+  // Initial state: list1 has 3 items, list2 has 2 items
+  await expect(section.locator('[data-testid="b12-item1"]')).toHaveCount(3);
+  await expect(section.locator('[data-testid="b12-item1"]')).toHaveText(['L1-A', 'L1-B', 'L1-C']);
+  await expect(section.locator('[data-testid="b12-item2"]')).toHaveCount(2);
+  await expect(section.locator('[data-testid="b12-item2"]')).toHaveText(['L2-X', 'L2-Y']);
+
+  // Click remove: removes middle item from list1.
+  // The subscriber on list1 then adds an item to list2, triggering a nested reconcile.
+  // If _keySet was shared, the inner reconcile (list2) would clear() the Set,
+  // and the outer reconcile (list1) would lose all retained keys → data loss.
+  await section.getByTestId('b12-remove').click();
+
+  // List1 should have 2 items remaining (L1-A and L1-C survived)
+  await expect(section.locator('[data-testid="b12-item1"]')).toHaveCount(2);
+  await expect(section.locator('[data-testid="b12-item1"]')).toHaveText(['L1-A', 'L1-C']);
+
+  // List2 should have 3 items (L2-X, L2-Y, plus the newly added L2-Z)
+  await expect(section.locator('[data-testid="b12-item2"]')).toHaveCount(3);
+  await expect(section.locator('[data-testid="b12-item2"]')).toHaveText(['L2-X', 'L2-Y', 'L2-Z']);
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Blocker 1.3: Effect recovery after throw
+//
+// If the user's effect function throws, the effect must still re-subscribe
+// to its tracked dependencies so it can recover when the dependency changes
+// to a non-throwing value. Without this, the effect permanently dies after
+// the first error — no future signal changes will re-run it.
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('Blocker 1.3: effect recovers and re-runs after its function throws', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('blocker-13-section');
+
+  // Initial state: effect ran once with source=0, did not throw
+  await expect(section.getByTestId('b13-log')).toHaveText('ok-0');
+  await expect(section.getByTestId('b13-runs')).toHaveText('1');
+
+  // Set source to 1 — this causes the effect to throw.
+  // The error is deferred via queueMicrotask, but the effect should
+  // still be subscribed to its dependencies.
+  await section.getByTestId('b13-set-throwing').click();
+  await expect(section.getByTestId('b13-runs')).toHaveText('2');
+  // Log stays at 'ok-0' because the throw happened before b13Log was set
+  await expect(section.getByTestId('b13-log')).toHaveText('ok-0');
+
+  // Set source to 2 — the effect should RE-RUN (proving it recovered).
+  // If the effect died after the throw, this would NOT update.
+  await section.getByTestId('b13-set-recovery').click();
+  await expect(section.getByTestId('b13-runs')).toHaveText('3');
+  await expect(section.getByTestId('b13-log')).toHaveText('ok-2');
+
+  // Set to throwing again, then recover again — proves repeated recovery
+  await section.getByTestId('b13-set-throwing').click();
+  await expect(section.getByTestId('b13-runs')).toHaveText('4');
+  await section.getByTestId('b13-set-recovery').click();
+  await expect(section.getByTestId('b13-runs')).toHaveText('5');
+  await expect(section.getByTestId('b13-log')).toHaveText('ok-2');
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// High-Priority 2.10: Computed .subscribe() cleans up on error
+//
+// When a computed's derivation throws, calling .subscribe() used to leave the
+// subscriber callback in the internal array (leak) while the thrown error
+// prevented the unsubscribe function from being returned. After the fix,
+// the subscriber is removed before the error propagates — no leak, no orphan.
+// ══════════════════════════════════════════════════════════════════════════════
+
+test('High-Priority 2.10: computed subscribe cleans up subscriber when derivation throws', async ({ page }) => {
+  await gotoApp({ page });
+
+  const section = page.getByTestId('h210-section');
+
+  // On load: the contract app subscribes to a computed that throws on source=0.
+  // The subscribe catches the error → h210Log shows the caught message.
+  await expect(section.getByTestId('h210-log')).toHaveText('caught:h210-initial-error');
+
+  // Click fix: sets source to 1 (derivation succeeds, computed = 10).
+  // If the subscriber leaked, it would fire (h210SubCalled=true) → "leaked".
+  // With the fix, subscriber was cleaned up → "cleaned-up".
+  await section.getByTestId('h210-fix').click();
+  await expect(section.getByTestId('h210-log')).toHaveText('cleaned-up');
+});

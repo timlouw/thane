@@ -57,6 +57,8 @@ export interface CLIOptions {
   legalComments?: 'none' | 'eof' | 'linked' | 'external' | undefined;
   /** Write esbuild metafile to dist for bundle analysis (default: false) */
   analyze?: boolean | undefined;
+  /** Set when --help or --version is passed; caller should print and exit */
+  exitRequested?: 'help' | 'version' | undefined;
 }
 
 /**

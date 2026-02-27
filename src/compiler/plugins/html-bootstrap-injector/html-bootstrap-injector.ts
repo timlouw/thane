@@ -180,12 +180,6 @@ const findImportPath = (sourceFile: ts.SourceFile, identifierName: string): stri
   return null;
 };
 
-const extractSelectorFromComponent = (sourceFile: ts.SourceFile): string | null => {
-  // Use the shared utility which supports both defineComponent and legacy registerComponent
-  const pageSelector = extractPageSelector(sourceFile);
-  return pageSelector;
-};
-
 const findBootstrapConfig = async (entryPointPath: string): Promise<Omit<BootstrapConfig, 'componentDef'> | null> => {
   try {
     const absolutePath = path.resolve(process.cwd(), entryPointPath);
@@ -203,7 +197,7 @@ const findBootstrapConfig = async (entryPointPath: string): Promise<Omit<Bootstr
     const componentFilePath = resolveImportPath(absolutePath, importPath);
     const componentSource = await fs.promises.readFile(componentFilePath, 'utf8');
     const componentSourceFile = ts.createSourceFile(componentFilePath, componentSource, ts.ScriptTarget.Latest, true);
-    const selector = extractSelectorFromComponent(componentSourceFile);
+    const selector = extractPageSelector(componentSourceFile);
     if (!selector) {
       logger.warn(NAME, `Could not find component selector in ${componentFilePath}`);
       return null;

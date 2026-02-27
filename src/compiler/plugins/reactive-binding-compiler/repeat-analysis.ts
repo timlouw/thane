@@ -35,6 +35,7 @@ import {
   applyTemplateEdits,
   type IdState,
   type TemplateEdit,
+  type Range,
 } from './template-utils.js';
 
 /**
@@ -458,12 +459,6 @@ interface ItemAttrMatch {
   attrName: string;
   expr: string;
   id: string;
-}
-
-/** Range with start/end for overlap checking */
-interface Range {
-  start: number;
-  end: number;
 }
 
 /**

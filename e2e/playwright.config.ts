@@ -5,9 +5,9 @@ const headedMode = process.env.PW_E2E_HEADED === '1';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 60_000,
+  timeout: 30_000,
   expect: {
-    timeout: 10_000,
+    timeout: 5_000,
   },
   fullyParallel: true,
   reporter: [['list']],
@@ -21,7 +21,7 @@ export default defineConfig({
     command: 'bun run e2e:build && bun run e2e:serve',
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: false,
-    timeout: 180_000,
+    timeout: 60_000,
   },
   projects: [
     {

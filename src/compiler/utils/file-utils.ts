@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import type { BuildContext, ComponentDefinition } from '../types.js';
 import { sourceCache } from './cache.js';
 import { extractComponentDefinitions } from './ast-utils.js';
+import { logger } from './logger.js';
 
 export const safeReadFile = async (filePath: string): Promise<string | null> => {
   try {
     return await fs.promises.readFile(filePath, 'utf8');
-  } catch {
+  } catch (err) {
+    logger.verbose(`safeReadFile: failed to read "${filePath}": ${err instanceof Error ? err.message : err}`);
     return null;
   }
 };
@@ -34,8 +36,9 @@ export const collectFilesRecursively = async (
           files.push(fullPath);
         }
       }
-    } catch {
-      // Skip directories that don't exist or can't be read
+    } catch (err) {
+      // Skip directories that can't be read, but log for diagnostics
+      logger.verbose(`collectFilesRecursively: skipping "${currentDir}": ${err instanceof Error ? err.message : err}`);
     }
   };
 
@@ -70,9 +73,6 @@ export const getContentType = (url: string): string => {
  * Create a shared BuildContext by scanning the project root for component files.
  * Both ComponentPrecompiler and HTMLBootstrapInjector use this to avoid
  * duplicate filesystem scans.
- *
- * Scans from cwd() recursively, skipping node_modules / dist / .git etc.
- * This makes it work for any project structure without hardcoded paths.
  */
 export const createBuildContext = async (): Promise<BuildContext> => {
   const workspaceRoot = process.cwd();

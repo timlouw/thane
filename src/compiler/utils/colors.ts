@@ -44,4 +44,3 @@ export const ansi = {
   reset: _wrap('\x1b[0m', 'raw'),
 } as const;
 
-export type ConsoleColor = keyof typeof consoleColors;

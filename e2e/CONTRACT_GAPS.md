@@ -4,8 +4,8 @@ This file tracks **known user-visible contract behaviors** validated by automate
 
 ## Current status summary
 
-- ✅ Browser contract suite is green (`10/10`) under `bun run e2e:test`.
-- ✅ Runtime unit suite is green (`52/52`) under `bun run test`.
+- ✅ Browser contract suite is green (`40/40`) under `bun run e2e:test`.
+- ✅ Runtime unit suite is green (`191/191`) under `bun run test`.
 
 ## Validated behaviors
 

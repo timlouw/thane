@@ -28,10 +28,19 @@ export const recursivelyCopyAssetsIntoDist = async (src: string, dest: string): 
 };
 
 /**
- * Debounce timer map for filesystem watcher events
+ * Debounce timer map for filesystem watcher events.
+ * Cleaned up on process exit to avoid resource leaks in watch mode.
  */
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const DEBOUNCE_MS = 100;
+
+/** Clear all pending debounce timers — called on process exit. */
+export function clearAllDebounceTimers(): void {
+  for (const timer of debounceTimers.values()) {
+    clearTimeout(timer);
+  }
+  debounceTimers.clear();
+}
 
 export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string, onUpdate?: () => void): void => {
   if (!fs.existsSync(src)) {

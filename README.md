@@ -494,7 +494,7 @@ Precedence is:
 
 ## 🧪 Testing
 
-All features are validated by **end-to-end browser tests** across Chromium, Firefox, and WebKit, plus **204 unit tests** covering signals, computed, batch, effect, reactivity, CLI parsing, build config, and lint rules.
+All features are validated by **end-to-end browser tests** across Chromium, Firefox, and WebKit, plus **191 unit tests** covering signals, computed, batch, effect, reactivity, CLI parsing, build config, and lint rules.
 
 ```bash
 bun run test          # Unit tests
