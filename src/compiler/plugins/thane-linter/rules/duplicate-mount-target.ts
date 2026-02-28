@@ -29,12 +29,37 @@ const isMountCall = (node: ts.CallExpression): boolean => {
 };
 
 /**
- * Derive a "target key" from the second argument of mount().
- * If no second argument, the target is 'document.body' (default).
+ * Derive a "target key" from a mount() call.
+ *
+ * New API:   mount({ target: document.getElementById('app') })
+ * Legacy:    mount(App, document.getElementById('app'))
+ *
+ * If no target, the target is 'document.body' (default).
  * Returns a string identifier for comparison, or null if it's too
  * complex to analyze statically.
  */
 const getTargetKey = (call: ts.CallExpression, sourceFile: ts.SourceFile): string => {
+  const firstArg = call.arguments[0];
+
+  // New API: mount({ component?, target?, ... })
+  if (firstArg && ts.isObjectLiteralExpression(firstArg)) {
+    for (const prop of firstArg.properties) {
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === 'target'
+      ) {
+        const target = prop.initializer;
+        if (ts.isIdentifier(target)) return `var:${target.text}`;
+        if (ts.isPropertyAccessExpression(target)) return target.getText(sourceFile);
+        if (ts.isCallExpression(target)) return target.getText(sourceFile);
+        return target.getText(sourceFile);
+      }
+    }
+    return '__default_body__';
+  }
+
+  // Legacy: mount(Component, target)
   if (call.arguments.length < 2) {
     return '__default_body__';
   }

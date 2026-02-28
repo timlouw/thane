@@ -1,4 +1,4 @@
-import { defineComponent, signal, mount } from 'thane';
+import { defineComponent, signal, mountComponent } from 'thane';
 import type { MountHandle } from 'thane';
 import { ParentWithChild } from './parent-with-child';
 
@@ -45,7 +45,7 @@ export const MemoryLeakDemo = defineComponent('memory-leak-demo', () => {
       document.getElementById('mount-target')!.appendChild(container);
 
       // Mount a parent that contains a LeakyChild
-      const handle = mount(ParentWithChild, container);
+      const handle = mountComponent(ParentWithChild, container);
       if (handle) {
         // Immediately destroy — simulates navigating away, closing a modal, etc.
         handle.destroy();

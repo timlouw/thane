@@ -15,6 +15,9 @@ import {
 
 const NAME = PLUGIN_NAME.ROUTES;
 
+/** Property names used for the lazy component loader in route definitions. */
+const COMPONENT_PROPS = new Set([PROP.COMPONENT_MODULE, 'component']);
+
 const resolvePagePath = (importPath: string, routesFilePath: string): string => {
   const routesDir = path.dirname(routesFilePath);
   let resolvedPath = importPath.replace(/\.js$/, '.ts');
@@ -25,6 +28,42 @@ const resolvePagePath = (importPath: string, routesFilePath: string): string => 
   return resolvedPath;
 };
 
+/**
+ * Extract the import specifier from an arrow function body.
+ * Handles two patterns:
+ *   1. `() => import('./page.js')`                              — direct import
+ *   2. `() => import('./page.js').then(m => m.PageComponent)`   — import + .then
+ */
+const extractImportPathFromArrow = (node: ts.ArrowFunction): string | null => {
+  let callExpr: ts.CallExpression | null = null;
+  const body = node.body;
+
+  if (ts.isCallExpression(body)) {
+    const expr = body.expression;
+
+    // Pattern 1: direct `import('...')`
+    if (expr.kind === ts.SyntaxKind.ImportKeyword) {
+      callExpr = body;
+    }
+    // Pattern 2: `import('...').then(m => m.X)`
+    else if (ts.isPropertyAccessExpression(expr) && expr.name.text === 'then') {
+      const innerCall = expr.expression;
+      if (ts.isCallExpression(innerCall) && innerCall.expression.kind === ts.SyntaxKind.ImportKeyword) {
+        callExpr = innerCall;
+      }
+    }
+  }
+
+  if (callExpr && callExpr.arguments.length > 0) {
+    const importArg = callExpr.arguments[0];
+    if (importArg && ts.isStringLiteral(importArg)) {
+      return importArg.text;
+    }
+  }
+
+  return null;
+};
+
 const extractRouteImports = async (
   sourceFile: ts.SourceFile,
   routesFilePath: string,
@@ -32,25 +71,19 @@ const extractRouteImports = async (
   const pageSelectors = new Map<string, PageSelectorInfo>();
 
   const processArrowFunction = async (node: ts.ArrowFunction) => {
-    const body = node.body;
-    if (ts.isCallExpression(body)) {
-      const expr = body.expression;
-      if (expr.kind === ts.SyntaxKind.ImportKeyword && body.arguments.length > 0) {
-        const importArg = body.arguments[0];
-        if (importArg && ts.isStringLiteral(importArg)) {
-          const importPath = importArg.text;
-          const pagePath = resolvePagePath(importPath, routesFilePath);
-          const cached = await sourceCache.get(pagePath);
-          if (cached) {
-            const selector = extractPageSelector(cached.sourceFile);
-            if (selector) {
-              pageSelectors.set(importPath, { importPath, selector });
-            }
-          }
+    const importPath = extractImportPathFromArrow(node);
+    if (importPath) {
+      const pagePath = resolvePagePath(importPath, routesFilePath);
+      const cached = await sourceCache.get(pagePath);
+      if (cached) {
+        const selector = extractPageSelector(cached.sourceFile);
+        if (selector) {
+          pageSelectors.set(importPath, { importPath, selector });
         }
       }
     }
   };
+
   const collectArrowFunctions = (node: ts.Node): ts.ArrowFunction[] => {
     const nodes: ts.ArrowFunction[] = [];
     if (ts.isArrowFunction(node)) {
@@ -101,14 +134,8 @@ export const RoutesPrecompilerPlugin: Plugin = {
             for (const prop of node.properties) {
               lastProp = prop;
               if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-                if (prop.name.text === PROP.COMPONENT_MODULE && ts.isArrowFunction(prop.initializer)) {
-                  const body = prop.initializer.body;
-                  if (ts.isCallExpression(body) && body.arguments.length > 0) {
-                    const importArg = body.arguments[0];
-                    if (importArg && ts.isStringLiteral(importArg)) {
-                      importPath = importArg.text;
-                    }
-                  }
+                if (COMPONENT_PROPS.has(prop.name.text) && ts.isArrowFunction(prop.initializer)) {
+                  importPath = extractImportPathFromArrow(prop.initializer);
                 }
                 if (prop.name.text === PROP.SELECTOR) {
                   hasSelector = true;

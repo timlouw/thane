@@ -109,10 +109,11 @@ const parseMountTarget = (targetNode: ts.Node, sourceFile: ts.SourceFile): Mount
 const findMountCall = (
   sourceFile: ts.SourceFile,
 ): {
-  componentName: string;
+  componentName: string | null;
   target: MountTarget;
+  hasRouter: boolean;
 } | null => {
-  let result: { componentName: string; target: MountTarget } | null = null;
+  let result: { componentName: string | null; target: MountTarget; hasRouter: boolean } | null = null;
 
   const visit = (node: ts.Node): void => {
     if (result) return;
@@ -120,35 +121,63 @@ const findMountCall = (
     if (ts.isCallExpression(node)) {
       const expr = node.expression;
       if (ts.isIdentifier(expr) && expr.text === 'mount' && node.arguments.length >= 1) {
-        const componentArg = node.arguments[0];
-        if (!componentArg) return;
+        const firstArg = node.arguments[0];
+        if (!firstArg) return;
 
-        if (ts.isIdentifier(componentArg)) {
+        // New API: mount({ component?: X, target?: Y, router?: Z })
+        if (ts.isObjectLiteralExpression(firstArg)) {
+          let componentName: string | null = null;
+          let target: MountTarget = { type: 'body' };
+          let hasRouter = false;
+
+          for (const prop of firstArg.properties) {
+            if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+
+            if (prop.name.text === 'component' && ts.isIdentifier(prop.initializer)) {
+              componentName = prop.initializer.text;
+            } else if (prop.name.text === 'target') {
+              const parsedTarget = parseMountTarget(prop.initializer, sourceFile);
+              if (parsedTarget) {
+                target = parsedTarget;
+              }
+            } else if (prop.name.text === 'router') {
+              hasRouter = true;
+            }
+          }
+
+          result = { componentName, target, hasRouter };
+          return;
+        }
+
+        // Legacy support: mount(Component) or mount(Component, target)
+        if (ts.isIdentifier(firstArg)) {
           let target: MountTarget = { type: 'body' };
 
           if (node.arguments.length >= 2) {
             const secondArg = node.arguments[1];
-            if (!secondArg) return;
-            if (ts.isObjectLiteralExpression(secondArg)) {
-              for (const prop of secondArg.properties) {
-                if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'target') {
-                  const parsedTarget = parseMountTarget(prop.initializer, sourceFile);
-                  if (parsedTarget) {
-                    target = parsedTarget;
+            if (secondArg) {
+              if (ts.isObjectLiteralExpression(secondArg)) {
+                for (const prop of secondArg.properties) {
+                  if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'target') {
+                    const parsedTarget = parseMountTarget(prop.initializer, sourceFile);
+                    if (parsedTarget) {
+                      target = parsedTarget;
+                    }
                   }
                 }
-              }
-            } else {
-              const parsedTarget = parseMountTarget(secondArg, sourceFile);
-              if (parsedTarget) {
-                target = parsedTarget;
+              } else {
+                const parsedTarget = parseMountTarget(secondArg, sourceFile);
+                if (parsedTarget) {
+                  target = parsedTarget;
+                }
               }
             }
           }
 
           result = {
-            componentName: componentArg.text,
+            componentName: firstArg.text,
             target,
+            hasRouter: false,
           };
         }
       }
@@ -185,10 +214,30 @@ const findBootstrapConfig = async (entryPointPath: string): Promise<Omit<Bootstr
     const absolutePath = path.resolve(process.cwd(), entryPointPath);
     const source = await fs.promises.readFile(absolutePath, 'utf8');
     const sourceFile = ts.createSourceFile(absolutePath, source, ts.ScriptTarget.Latest, true);
+
     const mountInfo = findMountCall(sourceFile);
+
     if (!mountInfo) {
       return null;
     }
+
+    // Mode C: router-only, no shell component
+    if (!mountInfo.componentName && mountInfo.hasRouter) {
+      logger.info(NAME, 'Detected Mode C: mount({ router }) — router as root, no shell');
+      return null;
+    }
+
+    // No component found — nothing to bootstrap
+    if (!mountInfo.componentName) {
+      return null;
+    }
+
+    // Mode B: shell component + router
+    if (mountInfo.hasRouter) {
+      logger.info(NAME, 'Detected Mode B: mount({ component, router }) — shell with router');
+    }
+
+    // Mode A or B: resolve the component
     const importPath = findImportPath(sourceFile, mountInfo.componentName);
     if (!importPath) {
       logger.warn(NAME, `Could not find import for ${mountInfo.componentName}`);
@@ -265,7 +314,8 @@ export const HTMLBootstrapInjectorPlugin = (options: HTMLBootstrapInjectorOption
       }
       const config = await findBootstrapConfig(mainEntry);
       if (!config) {
-        logger.info(NAME, 'No mount() call found in main.ts');
+        // findBootstrapConfig already logged if Mode C was detected
+        logger.info(NAME, 'No shell component to bootstrap (Mode A without mount, or Mode C router-as-root)');
         return;
       }
       const components = await collectComponentDefinitions(options.buildContext);

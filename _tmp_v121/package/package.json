@@ -1,6 +1,6 @@
 {
   "name": "thane",
-  "version": "0.0.128",
+  "version": "0.0.121",
   "description": "Lightweight compile-time optimized component framework",
   "author": "Tim Louw",
   "license": "MIT",
@@ -31,7 +31,6 @@
   "sideEffects": false,
   "files": [
     "dist/compiler",
-    "dist/contracts",
     "dist/runtime",
     "client.d.ts"
   ],
@@ -57,11 +56,6 @@
       "import": "./dist/compiler/index.js",
       "default": "./dist/compiler/index.js"
     },
-    "./router": {
-      "types": "./dist/runtime/router.d.ts",
-      "import": "./dist/runtime/router.js",
-      "default": "./dist/runtime/router.js"
-    },
     "./compiler/cli": {
       "types": "./dist/compiler/cli/index.d.ts",
       "import": "./dist/compiler/cli/index.js",
@@ -71,6 +65,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "bun test ./src",
+    "e2e:build": "bun run build && bun ./dist/compiler/cli/thane.js build --entry ./e2e/contract-app/main.ts --out ./dist/e2e --html ./e2e/contract-app/index.html --assets ./e2e/contract-app/assets",
+    "e2e:serve": "bun ./e2e/server.ts",
     "e2e:test": "playwright test -c ./e2e/playwright.config.ts",
     "e2e:test:headed": "playwright test -c ./e2e/playwright.config.ts --headed --workers=1",
     "e2e:ui": "playwright test -c ./e2e/playwright.config.ts --ui --headed --workers=1",

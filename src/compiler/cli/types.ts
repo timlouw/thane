@@ -17,8 +17,8 @@ export interface CLIOptions {
   outDir?: string | undefined;
   /** Assets source directory */
   assetsDir?: string | undefined;
-  /** HTML template file */
-  htmlTemplate?: string | undefined;
+  /** Root HTML file (default: ./index.html) */
+  html?: string | undefined;
   /** Start dev server after build */
   serve: boolean;
   /** Logging verbosity: 'silent' | 'normal' | 'verbose' */
@@ -77,8 +77,8 @@ export interface ThaneBuildOptions {
   outDir?: string | undefined;
   /** Assets source directory */
   assetsDir?: string | undefined;
-  /** HTML template file */
-  htmlTemplate?: string | undefined;
+  /** Root HTML file (default: ./index.html) */
+  html?: string | undefined;
   /** Strip console.* calls (default: true in prod, false in dev) */
   dropConsole?: boolean | undefined;
   /** Strip debugger statements (default: true in prod, false in dev) */

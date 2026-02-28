@@ -1,6 +1,6 @@
 import { defineComponent, signal, registerGlobalStyles } from 'thane';
 import { batch, computed, effect } from 'thane';
-import { mount } from 'thane';
+import { mountComponent } from 'thane';
 import type { MountHandle } from 'thane';
 import { ChildCounter } from './child-counter.js';
 import { StyledChild } from './styled-child.js';
@@ -596,17 +596,17 @@ export const ContractApp = defineComponent('contract-app', () => {
       win.__mountSimple = () => {
         const t = document.createElement('div');
         document.querySelector('[data-testid="destroy-simple-target"]')!.appendChild(t);
-        return mount(DestroyParentSimple, t);
+        return mountComponent(DestroyParentSimple, t);
       };
       win.__mountConditional = () => {
         const t = document.createElement('div');
         document.querySelector('[data-testid="destroy-conditional-target"]')!.appendChild(t);
-        return mount(DestroyParentConditional, t);
+        return mountComponent(DestroyParentConditional, t);
       };
       win.__mountNested = () => {
         const t = document.createElement('div');
         document.querySelector('[data-testid="destroy-nested-target"]')!.appendChild(t);
-        return mount(DestroyParentNested, t);
+        return mountComponent(DestroyParentNested, t);
       };
     },
   };

@@ -3,6 +3,8 @@ export { FRAMEWORK_FN as FN, COMPILER_BIND_FN as BIND_FN } from '../../contracts
 export const PROP = {
   SELECTOR: 'selector',
   COMPONENT_MODULE: 'componentModule',
+  /** New-style route property: directly resolves to the component factory. */
+  COMPONENT: 'component',
 } as const;
 
 export const PLUGIN_NAME = {

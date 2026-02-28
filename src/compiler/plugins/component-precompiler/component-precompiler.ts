@@ -327,6 +327,91 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
       }
     });
 
+    // ── Mount-call optimiser (Mode A → mountComponent) ────────────────
+    // Rewrites `import { mount } from 'thane'` + `mount({ component: X, target?: T, props?: P })`
+    // into `import { mountComponent } from 'thane'` + `mountComponent(X, T, P)` when there is no
+    // `router` key, so the generic mount() wrapper, _routerMount hook, and __setRouterMount
+    // are all tree-shaken away for non-router apps.
+    const rewriteMountToMountComponent = (source: string): string | null => {
+      const sf = ts.createSourceFile('__mount.ts', source, ts.ScriptTarget.Latest, true);
+
+      // 1. Find the `mount(...)` call expression
+      let mountCall: ts.CallExpression | null = null;
+      const findMount = (node: ts.Node): void => {
+        if (mountCall) return;
+        if (
+          ts.isCallExpression(node) &&
+          ts.isIdentifier(node.expression) &&
+          node.expression.text === 'mount' &&
+          node.arguments.length >= 1
+        ) {
+          const arg = node.arguments[0];
+          if (arg && ts.isObjectLiteralExpression(arg)) {
+            // Ensure it has 'component' and does NOT have 'router'
+            let hasComponent = false;
+            let hasRouter = false;
+            for (const prop of arg.properties) {
+              if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+                if (prop.name.text === 'component') hasComponent = true;
+                if (prop.name.text === 'router') hasRouter = true;
+              }
+            }
+            if (hasComponent && !hasRouter) {
+              mountCall = node;
+            }
+          }
+        }
+        ts.forEachChild(node, findMount);
+      };
+      findMount(sf);
+
+      if (!mountCall) return null;
+      const mc = mountCall as ts.CallExpression;
+
+      // 2. Extract component, target, and props values from the object literal
+      const objArg = mc.arguments[0] as ts.ObjectLiteralExpression;
+      let componentText: string | null = null;
+      let targetText: string | null = null;
+      let propsText: string | null = null;
+
+      for (const prop of objArg.properties) {
+        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+          const valueText = prop.initializer.getText(sf);
+          if (prop.name.text === 'component') componentText = valueText;
+          else if (prop.name.text === 'target') targetText = valueText;
+          else if (prop.name.text === 'props') propsText = valueText;
+        }
+      }
+
+      if (!componentText) return null;
+
+      // 3. Build the mountComponent(...) call arguments
+      const args: string[] = [componentText];
+      if (targetText || propsText) {
+        args.push(targetText ?? 'document.body');
+      }
+      if (propsText) {
+        args.push(propsText);
+      }
+
+      // 4. Replace the mount call text
+      const callStart = mc.getStart(sf);
+      const callEnd = mc.getEnd();
+      let result = source.substring(0, callStart) + `mountComponent(${args.join(', ')})` + source.substring(callEnd);
+
+      // 5. Fix the import: replace `mount` with `mountComponent` in the thane import
+      result = result.replace(
+        /import\s*\{([^}]*)\}\s*from\s*['"]thane['"]/,
+        (_match, specifiers: string) => {
+          const specs = specifiers.split(',').map((s: string) => s.trim()).filter(Boolean);
+          const updated = specs.map((s: string) => s === 'mount' ? 'mountComponent' : s);
+          return `import { ${updated.join(', ')} } from 'thane'`;
+        },
+      );
+
+      return result;
+    };
+
     /**
      * Strip tagged template tags (css`...` → `...`, html`...` → `...`) using AST
      * to avoid false positives from regex matching inside string literals.
@@ -385,6 +470,18 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
         }
 
         const source = await fs.promises.readFile(args.path, 'utf8');
+
+        // ── Mount-call optimiser ──
+        // For Mode A (component-only), rewrite mount({component: X}) → mountComponent(X)
+        // so the generic mount() wrapper + router hook are tree-shaken away entirely.
+        if (source.includes('mount(') && !source.includes('router') && !source.includes(FN.HTML + '`')) {
+          const rewritten = rewriteMountToMountComponent(source);
+          if (rewritten) {
+            logger.info(NAME, `Optimised mount() → mountComponent() in ${args.path}`);
+            return createLoaderResult(rewritten);
+          }
+          return undefined;
+        }
 
         if (!source.includes(FN.HTML + '`')) {
           return undefined;

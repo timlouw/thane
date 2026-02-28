@@ -136,10 +136,7 @@ function _notifySubscribers<T>(fn: SignalInternal<T>): void {
       while (_pendingSignals.size > 0) {
         if (++flushIterations > 100) {
           _pendingSignals.clear();
-          throw new Error(
-            'Thane: Circular signal dependency detected — a subscriber notification ' +
-            'triggered an infinite write cycle. Review your signal subscriptions for loops.',
-          );
+          throw new Error('Circular signal dependency');
         }
         const pending = Array.from(_pendingSignals);
         _pendingSignals.clear();

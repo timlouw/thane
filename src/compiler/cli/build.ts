@@ -3,8 +3,9 @@
  */
 
 import { build, context, type BuildOptions } from 'esbuild';
+import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import type { BuildConfig } from './types.js';
 import { consoleColors, createBuildContext, BROWSER_TARGETS } from '../utils/index.js';
 
@@ -21,6 +22,21 @@ import { JsOutputOptimizerPlugin } from '../plugins/js-output-optimizer/js-outpu
 import { PostBuildPlugin } from '../plugins/post-build-processor/post-build-processor.js';
 
 export async function runBuild(config: BuildConfig): Promise<void> {
+  // Validate that entry files exist before starting the build
+  for (const entry of config.entryPoints) {
+    const resolved = resolve(entry);
+    if (!existsSync(resolved)) {
+      const isDefault = entry === './src/main.ts';
+      if (isDefault) {
+        throw new Error(
+          `Default entry file not found: './src/main.ts'. ` +
+            `Either create src/main.ts or specify a custom entry with --entry <path>.`,
+        );
+      }
+      throw new Error(`Entry file not found: '${entry}'. Ensure the --entry path is correct.`);
+    }
+  }
+
   const startTime = performance.now();
   const environment = config.isProd ? 'prod' : 'dev';
 
@@ -42,6 +58,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
     distDir: config.outDir,
     inputHTMLFilePath: config.inputHTMLFilePath,
     outputHTMLFilePath: config.outputHTMLFilePath,
+    entryPoints: config.entryPoints,
     assetsInputDir: config.assetsInputDir,
     assetsOutputDir: config.assetsOutputDir,
     serve: config.serve,

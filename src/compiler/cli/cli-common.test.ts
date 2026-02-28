@@ -62,7 +62,7 @@ describe('parseArgs', () => {
   });
 
   test('parses --html flag with value', () => {
-    expect(parseArgs(['--html', './src/index.html']).htmlTemplate).toBe('./src/index.html');
+    expect(parseArgs(['--html', './src/index.html']).html).toBe('./src/index.html');
   });
 
   test('parses --config flag with value', () => {
@@ -219,8 +219,8 @@ describe('createBuildConfig', () => {
     expect(config.assetsInputDir).toBe('./public');
   });
 
-  test('uses custom HTML template', () => {
-    const config = createBuildConfig({ ...baseOptions, htmlTemplate: './src/template.html' });
+  test('uses custom root HTML file', () => {
+    const config = createBuildConfig({ ...baseOptions, html: './src/template.html' });
     expect(config.inputHTMLFilePath).toBe('./src/template.html');
   });
 

@@ -68,7 +68,7 @@ const coerceConfigToCLIOptions = (cfg: ThaneBuildOptions | undefined): Partial<C
     ...(cfg.entry != null && { entry: cfg.entry }),
     ...(cfg.outDir != null && { outDir: cfg.outDir }),
     ...(cfg.assetsDir != null && { assetsDir: cfg.assetsDir }),
-    ...(cfg.htmlTemplate != null && { htmlTemplate: cfg.htmlTemplate }),
+    ...(cfg.html != null && { html: cfg.html }),
     ...(cfg.dropConsole != null && { dropConsole: cfg.dropConsole }),
     ...(cfg.dropDebugger != null && { dropDebugger: cfg.dropDebugger }),
     ...(cfg.sourcemap != null && { sourcemap: cfg.sourcemap }),
@@ -94,7 +94,7 @@ const absolutizeConfigPaths = (opts: Partial<CLIOptions>, baseDir: string): Part
     ...(opts.entry ? { entry: toAbsoluteIfRelative(opts.entry, baseDir) } : {}),
     ...(opts.outDir ? { outDir: toAbsoluteIfRelative(opts.outDir, baseDir) } : {}),
     ...(opts.assetsDir ? { assetsDir: toAbsoluteIfRelative(opts.assetsDir, baseDir) } : {}),
-    ...(opts.htmlTemplate ? { htmlTemplate: toAbsoluteIfRelative(opts.htmlTemplate, baseDir) } : {}),
+    ...(opts.html ? { html: toAbsoluteIfRelative(opts.html, baseDir) } : {}),
   };
 };
 
@@ -152,7 +152,7 @@ const mergeCLIAndConfig = (args: string[], parsedCLI: CLIOptions): CLIOptions =>
   if (hasValueFlag(args, '--entry') && parsedCLI.entry) merged.entry = parsedCLI.entry;
   if (hasValueFlag(args, '--out') && parsedCLI.outDir) merged.outDir = parsedCLI.outDir;
   if (hasValueFlag(args, '--assets') && parsedCLI.assetsDir) merged.assetsDir = parsedCLI.assetsDir;
-  if (hasValueFlag(args, '--html') && parsedCLI.htmlTemplate) merged.htmlTemplate = parsedCLI.htmlTemplate;
+  if (hasValueFlag(args, '--html') && parsedCLI.html) merged.html = parsedCLI.html;
   if (hasValueFlag(args, '--config') && parsedCLI.configPath) {
     merged.configPath = toAbsoluteIfRelative(parsedCLI.configPath, process.cwd());
   }
@@ -272,7 +272,7 @@ export function parseArgs(args: string[]): CLIOptions {
         options.assetsDir = args[++i];
         break;
       case '--html':
-        options.htmlTemplate = args[++i];
+        options.html = args[++i];
         break;
       case '--config':
         options.configPath = args[++i];
@@ -397,7 +397,7 @@ Options:
   --entry <path>      Custom entry point (default: ./src/main.ts)
   --out <dir>         Output directory (default: ./dist)
   --assets <dir>      Assets directory (default: ./src/assets)
-  --html <path>       HTML template file (default: ./index.html)
+  --html <path>       Root HTML file (default: ./index.html)
   --config <path>     Path to thane config file (default: ./thane.config.json or .jsonc)
   --drop-console      Strip console.* calls from the bundle (default: on in prod)
   --no-drop-console   Keep console.* calls in the bundle (even in prod)
@@ -452,7 +452,7 @@ export function createBuildConfig(options: CLIOptions): BuildConfig {
   const distDir = options.outDir ?? './dist';
   const assetsInputDir = options.assetsDir ?? './src/assets';
   const assetsOutputDir = `${distDir}/assets`;
-  const inputHTMLFilePath = options.htmlTemplate ?? `./${indexHTMLFileName}`;
+  const inputHTMLFilePath = options.html ?? `./${indexHTMLFileName}`;
   const outputHTMLFilePath = `${distDir}/${indexHTMLFileName}`;
   const entryPoints = options.entry ? [options.entry] : ['./src/main.ts'];
 

@@ -10,7 +10,7 @@ import type { ComponentRoot } from './types.js';
 // ============================================================================
 
 type ComponentProps = Record<string, any>;
-type ComponentHTMLSelector<T> = (props: T) => string;
+export type ComponentHTMLSelector<T> = (props: T) => string;
 
 /**
  * Context object passed to the defineComponent setup function.
@@ -339,21 +339,19 @@ export interface MountHandle {
 }
 
 /**
- * Mount a component to a target element (function-only path).
+ * Internal mount — attaches a single component to a target element.
  *
- * This is the recommended mount function.  It only accepts a
- * ComponentHTMLSelector (the return value of defineComponent),
+ * This is the low-level mount used by the public `mount()` and the router.
+ * It only accepts a ComponentHTMLSelector (return value of defineComponent),
  * so the HTML-string regex path is never included.
  *
- * When an app uses `mount()` and never imports `mountComponent`,
- * esbuild tree-shakes the regex branch entirely.
- *
+ * @internal — use the public `mount()` from the runtime barrel instead.
  * @param component - Component selector function returned by defineComponent
  * @param target - DOM element to mount to (defaults to document.body)
  * @returns A MountHandle with the root element and a destroy() function
  * @throws {Error} If the component argument is not a valid defineComponent() result
  */
-export function mount(
+export function mountComponent(
   component: ComponentHTMLSelector<any>,
   target: HTMLElement = document.body,
   props?: Record<string, any>,
@@ -364,10 +362,7 @@ export function mount(
     component as unknown as ComponentRef
   ).__f;
   if (!factory) {
-    throw new Error(
-      'mount(): invalid component — expected the return value of defineComponent(). ' +
-      'Received: ' + typeof component,
-    );
+    throw new Error('Invalid mount component');
   }
 
   const instance = factory(target, props);
@@ -392,4 +387,55 @@ export function mount(
  */
 export function unmount(handle: MountHandle): void {
   handle.destroy();
+}
+
+// ============================================================================
+// Public mount() — single entry point for all bootstrap modes
+// ============================================================================
+
+/** Options for the `mount()` function. */
+export interface MountOptions {
+  /** Component to mount (return value of `defineComponent()`). Omit for Mode C (router only). */
+  component?: ComponentHTMLSelector<any> | undefined;
+  /** Target element. Defaults to `document.body`. */
+  target?: HTMLElement | undefined;
+  /** Component props. */
+  props?: Record<string, any> | undefined;
+  /** Router configuration. Omit for Mode A (no routing). */
+  router?: import('./router.js').RouterConfig | undefined;
+}
+
+/**
+ * Hook for router-aware mount — set by `defineRoutes()` in `router.ts`.
+ * When null, only Mode A (component-only) mount is supported.
+ * @internal
+ */
+let _routerMount: ((options: MountOptions, target: HTMLElement) => MountHandle) | null = null;
+
+/**
+ * Called by `defineRoutes()` to install the router-aware mount handler.
+ * @internal — not part of the public API.
+ */
+export function __setRouterMount(fn: (options: MountOptions, target: HTMLElement) => MountHandle): void {
+  _routerMount = fn;
+}
+
+/**
+ * Mount a Thane application.
+ *
+ * - **Mode A** — `mount({ component })` — component only, no routing.
+ * - **Mode B** — `mount({ component, router })` — shell component + router.
+ * - **Mode C** — `mount({ router })` — router only, no shell.
+ *
+ * Modes B and C require `defineRoutes()` to be called first (from `thane/router`).
+ *
+ * @returns A MountHandle with a `destroy()` method.
+ */
+export function mount(options: MountOptions): MountHandle {
+  const target = options.target ?? document.body;
+  if (options.router) {
+    if (!_routerMount) throw new Error('Import defineRoutes from thane/router to use routing');
+    return _routerMount(options, target);
+  }
+  return mountComponent(options.component!, target, options.props);
 }

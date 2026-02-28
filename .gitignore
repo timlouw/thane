@@ -40,3 +40,5 @@ agent/
 # Lock files (optional - uncomment if you don't want to track)
 # package-lock.json
 # bun.lockb
+.tmp**
+old way

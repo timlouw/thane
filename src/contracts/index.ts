@@ -2,6 +2,7 @@ export * from './syntax/framework-functions.js';
 export * from './syntax/directives.js';
 export * from './syntax/tags.js';
 export * from './runtime/internal-helpers.js';
+export * from './runtime/router.js';
 export * from './compiler/template-edits.js';
 export * from './compiler/kinds.js';
 export * from './compiler/generated-artifacts.js';

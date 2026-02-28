@@ -13,7 +13,8 @@
   },
   "include": [
     "contract-app/**/*.ts",
-    "memory-leak-demo/**/*.ts"
+    "memory-leak-demo/**/*.ts",
+    "router-app/**/*.ts"
   ],
   "exclude": ["node_modules", "tests"]
 }

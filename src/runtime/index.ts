@@ -33,19 +33,21 @@ declare global {
   ): any[];
 
   /**
-   * Navigate to a path (router)
+   * Navigate to a path (router).
+   * Type-safe when `Register` is augmented in `routes.ts`.
    */
-  function navigate(path: string): void;
+  function navigate(path: import('./router.js').RoutePaths): void;
 
   /**
-   * Navigate back in history (router)
+   * Navigate back in history (router).
    */
   function navigateBack(): void;
 
   /**
-   * Get a route parameter value (router)
+   * Get a route parameter value (router).
+   * Type-safe when `Register` is augmented in `routes.ts`.
    */
-  function getRouteParam(paramName: string): string;
+  function getRouteParam(name: import('./router.js').RouteParamNames): string;
 }
 
 // Export types
@@ -58,12 +60,27 @@ export { signal, batch, computed, effect, untrack } from './signal.js';
 export {
   defineComponent,
   registerGlobalStyles,
-  mount,
-  unmount,
+  mountComponent,
   type ComponentContext,
   type ComponentReturnType,
-  type MountHandle,
+  type ComponentHTMLSelector,
 } from './component.js';
+
+// Export mount (public API) and unmount
+export { mount, unmount, type MountOptions, type MountHandle } from './component.js';
+
+// Router types — re-exported so `declare module 'thane' { interface Register { ... } }` works.
+// VALUE exports live in the 'thane/router' subpath to keep router code tree-shakable.
+export type {
+  Register,
+  Route,
+  RoutesMap,
+  RoutesConfig,
+  RouterConfig,
+  RoutePaths,
+  RouteParamNames,
+  RouteToPath,
+} from './router.js';
 
 // ─────────────────────────────────────────────────────────────
 //  Template tag shims

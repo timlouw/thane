@@ -549,7 +549,7 @@ describe('CLI defaults and config precedence', () => {
         entry: './app/main.ts',
         outDir: './build',
         assetsDir: './public',
-        htmlTemplate: './site.html',
+        html: './site.html',
         prod: true,
       }),
     );

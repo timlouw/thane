@@ -26,6 +26,8 @@ export interface PostBuildOptions {
   distDir: string;
   inputHTMLFilePath: string;
   outputHTMLFilePath: string;
+  /** Build entry points (e.g. `['./src/main.ts']`). Used to derive hashed output filenames for script injection. */
+  entryPoints: string[];
   assetsInputDir?: string | undefined;
   assetsOutputDir?: string | undefined;
   serve?: boolean | undefined;
@@ -57,22 +59,28 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
   let cachedHashedFileNames: Record<string, string> = {};
 
   /**
+   * Inject `<script type="module" src="...">` tags into the `<head>` of the HTML
+   * for each hashed entry-point output file. Replaces any manual script references
+   * in the source HTML — the compiler is the single source of truth for entry scripts.
+   */
+  const injectEntryScripts = (html: string, hashedNames: Record<string, string | undefined>): string => {
+    const fileNames = Object.values(hashedNames).filter(Boolean) as string[];
+    if (fileNames.length === 0) return html;
+    // Match indentation of </head> and inject scripts with one level deeper indent
+    return html.replace(/([ \t]*)<\/head>/, (_, indent: string) => {
+      const lines = fileNames.map((f) => `${indent}  <script type="module" src="./${f}"></script>`);
+      return `${lines.join('\n')}\n${indent}</head>`;
+    });
+  };
+
+  /**
    * Re-process the HTML template and notify live reload clients.
    * Used by file watchers when index.html or assets change.
    */
   const reprocessAndReloadHTML = async (): Promise<void> => {
     const { inputHTMLFilePath, outputHTMLFilePath, serve } = config;
-    const placeholders: Record<string, string | undefined> = {
-      MAIN_JS_FILE_PLACEHOLDER: cachedHashedFileNames['main'],
-      ROUTER_JS_FILE_PLACEHOLDER: cachedHashedFileNames['router'],
-      INDEX_JS_FILE_PLACEHOLDER: cachedHashedFileNames['index'],
-    };
     let data = await fs.promises.readFile(inputHTMLFilePath, 'utf8');
-    for (const [placeholder, fileName] of Object.entries(placeholders)) {
-      if (fileName) {
-        data = data.replace(placeholder, fileName);
-      }
-    }
+    data = injectEntryScripts(data, cachedHashedFileNames);
     let updatedData = data;
     if (config.buildContext) {
       updatedData = minifySelectorsInHTML(updatedData, config.buildContext);
@@ -88,17 +96,8 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
     hashedFileNames: Record<string, string | undefined>,
   ): Promise<void> => {
     const { inputHTMLFilePath, outputHTMLFilePath, isProd, serve, useGzip, distDir } = config;
-    const placeholders: Record<string, string | undefined> = {
-      MAIN_JS_FILE_PLACEHOLDER: hashedFileNames['main'],
-      ROUTER_JS_FILE_PLACEHOLDER: hashedFileNames['router'],
-      INDEX_JS_FILE_PLACEHOLDER: hashedFileNames['index'],
-    };
     let data = await fs.promises.readFile(inputHTMLFilePath, 'utf8');
-    for (const [placeholder, fileName] of Object.entries(placeholders)) {
-      if (fileName) {
-        data = data.replace(placeholder, fileName);
-      }
-    }
+    data = injectEntryScripts(data, hashedFileNames);
     let updatedData = data;
     if (config.buildContext) {
       updatedData = minifySelectorsInHTML(updatedData, config.buildContext);
@@ -134,11 +133,13 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
   const processMetafileAndUpdateHTML = async (metafile: Metafile): Promise<void> => {
     const { distDir } = config;
     const outputs = metafile.outputs;
-    const hashedFileNames: Record<string, string> = {
-      main: '',
-      router: '',
-      index: '',
-    };
+
+    // Normalize configured entry points for matching against metafile entryPoint paths
+    const configuredEntries = new Set(config.entryPoints.map((ep) => path.normalize(ep)));
+
+    // Build a map of configured entry basenames → hashed output filenames.
+    // Only includes scripts the user explicitly specified via --entry (not code-split chunks).
+    const hashedFileNames: Record<string, string> = {};
     for (const [outputPath, info] of Object.entries(outputs)) {
       const fileName = path.basename(outputPath);
       const fullPath = path.join(distDir, fileName);
@@ -152,14 +153,9 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
 
       totalBundleSizeInBytes += sizeInBytes;
       fileSizeLog.push({ fileName, sizeInBytes });
-      if (info.entryPoint) {
-        if (info.entryPoint.includes('main.ts') || info.entryPoint.includes('main-')) {
-          hashedFileNames['main'] = fileName;
-        } else if (info.entryPoint.includes('router.ts')) {
-          hashedFileNames['router'] = fileName;
-        } else if (info.entryPoint.includes('index.ts')) {
-          hashedFileNames['index'] = fileName;
-        }
+      if (info.entryPoint && configuredEntries.has(path.normalize(info.entryPoint))) {
+        const entryBasename = path.basename(info.entryPoint, path.extname(info.entryPoint));
+        hashedFileNames[entryBasename] = fileName;
       }
     }
 

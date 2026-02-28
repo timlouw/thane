@@ -851,8 +851,11 @@ export const transformDefineComponentSource = (
     }
   }
 
-  // Rename defineComponent → __registerComponent (must be last — earlier AST passes match the original name)
-  const registerFnName = BIND_FN.REGISTER_COMPONENT;
+  // Rename defineComponent → __registerComponent or __registerComponentLean
+  // Use the lean variant when the component has no styles and no lifecycle hooks,
+  // so esbuild can tree-shake the styles subsystem entirely for style-free apps.
+  const useLean = stripResult && !stripResult.hasStyles && !stripResult.hasLifecycle;
+  const registerFnName = useLean ? BIND_FN.REGISTER_COMPONENT_LEAN : BIND_FN.REGISTER_COMPONENT;
   result = result.replace(/\bdefineComponent\s*(?:<[^(]*>)?\s*\(/, `${registerFnName}(`);
 
   // Fix up the placeholder import to the actual registration function
