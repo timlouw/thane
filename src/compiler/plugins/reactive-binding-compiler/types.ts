@@ -2,6 +2,12 @@
  * Type definitions for the reactive binding compiler
  */
 
+import type {
+  ReactiveBindingKind,
+  RepeatOptimizationSkipReasonKind,
+  TextBindingMode,
+} from '../../../contracts/index.js';
+
 /**
  * Access pattern abstraction for code generation.
  *
@@ -91,7 +97,7 @@ export interface RepeatBlock {
 
 export interface ItemBinding {
   elementId: string; // ID assigned to the element (e.g., 'i0', 'i1')
-  type: 'text' | 'attr' | 'style'; // Type of binding
+  type: ReactiveBindingKind; // Type of binding
   property?: string | undefined; // For attr/style: the property name
   expression: string; // The JS expression (e.g., 'item.label', 'item.count > 0')
   /**
@@ -99,7 +105,7 @@ export interface ItemBinding {
    * - 'textContent': Uses parent element's textContent (when binding is only child)
    * - 'commentMarker': Uses <!--id--> comment marker to locate text node (for mixed content)
    */
-  textBindingMode?: 'textContent' | 'commentMarker';
+  textBindingMode?: TextBindingMode;
 }
 
 export interface ItemEventBinding {
@@ -132,7 +138,7 @@ export interface BindingBase {
  */
 export interface SimpleBinding extends BindingBase {
   signalName: string;
-  type: 'text' | 'style' | 'attr';
+  type: ReactiveBindingKind;
   property?: string;
 }
 
@@ -145,7 +151,7 @@ export interface SimpleBinding extends BindingBase {
 export interface ExpressionBinding extends BindingBase {
   signalNames: string[];
   expression: string;
-  type: 'text' | 'style' | 'attr';
+  type: ReactiveBindingKind;
   property?: string;
 }
 
@@ -172,7 +178,7 @@ export interface StaticTemplateInfo {
     id: string;
     path: number[];
     bindings: Array<{
-      type: 'text' | 'attr';
+      type: Exclude<ReactiveBindingKind, 'style'>;
       property?: string | undefined;
       expression: string;
     }>;
@@ -183,7 +189,7 @@ export interface StaticTemplateInfo {
   signalElementBindings?: Array<{
     path: number[];
     signalName: string;
-    type: 'text' | 'style' | 'attr';
+    type: ReactiveBindingKind;
     property?: string | undefined;
   }>;
   /** Signal text bindings that use comment markers (cannot be navigated by element path) */
@@ -200,11 +206,4 @@ export interface StaticTemplateInfo {
 }
 
 /** Reasons why a repeat block cannot use the optimized template-based rendering */
-export type RepeatOptimizationSkipReason =
-  | 'no-bindings' // No item bindings at all
-  | 'signal-bindings' // Has component signal bindings inside
-  | 'nested-repeat' // Has repeat() inside repeat()
-  | 'nested-conditional' // Has when() or whenElse() inside
-  | 'mixed-bindings' // Item binding expressions contain component signal refs
-  | 'multi-root' // Template has multiple root elements
-  | 'path-not-found'; // Element path couldn't be computed
+export type RepeatOptimizationSkipReason = RepeatOptimizationSkipReasonKind;

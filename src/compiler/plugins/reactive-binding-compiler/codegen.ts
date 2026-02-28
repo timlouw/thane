@@ -29,6 +29,8 @@ import {
 import { injectIdIntoFirstElement, escapeTemplateLiteral, escapeRawTemplateLiteral, normalizeHtmlWhitespace } from '../../utils/html-parser/index.js';
 import type { ImportInfo } from '../../types.js';
 import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
+import type { GeneratedInitBindingsArtifact } from '../../../contracts/index.js';
+import { INTERNAL_RUNTIME_SPECIFIER, PUBLIC_RUNTIME_SPECIFIER } from '../../../contracts/index.js';
 
 const NAME = PLUGIN_NAME.REACTIVE;
 
@@ -482,7 +484,7 @@ export const generateInitBindingsFunction = (
   filePath: string = '',
   ap: AccessPattern = CLOSURE_ACCESS,
   childMountsByDirective?: Map<string, { cm: ChildMountInfo; globalIndex: number }[]>,
-): { code: string; staticTemplates: string[] } => {
+): GeneratedInitBindingsArtifact => {
   const lines: string[] = [];
   const staticTemplates: string[] = []; // Collect static templates for repeat optimizations
 
@@ -1513,7 +1515,7 @@ export const generateInitBindingsFunction = (
         const renderItemVar = `_ri_${rep.id}`;
         const renderVar = `_rr_${rep.id}`;
         const emptyFlagVar = `_hasEmpty_${rep.id}`;
-        const sourceTemplate = escapeRawTemplateLiteral(rep.itemTemplate);
+        const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
         const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
         const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
         const emptyTemplate = escapeRawTemplateLiteral((rep.emptyTemplate || ''));
@@ -1579,7 +1581,7 @@ export const generateInitBindingsFunction = (
     const renderItemVar = `_ri_${rep.id}`;
     const renderVar = `_rr_${rep.id}`;
     const emptyFlagVar = `_hasEmpty_${rep.id}`;
-    const sourceTemplate = escapeRawTemplateLiteral(rep.itemTemplate);
+    const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
     const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
     const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
     const emptyTemplate = escapeRawTemplateLiteral((rep.emptyTemplate || ''));
@@ -1668,7 +1670,7 @@ export const generateUpdatedImport = (importInfo: ImportInfo, requiredBindFuncti
   // Resolve the internal specifier from the user's module specifier.
   // 'thane' → 'thane/runtime', relative paths stay unchanged (dev/test).
   const spec = importInfo.moduleSpecifier;
-  const internalSpec = spec === 'thane' ? 'thane/runtime' : spec;
+  const internalSpec = spec === PUBLIC_RUNTIME_SPECIFIER ? INTERNAL_RUNTIME_SPECIFIER : spec;
 
   const lines: string[] = [];
   if (userImports.length > 0) {

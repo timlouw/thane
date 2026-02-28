@@ -95,14 +95,12 @@ export const extractSelectorsFromSource = (source: string): string[] => {
     }
   };
 
-  // Pattern 1: selector: 'xxx' or selector: "xxx"
   const selectorRegex = /selector:\s*(['"])([a-z][a-z0-9]*-[a-z0-9-]+)\1/gi;
   let match;
   while ((match = selectorRegex.exec(source)) !== null) {
     addSelector(match[2]!);
   }
 
-  // Pattern 2: CSS class selectors .xxx-yyy where xxx-yyy looks like a component selector
   const cssClassRegex = /\.([a-z][a-z0-9]*-[a-z0-9-]+)(?=[\s{(,:>+~[\]])/gi;
   while ((match = cssClassRegex.exec(source)) !== null) {
     // Only add if it was already seen as a selector (avoids false positives from arbitrary CSS classes)

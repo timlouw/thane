@@ -1,12 +1,4 @@
-export const FN = {
-  DEFINE_COMPONENT: 'defineComponent',
-  SIGNAL: 'signal',
-  WHEN: 'when',
-  WHEN_ELSE: 'whenElse',
-  REPEAT: 'repeat',
-  HTML: 'html',
-  CSS: 'css',
-} as const;
+export { FRAMEWORK_FN as FN, COMPILER_BIND_FN as BIND_FN } from '../../contracts/index.js';
 
 export const PROP = {
   SELECTOR: 'selector',
@@ -21,19 +13,6 @@ export const PLUGIN_NAME = {
   LINTER: 'thane-linter',
   GLOBAL_CSS_BUNDLER: 'global-css-bundler',
   POST_BUILD: 'post-build',
-} as const;
-
-export const BIND_FN = {
-  TEXT: '__bindText',
-  STYLE: '__bindStyle',
-  ATTR: '__bindAttr',
-  IF: '__bindIf',
-  IF_EXPR: '__bindIfExpr',
-  KEYED_RECONCILER: 'createKeyedReconciler',
-  ENABLE_STYLES: '__enableComponentStyles',
-  REGISTER_COMPONENT: '__registerComponent',
-  REGISTER_COMPONENT_LEAN: '__registerComponentLean',
-  DESTROY_CHILD: '__dc',
 } as const;
 
 /** Shared browser targets used by the esbuild build runner.

@@ -57,17 +57,15 @@ const stripThisAccessAST = (code: string): string => {
 
     const visit = (node: ts.Node): void => {
       if (ts.isPropertyAccessExpression(node) && node.expression.kind === ts.SyntaxKind.ThisKeyword) {
-        // Record the `this.` portion for removal (from `this` start to dot end)
         edits.push({
           start: node.expression.getStart(tempSource),
-          end: node.expression.getEnd() + 1, // +1 for the dot
+          end: node.expression.getEnd() + 1,
         });
       }
       ts.forEachChild(node, visit);
     };
     visit(tempSource);
 
-    // Apply edits in reverse order to preserve positions
     let result = code;
     for (let i = edits.length - 1; i >= 0; i--) {
       const edit = edits[i]!;
@@ -75,7 +73,6 @@ const stripThisAccessAST = (code: string): string => {
     }
     return result;
   } catch {
-    // Fallback: if AST parsing fails, return original
     return code;
   }
 };

@@ -599,7 +599,7 @@ export const transformDefineComponentSource = (
   // Generate bindings code with CLOSURE_ACCESS — natively emits bare signal refs,
   // ctx.root, and closure-compatible code. No post-hoc stripping needed.
   const ap = CLOSURE_ACCESS;
-  const { code: initBindingsFunction, staticTemplates: repeatStaticTemplates } = generateInitBindingsFunction(
+  const { code: initBindingsFunction, staticTemplates: repeatStaticTemplates = [] } = generateInitBindingsFunction(
     allBindings,
     allConditionals,
     allWhenElseBlocks,

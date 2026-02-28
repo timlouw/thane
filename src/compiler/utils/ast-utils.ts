@@ -2,9 +2,7 @@
 
 import ts from 'typescript';
 import type { ComponentDefinition, Range } from '../types.js';
-import { FN, PROP } from './constants.js';
-
-export { FN, PROP };
+import { FN } from './constants.js';
 
 // ============================================================================
 // Source File Creation

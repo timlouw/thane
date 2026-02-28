@@ -141,7 +141,7 @@ export const __bindIfExpr = (
 interface ManagedItem<T> {
   el: Element;
   cleanups: (() => void)[];
-  /** Direct update function — bypasses signal when set (A7 optimization) */
+  /** Direct update function used when available */
   update?: ((newValue: T) => void) | undefined;
   /** Cached value for direct update path (no signal) */
   value?: T | undefined;

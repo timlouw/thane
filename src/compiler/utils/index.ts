@@ -35,14 +35,12 @@ export {
   findComponentSignalCalls,
   parseArrowFunction,
   isThisMethodReference,
-  FN,
-  PROP,
 } from './ast-utils.js';
 
 export { sourceCache } from './cache.js';
 
 export { shouldSkipPath, hasSignalPatterns, createLoaderResult, extendsComponentQuick } from './plugin-helper.js';
 
-export { PLUGIN_NAME, BIND_FN, BROWSER_TARGETS, generateSelectorHTML } from './constants.js';
+export { PLUGIN_NAME, BIND_FN, BROWSER_TARGETS, generateSelectorHTML, FN, PROP } from './constants.js';
 
 export * from './html-parser/index.js';

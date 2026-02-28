@@ -643,6 +643,9 @@ export const processSubTemplateWithNesting = (
       elementIdMap.set(binding.element, `b${state.idCounter++}`);
     }
     const elementId = elementIdMap.get(binding.element)!;
+    if (binding.type !== 'style' && binding.type !== 'attr') {
+      continue;
+    }
     const isExpressionBinding =
       binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
     bindings.push(
@@ -651,7 +654,7 @@ export const processSubTemplateWithNesting = (
             id: elementId,
             signalNames: binding.signalNames!,
             expression: binding.jsExpression!,
-            type: binding.type as 'text' | 'style' | 'attr',
+            type: binding.type,
             ...(binding.property ? { property: binding.property } : {}),
             isInsideConditional: true,
             conditionalId: parentId,
@@ -659,7 +662,7 @@ export const processSubTemplateWithNesting = (
         : {
             id: elementId,
             signalName: binding.signalName,
-            type: binding.type as 'text' | 'style' | 'attr',
+            type: binding.type,
             ...(binding.property ? { property: binding.property } : {}),
             isInsideConditional: true,
             conditionalId: parentId,

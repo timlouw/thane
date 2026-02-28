@@ -2,17 +2,9 @@
  * HTML Parser — Type definitions
  */
 
-export type ParserState =
-  | 'TEXT'
-  | 'TAG_OPEN'
-  | 'TAG_NAME'
-  | 'TAG_SPACE'
-  | 'ATTR_NAME'
-  | 'ATTR_EQ'
-  | 'ATTR_VALUE_Q'
-  | 'ATTR_VALUE_UQ'
-  | 'TAG_CLOSE'
-  | 'COMMENT';
+import type { ParserBindingKind, ParserStateKind } from '../../../contracts/index.js';
+
+export type ParserState = ParserStateKind;
 
 export interface AttributeInfo {
   name: string;
@@ -82,7 +74,7 @@ export type HtmlElement = VoidElement | StandardElement | ImplicitVoidElement;
 
 export interface BindingInfo {
   element: HtmlElement;
-  type: 'text' | 'style' | 'attr' | 'when' | 'whenElse' | 'repeat' | 'event';
+  type: ParserBindingKind;
   signalName: string;
   signalNames?: string[] | undefined;
   property?: string | undefined;

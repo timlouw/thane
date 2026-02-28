@@ -88,6 +88,15 @@ benchmark/           # Performance benchmark app
 4. Ensure code is formatted (`bun run format:check`).
 5. Open a pull request against `main`.
 
+## Internal Contracts Policy
+
+When a change touches compiler/runtime coupling, follow contracts-first rules:
+
+- Add or update values in `src/contracts/**` first.
+- Import contract constants/types into compiler/runtime; avoid new ad-hoc string literals for contract-bound values.
+- Keep compiler-generated helper names aligned with `src/contracts/runtime/internal-helpers.ts`.
+- Ensure contract-sensitive checks pass (`bun run test`, `bun run e2e:test`).
+
 ## Reporting Issues
 
 Please use the [GitHub issue tracker](https://github.com/timlouw/thane/issues) to report bugs or request features. Include reproduction steps and the Thane version when filing bugs.

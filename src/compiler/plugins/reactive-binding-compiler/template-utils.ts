@@ -141,10 +141,11 @@ export const collectConditionalBlocks = (
           conditionalId,
         });
       } else {
+        if (binding.type !== 'text' && binding.type !== 'style' && binding.type !== 'attr') continue;
         nestedBindings.push({
           id: elementId,
           signalName: binding.signalName,
-          type: binding.type as 'text' | 'style' | 'attr',
+          type: binding.type,
           ...(binding.property ? { property: binding.property } : {}),
           isInsideConditional: true,
           conditionalId,
@@ -200,10 +201,11 @@ export const collectConditionalBlocks = (
               conditionalId: nestedCondId,
             });
           } else {
+            if (binding.type !== 'text' && binding.type !== 'style' && binding.type !== 'attr') continue;
             nestedNestedBindings.push({
               id: nestedElementId,
               signalName: binding.signalName,
-              type: binding.type as 'text' | 'style' | 'attr',
+              type: binding.type,
               ...(binding.property ? { property: binding.property } : {}),
               isInsideConditional: true,
               conditionalId: nestedCondId,

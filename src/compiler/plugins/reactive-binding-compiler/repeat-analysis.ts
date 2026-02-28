@@ -17,6 +17,7 @@ import type {
   SimpleBinding,
 } from './types.js';
 import { isSimpleBinding } from './types.js';
+import { REPEAT_OPTIMIZATION_SKIP_REASON } from '../../../contracts/index.js';
 import { processSubTemplateWithNesting } from './template-processing.js';
 import {
   parseHtmlTemplate,
@@ -43,20 +44,24 @@ import {
  */
 export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason): string => {
   switch (reason) {
-    case 'no-bindings':
+    case REPEAT_OPTIMIZATION_SKIP_REASON.NO_BINDINGS:
       return 'no item bindings found';
-    case 'signal-bindings':
+    case REPEAT_OPTIMIZATION_SKIP_REASON.SIGNAL_BINDINGS:
       return 'contains component signal bindings inside items - move to data model';
-    case 'nested-repeat':
+    case REPEAT_OPTIMIZATION_SKIP_REASON.NESTED_REPEAT:
       return 'contains nested repeat() - not yet supported for optimization';
-    case 'nested-conditional':
+    case REPEAT_OPTIMIZATION_SKIP_REASON.NESTED_CONDITIONAL:
       return 'contains when()/whenElse() inside items - not yet supported for optimization';
-    case 'mixed-bindings':
+    case REPEAT_OPTIMIZATION_SKIP_REASON.MIXED_BINDINGS:
       return 'item bindings reference component signals - use pure item data instead';
-    case 'multi-root':
+    case REPEAT_OPTIMIZATION_SKIP_REASON.MULTI_ROOT:
       return 'template has multiple root elements - wrap in a single container element';
-    case 'path-not-found':
+    case REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND:
       return 'element navigation path could not be computed';
+    default: {
+      const exhaustive: never = reason;
+      throw new Error(`Unhandled repeat optimization reason: ${String(exhaustive)}`);
+    }
   }
 };
 
@@ -82,7 +87,12 @@ export const generateStaticRepeatTemplate = (
 
   if (parsed.roots.length !== 1) {
     // Multiple root elements - cannot use optimized path
-    return { staticHtml: '', elementBindings: [], canUseOptimized: false, skipReason: 'multi-root' };
+    return {
+      staticHtml: '',
+      elementBindings: [],
+      canUseOptimized: false,
+      skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.MULTI_ROOT,
+    };
   }
 
   const rootEl = parsed.roots[0]!;
@@ -136,7 +146,12 @@ export const generateStaticRepeatTemplate = (
   // Check if all bindings have paths
   for (const elementId of bindingsByElement.keys()) {
     if (!elementPaths.has(elementId)) {
-      return { staticHtml: '', elementBindings: [], canUseOptimized: false, skipReason: 'path-not-found' };
+      return {
+        staticHtml: '',
+        elementBindings: [],
+        canUseOptimized: false,
+        skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND,
+      };
     }
   }
 
@@ -544,7 +559,7 @@ const classifyParsedBindings = (
       signalBindings.push({
         id: bindingId,
         signalName: binding.signalName,
-        type: binding.type as 'text' | 'style' | 'attr',
+        type: binding.type,
         ...(binding.property ? { property: binding.property } : {}),
         isInsideConditional: false,
       });

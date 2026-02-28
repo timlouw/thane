@@ -4,6 +4,7 @@
  */
 
 import type ts from 'typescript';
+import type { TemplateEditKind } from '../contracts/compiler/template-edits.js';
 
 
 /**
@@ -93,7 +94,7 @@ export interface Range {
  * Template edit operation
  */
 export interface TemplateEdit {
-  type: 'remove' | 'replace' | 'insertId';
+  type: TemplateEditKind;
   start: number;
   end: number;
   content?: string;
