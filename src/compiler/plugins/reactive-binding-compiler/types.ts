@@ -106,6 +106,8 @@ export interface ItemBinding {
    * - 'commentMarker': Uses <!--id--> comment marker to locate text node (for mixed content)
    */
   textBindingMode?: TextBindingMode;
+  /** Outer component signals referenced in this expression (for mixed signal + item bindings) */
+  outerSignalNames?: string[];
 }
 
 export interface ItemEventBinding {
@@ -199,6 +201,14 @@ export interface StaticTemplateInfo {
   }>;
   /** Navigation paths for directive anchors: conditional/repeat anchors inside item template (Step 14/15) */
   directiveAnchorPaths?: Map<string, number[]>;
+  /** Item bindings that also reference outer signals — need per-item subscriptions */
+  mixedSignalItemBindings?: Array<{
+    path: number[];
+    outerSignalNames: string[];
+    type: ReactiveBindingKind;
+    property?: string | undefined;
+    expression: string;
+  }>;
   /** Whether this template can use the optimized path */
   canUseOptimized: boolean;
   /** Reason optimization was skipped (for warnings) */

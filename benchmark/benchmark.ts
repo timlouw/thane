@@ -64,22 +64,20 @@ const buildData = (count: number): RowData[] => {
 
 export const Benchmark = defineComponent('bench-mark', () => {
   const rows = signal<RowData[]>([]);
-  let selectedEl: HTMLElement | null = null;
+  const selected = signal<number>(0);
 
-  const select = (row: RowData, e: Event) => {
-    if (selectedEl) selectedEl.className = '';
-    selectedEl = (e.target as HTMLElement).closest('tr') as HTMLElement;
-    selectedEl.className = 'danger';
+  const select = (id: number) => {
+    selected(id);
   };
 
   const run = () => {
     rows(buildData(1000));
-    selectedEl = null;
+    selected(0);
   };
 
   const runLots = () => {
     rows(buildData(10000));
-    selectedEl = null;
+    selected(0);
   };
 
   const add = () => {
@@ -98,7 +96,7 @@ export const Benchmark = defineComponent('bench-mark', () => {
 
   const clear = () => {
     rows([]);
-    selectedEl = null;
+    selected(0);
   };
 
   const swapRows = () => {
@@ -167,10 +165,10 @@ export const Benchmark = defineComponent('bench-mark', () => {
             ${repeat(
               rows(),
               (row) => html`
-                <tr>
+                <tr class=${selected() === row.id ? 'danger' : ''}>
                   <td class="col-md-1">${row.id}</td>
                   <td class="col-md-4">
-                    <a @click=${(e: Event) => select(row, e)}>${row.label}</a>
+                    <a @click=${() => select(row.id)}>${row.label}</a>
                   </td>
                   <td class="col-md-1">
                     <a @click=${() => remove(row.id)}>

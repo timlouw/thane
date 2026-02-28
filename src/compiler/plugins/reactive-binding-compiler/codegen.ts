@@ -1057,6 +1057,63 @@ export const generateInitBindingsFunction = (
           }
         }
 
+        // Mixed signal+item binding navigation, fill, subscription & update (Step 13c)
+        const mixedNavStatements: string[] = [];
+        const mixedFillStatements: string[] = [];
+        const mixedUpdateStatements: string[] = [];
+        if (staticInfo.mixedSignalItemBindings && staticInfo.mixedSignalItemBindings.length > 0) {
+          for (let i = 0; i < staticInfo.mixedSignalItemBindings.length; i++) {
+            const mb = staticInfo.mixedSignalItemBindings[i]!;
+            const varName = `_m${i}`;
+            // Navigation — check if an existing nav var points to the same path
+            const pathKey = JSON.stringify(mb.path);
+            let reuseVar: string | undefined;
+            for (let j = 0; j < staticInfo.elementBindings.length; j++) {
+              if (JSON.stringify(staticInfo.elementBindings[j]!.path) === pathKey) {
+                reuseVar = navVarNames[j];
+                break;
+              }
+            }
+            if (reuseVar) {
+              mixedNavStatements.push(`const ${varName} = ${reuseVar}`);
+            } else if (mb.path.length === 0) {
+              mixedNavStatements.push(`const ${varName} = _el`);
+            } else {
+              mixedNavStatements.push(`const ${varName} = ${pathToSiblingNav('_el', mb.path)}`);
+            }
+            const expr = renameIdentifierInExpression(mb.expression, rep.itemVar, 'item');
+            // Fill
+            if (mb.type === 'attr' && mb.property) {
+              mixedFillStatements.push(`${varName}.setAttribute('${mb.property}', ${expr})`);
+              mixedUpdateStatements.push(`${varName}.setAttribute('${mb.property}', ${expr})`);
+            } else if (mb.type === 'text') {
+              mixedFillStatements.push(`${varName}.textContent = ${expr}`);
+              mixedUpdateStatements.push(`${varName}.textContent = ${expr}`);
+            } else if (mb.type === 'style' && mb.property) {
+              mixedFillStatements.push(`${varName}.style.setProperty('${mb.property}', ${expr})`);
+              mixedUpdateStatements.push(`${varName}.style.setProperty('${mb.property}', ${expr})`);
+            }
+            // Per-item subscription: re-evaluate full expression when outer signal changes.
+            // 'item' is captured in the createItem closure — correct per-row value.
+            for (const sigName of mb.outerSignalNames) {
+              const signalRef = ap.signal(sigName);
+              if (mb.type === 'attr' && mb.property) {
+                signalSubscriptions.push(
+                  `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${mb.property}', ${expr}); }, true))`,
+                );
+              } else if (mb.type === 'text') {
+                signalSubscriptions.push(
+                  `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.textContent = ${expr}; }, true))`,
+                );
+              } else if (mb.type === 'style' && mb.property) {
+                signalSubscriptions.push(
+                  `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.style.setProperty('${mb.property}', ${expr}); }, true))`,
+                );
+              }
+            }
+          }
+        }
+
         // Key function and empty template are handled inline below
 
         // Generate the inlined repeat setup
@@ -1103,7 +1160,7 @@ export const generateInitBindingsFunction = (
         const needsCleanups =
           hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0 || hasRepMounts;
 
-        const updateParts = [...updateStatements, ...commentUpdateStatements];
+        const updateParts = [...updateStatements, ...commentUpdateStatements, ...mixedUpdateStatements];
         if (useDelegation) {
           updateParts.push('_el.__d = item');
         }
@@ -1126,12 +1183,18 @@ export const generateInitBindingsFunction = (
         for (const navStmt of eventNavStatements) {
           lines.push(`        ${navStmt};`);
         }
+        for (const navStmt of mixedNavStatements) {
+          lines.push(`        ${navStmt};`);
+        }
         lines.push(`        ${fillStatements.join('; ')};`);
         if (commentFillStatements.length > 0) {
           lines.push(`        ${commentFillStatements.join('; ')};`);
         }
         if (signalFillStatements.length > 0) {
           lines.push(`        ${signalFillStatements.join('; ')};`);
+        }
+        if (mixedFillStatements.length > 0) {
+          lines.push(`        ${mixedFillStatements.join('; ')};`);
         }
         if (eventAddStatements.length > 0) {
           lines.push(`        ${eventAddStatements.join('; ')};`);

@@ -100,9 +100,16 @@ export const generateStaticRepeatTemplate = (
   // Build a map of element ID to bindings (only element-navigable bindings)
   // Comment-marker bindings (textBindingMode === 'commentMarker') are handled
   // separately via TreeWalker and are not included here.
+  // Mixed signal+item bindings (outerSignalNames set) are handled via the
+  // dedicated mixedSignalItemBindings path and excluded from regular element bindings.
   const bindingsByElement = new Map<string, ItemBinding[]>();
+  const mixedItemBindings: ItemBinding[] = [];
   for (const binding of itemBindings) {
     if (binding.textBindingMode === 'commentMarker') continue; // handled via TreeWalker
+    if (binding.outerSignalNames && binding.outerSignalNames.length > 0) {
+      mixedItemBindings.push(binding); // handled via per-item signal subscription
+      continue;
+    }
     if (!bindingsByElement.has(binding.elementId)) {
       bindingsByElement.set(binding.elementId, []);
     }
@@ -280,6 +287,60 @@ export const generateStaticRepeatTemplate = (
     }
   }
 
+  // Compute paths for mixed signal+item bindings (Step 13c)
+  let mixedSignalItemBindings: StaticTemplateInfo['mixedSignalItemBindings'];
+  if (mixedItemBindings.length > 0) {
+    mixedSignalItemBindings = [];
+    for (const mb of mixedItemBindings) {
+      // Mixed bindings don't have IDs injected into the HTML (they were excluded
+      // from elementIdMap). Use path-by-position: find the element that owns this
+      // binding. For root-level attributes (e.g., class on <tr>), the root element
+      // itself is the target — path [].
+      // Since the element wasn't assigned an ID, we navigate by position using the
+      // element index assigned during collectItemAttrBindings. For the common case
+      // (attribute on root element), path is [].
+      const rootId = rootEl.attributes.get('id')?.value;
+      let path: number[] | null = null;
+      if (rootId === mb.elementId) {
+        path = [];
+      } else {
+        path = findElementPath(rootEl, mb.elementId, []);
+      }
+      // If no ID-based path found, try to find the element by checking if it's
+      // the root (mixed attr bindings on root won't have an injected ID)
+      if (path === null && !rootId) {
+        // No ID on root — this mixed binding is likely targeting the root element.
+        // Check if any other element has this ID; if not, assume root.
+        let foundElsewhere = false;
+        const searchNonRoot = (el: HtmlElement, p: number[]) => {
+          for (let i = 0; i < el.children.length; i++) {
+            const child = el.children[i]!;
+            if (child.attributes.get('id')?.value === mb.elementId) {
+              foundElsewhere = true;
+              path = [...p, i];
+              return;
+            }
+            searchNonRoot(child, [...p, i]);
+          }
+        };
+        searchNonRoot(rootEl, []);
+        if (!foundElsewhere) {
+          // The binding targets the root element — path is []
+          path = [];
+        }
+      }
+      if (path !== null) {
+        mixedSignalItemBindings.push({
+          path,
+          outerSignalNames: mb.outerSignalNames!,
+          type: mb.type,
+          property: mb.property,
+          expression: mb.expression,
+        });
+      }
+    }
+  }
+
   return {
     staticHtml,
     elementBindings: elementBindingsArray,
@@ -287,6 +348,7 @@ export const generateStaticRepeatTemplate = (
     ...(signalElementBindings ? { signalElementBindings } : {}),
     ...(signalCommentBindings && signalCommentBindings.length > 0 ? { signalCommentBindings } : {}),
     ...(directiveAnchorPaths ? { directiveAnchorPaths } : {}),
+    ...(mixedSignalItemBindings && mixedSignalItemBindings.length > 0 ? { mixedSignalItemBindings } : {}),
     canUseOptimized: true,
   };
 };
@@ -538,6 +600,15 @@ const classifyParsedBindings = (
       continue;
     }
     if (binding.type === 'text' || binding.type === 'style' || binding.type === 'attr') {
+      // Check if the full expression also references the item variable.
+      // If so, this is a "mixed" binding (outer signal + item data) — skip
+      // classifying as a signal binding; collectItemAttrBindings will handle it.
+      const fullExpr = (binding as any).jsExpression || (binding as any).fullExpression || '';
+      const isMixed = fullExpr &&
+        (expressionReferencesIdentifier(fullExpr, itemVar) ||
+         (indexVar ? expressionReferencesIdentifier(fullExpr, indexVar) : false));
+      if (isMixed) continue;
+
       const spanId = `b${state.idCounter++}`;
 
       if (binding.type === 'text') {
@@ -622,12 +693,24 @@ const collectItemTextBindings = (
 
       const id = `i${state.idCounter++}`;
 
+      // Detect outer signal references in the expression (mixed binding)
+      const signalCallRegex = /(?<!\.)(\w+)\(\)/g;
+      const outerSignals: string[] = [];
+      let sigMatch: RegExpExecArray | null;
+      while ((sigMatch = signalCallRegex.exec(innerExpr)) !== null) {
+        const name = sigMatch[1]!;
+        if (name !== itemVar && name !== `${itemVar}$` && (!indexVar || name !== indexVar)) {
+          if (!outerSignals.includes(name)) outerSignals.push(name);
+        }
+      }
+
       itemBindings.push({
         elementId: id,
         type: 'text',
         expression: expression,
         // sole-content → textContent on parent; mixed-content → comment marker
         textBindingMode: context.isSoleContent ? 'textContent' : 'commentMarker',
+        ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
       });
 
       itemTextMatches.push({
@@ -678,11 +761,23 @@ const collectItemAttrBindings = (
 
         const id = `i${state.idCounter++}`;
 
+        // Detect outer signal references in the expression (mixed binding)
+        const signalCallRegex = /(?<!\.)\b(\w+)\(\)/g;
+        const outerSignals: string[] = [];
+        let sigMatch: RegExpExecArray | null;
+        while ((sigMatch = signalCallRegex.exec(innerExpr)) !== null) {
+          const name = sigMatch[1]!;
+          if (name !== itemVar && name !== `${itemVar}$` && (!indexVar || name !== indexVar)) {
+            if (!outerSignals.includes(name)) outerSignals.push(name);
+          }
+        }
+
         itemBindings.push({
           elementId: id,
           type: 'attr',
           property: attrName,
           expression: innerExpr,
+          ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
         });
 
         itemAttrMatches.push({

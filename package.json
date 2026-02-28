@@ -1,6 +1,6 @@
 {
   "name": "thane",
-  "version": "0.0.128",
+  "version": "0.0.130",
   "description": "Lightweight compile-time optimized component framework",
   "author": "Tim Louw",
   "license": "MIT",
