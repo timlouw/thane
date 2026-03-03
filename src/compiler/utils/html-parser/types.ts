@@ -186,4 +186,3 @@ export const WHEN_ELSE_REGEX = () => /\$\{whenElse\(/g;
 export const REPEAT_REGEX = () => /\$\{repeat\(/g;
 export const SIGNAL_EXPR_REGEX = () => /\$\{(\w+)\(\)\}/g;
 export const SIGNAL_CALL_REGEX = () => /(?<!\.)(\w+)\(\)/g;
-

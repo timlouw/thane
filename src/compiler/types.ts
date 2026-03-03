@@ -6,7 +6,6 @@
 import type ts from 'typescript';
 import type { TemplateEditKind } from '../contracts/compiler/template-edits.js';
 
-
 /**
  * Log level for compiler output
  */
@@ -72,7 +71,6 @@ export interface TemplateInfo {
   templateStart: number;
   templateEnd: number;
 }
-
 
 /**
  * Signal expression in template

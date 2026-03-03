@@ -154,7 +154,9 @@ export async function runBuild(config: BuildConfig): Promise<void> {
         if (shuttingDown) return; // guard against duplicate signals
         shuttingDown = true;
         clearAllDebounceTimers();
-        ctx.dispose().catch(() => {/* ignore dispose errors during shutdown */});
+        ctx.dispose().catch(() => {
+          /* ignore dispose errors during shutdown */
+        });
       };
       process.on('SIGINT', shutdown);
       process.on('SIGTERM', shutdown);

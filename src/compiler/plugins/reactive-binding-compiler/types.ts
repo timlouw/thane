@@ -70,8 +70,11 @@ export interface WhenElseBlock {
   endIndex: number; // Position after }
   thenBindings: BindingInfo[]; // Bindings inside then template
   elseBindings: BindingInfo[]; // Bindings inside else template
+  thenRepeats: RepeatBlock[]; // Repeat blocks inside then template
+  elseRepeats: RepeatBlock[]; // Repeat blocks inside else template
   nestedConditionals: ConditionalBlock[]; // Nested when blocks inside then/else
   nestedWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside then/else
+  nestedRepeats: RepeatBlock[]; // Nested repeat blocks inside then/else
 }
 
 export interface RepeatBlock {

@@ -1,0 +1,35 @@
+:root {
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-weight: 400;
+
+  --global-padding: 1rem;
+  --navbar-height: 60px;
+  --border-radius: 5px;
+
+  --primary: #007fba;
+  --primary-background: #094677;
+  --secondary: #ffc72c;
+  --dark: #363636;
+  --dark2: #545454;
+  --dark3: #b9b9b9;
+  --light: #f7f7f7;
+
+  --white: #ffffff;
+  --black: #000000;
+  --error: #990000;
+
+  color: var(--dark);
+  background: var(--light);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}

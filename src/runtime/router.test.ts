@@ -21,11 +21,11 @@ const stubNotFound = stubRoute('404');
 
 describe('matchRoute', () => {
   const routes: RoutesMap = {
-    '/':            stubRoute('Home'),
-    '/about':       stubRoute('About'),
-    '/users/:id':   stubRoute('User'),
+    '/': stubRoute('Home'),
+    '/about': stubRoute('About'),
+    '/users/:id': stubRoute('User'),
     '/posts/:postId/comments/:commentId': stubRoute('Comment'),
-    '/docs/guide':  stubRoute('Guide'),
+    '/docs/guide': stubRoute('Guide'),
   };
 
   // ── Exact matching ──
@@ -117,8 +117,8 @@ describe('matchRoute', () => {
 
   test('exact match takes priority over parametric match', () => {
     const routesWithOverlap: RoutesMap = {
-      '/users/me':   stubRoute('Current User'),
-      '/users/:id':  stubRoute('User By ID'),
+      '/users/me': stubRoute('Current User'),
+      '/users/:id': stubRoute('User By ID'),
     };
     const result = matchRoute('/users/me', routesWithOverlap);
     expect(result).not.toBeNull();
@@ -162,9 +162,9 @@ describe('matchRoute', () => {
 describe('defineRoutes', () => {
   test('returns the same routes object (identity function)', () => {
     const routes = {
-      '/':        stubRoute('Home'),
-      '/about':   stubRoute('About'),
-      notFound:   stubNotFound,
+      '/': stubRoute('Home'),
+      '/about': stubRoute('About'),
+      'notFound': stubNotFound,
     };
     const result = defineRoutes(routes);
     expect(result).toBe(routes);
@@ -172,9 +172,9 @@ describe('defineRoutes', () => {
 
   test('accepts parameterised routes with static prefix', () => {
     const routes = defineRoutes({
-      '/users/:id':       stubRoute('User'),
-      '/posts/:id/edit':  stubRoute('Edit Post'),
-      notFound:           stubNotFound,
+      '/users/:id': stubRoute('User'),
+      '/posts/:id/edit': stubRoute('Edit Post'),
+      'notFound': stubNotFound,
     });
     expect(Object.keys(routes)).toContain('/users/:id');
     expect(Object.keys(routes)).toContain('/posts/:id/edit');
@@ -185,7 +185,7 @@ describe('defineRoutes', () => {
     expect(() => {
       defineRoutes({
         '/:slug': stubRoute('Dynamic'),
-        notFound: stubNotFound,
+        'notFound': stubNotFound,
       } as any);
     }).toThrow('Root-level route parameter');
   });
@@ -194,7 +194,7 @@ describe('defineRoutes', () => {
     expect(() => {
       defineRoutes({
         '/:category/items': stubRoute('Items'),
-        notFound:           stubNotFound,
+        'notFound': stubNotFound,
       } as any);
     }).toThrow('Root-level route parameter');
   });
@@ -202,19 +202,19 @@ describe('defineRoutes', () => {
   test('error message includes the offending route key', () => {
     expect(() => {
       defineRoutes({
-        '/:bad':  stubRoute('Bad'),
-        notFound: stubNotFound,
+        '/:bad': stubRoute('Bad'),
+        'notFound': stubNotFound,
       } as any);
     }).toThrow('/:bad');
   });
 
   test('allows valid routes alongside each other', () => {
     const routes = defineRoutes({
-      '/':                stubRoute('Home'),
-      '/about':           stubRoute('About'),
-      '/users/:id':       stubRoute('User'),
-      '/a/b/c':           stubRoute('Deep'),
-      notFound:           stubNotFound,
+      '/': stubRoute('Home'),
+      '/about': stubRoute('About'),
+      '/users/:id': stubRoute('User'),
+      '/a/b/c': stubRoute('Deep'),
+      'notFound': stubNotFound,
     });
     expect(Object.keys(routes)).toHaveLength(5);
   });
@@ -222,7 +222,7 @@ describe('defineRoutes', () => {
   test('single valid route passes validation', () => {
     const routes = defineRoutes({
       '/settings': stubRoute('Settings'),
-      notFound:    stubNotFound,
+      'notFound': stubNotFound,
     });
     expect(Object.keys(routes)).toContain('/settings');
     expect(Object.keys(routes)).toContain('notFound');
@@ -231,9 +231,9 @@ describe('defineRoutes', () => {
   test('multiple root-level params all throw', () => {
     expect(() => {
       defineRoutes({
-        '/:a':    stubRoute('A'),
-        '/:b':    stubRoute('B'),
-        notFound: stubNotFound,
+        '/:a': stubRoute('A'),
+        '/:b': stubRoute('B'),
+        'notFound': stubNotFound,
       } as any);
     }).toThrow('Root-level route parameter');
   });
@@ -241,8 +241,8 @@ describe('defineRoutes', () => {
   test('notFound key is not treated as a route pattern', () => {
     // notFound should not trigger the root-level param validation
     const routes = defineRoutes({
-      '/':      stubRoute('Home'),
-      notFound: stubNotFound,
+      '/': stubRoute('Home'),
+      'notFound': stubNotFound,
     });
     expect(routes.notFound).toBe(stubNotFound);
   });
@@ -255,9 +255,9 @@ describe('defineRoutes', () => {
 describe('matchRoute + defineRoutes integration', () => {
   test('routes from defineRoutes work with matchRoute', () => {
     const config = defineRoutes({
-      '/':            stubRoute('Home'),
-      '/items/:id':   stubRoute('Item'),
-      notFound:       stubNotFound,
+      '/': stubRoute('Home'),
+      '/items/:id': stubRoute('Item'),
+      'notFound': stubNotFound,
     });
 
     // Separate notFound from the route map (mirrors what mount.ts does)

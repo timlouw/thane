@@ -116,6 +116,10 @@ export const replaceExpressionsWithValues = (
   });
 };
 
+const isInsideRepeatRange = (start: number, end: number, repeatBlocks: RepeatBlock[]): boolean => {
+  return repeatBlocks.some((rep) => start >= rep.startIndex && end <= rep.endIndex);
+};
+
 /**
  * Process a conditional element's HTML, injecting IDs and handling nested conditionals
  */
@@ -127,7 +131,7 @@ export const processConditionalElementHtml = (
   conditionalId: string,
   nestedConditionalBlocks?: ConditionalBlock[],
   eventIdCounter: { value: number } = { value: 0 },
-  textBindingCommentIds?: Map<string, string>,
+  textBindingCommentIds?: Map<string, string[]>,
 ): { html: string; eventBindings: EventBinding[] } => {
   let html = getElementHtml(element, originalHtml);
   const eventBindings: EventBinding[] = [];
@@ -148,15 +152,21 @@ export const processConditionalElementHtml = (
   }
   // Replace text binding expressions with comment markers + initial values
   if (textBindingCommentIds && textBindingCommentIds.size > 0) {
-    html = html.replace(/\$\{(\w+)\(\)\}/g, (_match, signalName) => {
-      const commentId = textBindingCommentIds.get(signalName);
-      if (commentId) {
-        const value = signalInitializers.get(signalName);
-        const valueStr = value !== undefined ? String(value) : ' ';
+    html = html.replace(/\$\{((?:[^{}]|\{[^}]*\})*)\}/g, (match, innerExpression) => {
+      const idQueue = textBindingCommentIds.get(match);
+      if (idQueue && idQueue.length > 0) {
+        const commentId = idQueue.shift()!;
+        const bareSignalMatch = innerExpression.trim().match(/^(\w+)\(\)$/);
+        const initialValue = bareSignalMatch ? signalInitializers.get(bareSignalMatch[1]!) : undefined;
+        const valueStr = initialValue !== undefined ? String(initialValue) : ' ';
         return `<!--${commentId}-->${valueStr}<!---->`;
       }
-      // Not a tracked text binding — replace with bare value (attr/style bindings)
-      const value = signalInitializers.get(signalName);
+
+      // Not a tracked text binding — only fold simple signal calls (e.g. attr/style),
+      // leave other expressions/directives intact for later compile steps.
+      const bareSignalMatch = innerExpression.trim().match(/^(\w+)\(\)$/);
+      if (!bareSignalMatch) return match;
+      const value = signalInitializers.get(bareSignalMatch[1]!);
       return value !== undefined ? String(value) : '';
     });
   } else {
@@ -351,6 +361,7 @@ export const processHtmlTemplateWithConditionals = (
   const whenElseBlocks = collectWhenElseBlocks(parsed, signalInitializers, state, (template, id) =>
     processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id),
   );
+  const whenElseRanges = whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex }));
 
   // ── Collect conditional element sets for filtering later bindings ──
   const allConditionalElements = findElementsWithWhenDirective(parsed.roots);
@@ -376,10 +387,19 @@ export const processHtmlTemplateWithConditionals = (
     }
     return false;
   };
+  const isInsideWhenElse = (start: number, end: number): boolean => {
+    for (const range of whenElseRanges) {
+      if (start > range.start && end < range.end) {
+        return true;
+      }
+    }
+    return false;
+  };
   for (const binding of parsed.bindings) {
     if (binding.type !== 'repeat') continue;
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
     if (isInsideOtherRepeat(binding.expressionStart, binding.expressionEnd)) continue;
+    if (isInsideWhenElse(binding.expressionStart, binding.expressionEnd)) continue;
 
     const signalNames = binding.signalNames || [binding.signalName];
     const repeatId = `b${state.idCounter++}`;
@@ -492,6 +512,11 @@ export const processHtmlTemplateWithConditionals = (
         isInsideConditional: false,
       });
     } else {
+      const initialValue = signalInitializers.get(binding.signalName);
+      inlineExpressionReplacements.set(binding.expressionStart, {
+        exprEnd: binding.expressionEnd,
+        replacement: initialValue !== undefined ? String(initialValue) : '',
+      });
       bindings.push({
         id: elementId,
         signalName: binding.signalName,
@@ -567,12 +592,15 @@ export const processSubTemplateWithNesting = (
   bindings: BindingInfo[];
   conditionals: ConditionalBlock[];
   whenElseBlocks: WhenElseBlock[];
+  repeatBlocks: RepeatBlock[];
   nextId: number;
 } => {
   const parsed = parseHtmlTemplate(templateContent);
   const bindings: BindingInfo[] = [];
+  const repeatBlocks: RepeatBlock[] = [];
   const elementIdMap = new Map<HtmlElement, string>();
   const state: IdState = { idCounter: startingId, eventIdCounter: { value: 0 }, elementIdMap };
+  const firstRootElement = parsed.roots[0] ?? null;
 
   // ── Conditionals ──
   const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state);
@@ -583,6 +611,78 @@ export const processSubTemplateWithNesting = (
   const whenElseBlocks = collectWhenElseBlocks(parsed, signalInitializers, state, (template, id) =>
     processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id),
   );
+  const whenElseRanges = whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex }));
+
+  // ── Repeats ──
+  const allRepeatRanges: Array<{ start: number; end: number }> = [];
+  for (const binding of parsed.bindings) {
+    if (binding.type === 'repeat') {
+      allRepeatRanges.push({ start: binding.expressionStart, end: binding.expressionEnd });
+    }
+  }
+  const isInsideOtherRepeat = (start: number, end: number): boolean => {
+    for (const range of allRepeatRanges) {
+      if (start > range.start && end < range.end) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const isInsideWhenElse = (start: number, end: number): boolean => {
+    for (const range of whenElseRanges) {
+      if (start > range.start && end < range.end) {
+        return true;
+      }
+    }
+    return false;
+  };
+  for (const binding of parsed.bindings) {
+    if (binding.type !== 'repeat') continue;
+    if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
+    if (isInsideOtherRepeat(binding.expressionStart, binding.expressionEnd)) continue;
+    if (isInsideWhenElse(binding.expressionStart, binding.expressionEnd)) continue;
+
+    const signalNames = binding.signalNames || [binding.signalName];
+    const repeatId = `b${state.idCounter++}`;
+    const itemTemplateProcessed = processItemTemplate(
+      binding.itemTemplate,
+      binding.itemVar,
+      binding.indexVar,
+      state.idCounter,
+      signalInitializers,
+    );
+    state.idCounter = itemTemplateProcessed.nextId;
+
+    let processedEmptyTemplate: string | undefined;
+    if (binding.emptyTemplate) {
+      processedEmptyTemplate = binding.emptyTemplate
+        .replace(/\s+/g, ' ')
+        .replace(/>\s+</g, '><')
+        .replace(/\s+>/g, '>')
+        .trim();
+    }
+
+    repeatBlocks.push({
+      id: repeatId,
+      signalName: signalNames[0] || '',
+      signalNames,
+      itemsExpression: binding.itemsExpression,
+      itemVar: binding.itemVar,
+      indexVar: binding.indexVar,
+      itemTemplate: itemTemplateProcessed.processedContent,
+      emptyTemplate: processedEmptyTemplate,
+      trackByFn: binding.trackByFn,
+      startIndex: binding.expressionStart,
+      endIndex: binding.expressionEnd,
+      itemBindings: itemTemplateProcessed.bindings,
+      itemEvents: itemTemplateProcessed.events,
+      signalBindings: itemTemplateProcessed.signalBindings,
+      eventBindings: itemTemplateProcessed.eventBindings,
+      nestedConditionals: itemTemplateProcessed.nestedConditionals,
+      nestedWhenElse: itemTemplateProcessed.nestedWhenElse,
+      nestedRepeats: itemTemplateProcessed.nestedRepeats,
+    });
+  }
 
   // ── Remaining bindings (non-conditional, non-whenElse) ──
   const conditionalElements = findElementsWithWhenDirective(parsed.roots);
@@ -595,10 +695,11 @@ export const processSubTemplateWithNesting = (
   }
   const textBindingSpans = new Map<number, { spanId: string; exprEnd: number; signalName: string }>();
   const expressionBindingSpans = new Map<number, { spanId: string; exprEnd: number }>();
+  const inlineExpressionReplacements = new Map<number, { exprEnd: number; replacement: string }>();
   for (const binding of parsed.bindings) {
     if (elementsInsideConditionals.has(binding.element)) continue;
     if (conditionalElementSet.has(binding.element)) continue;
-    if (binding.type === 'when' || binding.type === 'whenElse') continue;
+    if (binding.type === 'when' || binding.type === 'whenElse' || binding.type === 'repeat') continue;
 
     if (binding.type === 'text') {
       // Text bindings use comment markers — assign a dedicated ID
@@ -640,7 +741,8 @@ export const processSubTemplateWithNesting = (
     }
 
     if (!elementIdMap.has(binding.element)) {
-      elementIdMap.set(binding.element, `b${state.idCounter++}`);
+      const isFirstRootBindingElement = firstRootElement !== null && binding.element === firstRootElement;
+      elementIdMap.set(binding.element, isFirstRootBindingElement ? parentId : `b${state.idCounter++}`);
     }
     const elementId = elementIdMap.get(binding.element)!;
     if (binding.type !== 'style' && binding.type !== 'attr') {
@@ -648,6 +750,18 @@ export const processSubTemplateWithNesting = (
     }
     const isExpressionBinding =
       binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+    if (isExpressionBinding) {
+      inlineExpressionReplacements.set(binding.expressionStart, {
+        exprEnd: binding.expressionEnd,
+        replacement: '',
+      });
+    } else {
+      const initialValue = signalInitializers.get(binding.signalName);
+      inlineExpressionReplacements.set(binding.expressionStart, {
+        exprEnd: binding.expressionEnd,
+        replacement: initialValue !== undefined ? String(initialValue) : '',
+      });
+    }
     bindings.push(
       isExpressionBinding
         ? {
@@ -670,20 +784,30 @@ export const processSubTemplateWithNesting = (
     );
   }
 
+  const rootConditionals = conditionals.filter((c) => !isInsideRepeatRange(c.startIndex, c.endIndex, repeatBlocks));
+  const rootWhenElseBlocks = whenElseBlocks.filter((w) => !isInsideRepeatRange(w.startIndex, w.endIndex, repeatBlocks));
+
   // ── Build edits and apply ──
   const allRanges = [
-    ...conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex })),
-    ...whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex })),
+    ...rootConditionals.map((c) => ({ start: c.startIndex, end: c.endIndex })),
+    ...rootWhenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex })),
+    ...repeatBlocks.map((r) => ({ start: r.startIndex, end: r.endIndex })),
   ];
   const edits: TemplateEdit[] = [
-    ...buildConditionalEdits(conditionals),
-    ...buildWhenElseEdits(whenElseBlocks, false),
+    ...buildConditionalEdits(rootConditionals),
+    ...buildWhenElseEdits(rootWhenElseBlocks, false),
+    ...repeatBlocks.map((rep) => ({
+      start: rep.startIndex,
+      end: rep.endIndex,
+      replacement: `<template id="${rep.id}"></template>`,
+    })),
     ...buildSignalReplacementEdits(
       templateContent,
       signalInitializers,
       allRanges,
       textBindingSpans,
       expressionBindingSpans,
+      inlineExpressionReplacements,
     ),
     ...buildElementIdEdits(elementIdMap, allRanges),
   ];
@@ -693,6 +817,7 @@ export const processSubTemplateWithNesting = (
     bindings,
     conditionals,
     whenElseBlocks,
+    repeatBlocks,
     nextId: state.idCounter,
   };
 };
@@ -713,15 +838,18 @@ export const generateProcessedHtml = (
   expressionBindingSpans: Map<number, { spanId: string; exprEnd: number }> = new Map(),
   inlineExpressionReplacements: Map<number, { exprEnd: number; replacement: string }> = new Map(),
 ): string => {
+  const rootConditionals = conditionals.filter((c) => !isInsideRepeatRange(c.startIndex, c.endIndex, repeatBlocks));
+  const rootWhenElseBlocks = whenElseBlocks.filter((w) => !isInsideRepeatRange(w.startIndex, w.endIndex, repeatBlocks));
+
   const allRanges = [
-    ...conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex })),
-    ...whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex })),
+    ...rootConditionals.map((c) => ({ start: c.startIndex, end: c.endIndex })),
+    ...rootWhenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex })),
     ...repeatBlocks.map((r) => ({ start: r.startIndex, end: r.endIndex })),
   ];
 
   const edits: TemplateEdit[] = [
-    ...buildConditionalEdits(conditionals),
-    ...buildWhenElseEdits(whenElseBlocks, true, injectIdIntoFirstElement),
+    ...buildConditionalEdits(rootConditionals),
+    ...buildWhenElseEdits(rootWhenElseBlocks, true, injectIdIntoFirstElement),
     ...repeatBlocks.map((rep) => ({
       start: rep.startIndex,
       end: rep.endIndex,

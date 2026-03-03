@@ -26,6 +26,7 @@ function createHandler(root: string) {
 
 const contractRoot = resolve(process.cwd(), 'dist', 'e2e');
 const routerRoot = resolve(process.cwd(), 'dist', 'e2e-router');
+const cartRoot = resolve(process.cwd(), 'dist', 'e2e-cart-app');
 
 if (!existsSync(contractRoot)) {
   throw new Error(`Contract app build output missing at ${contractRoot}. Run e2e:build first.`);
@@ -33,6 +34,10 @@ if (!existsSync(contractRoot)) {
 
 if (!existsSync(routerRoot)) {
   throw new Error(`Router app build output missing at ${routerRoot}. Run e2e:build first.`);
+}
+
+if (!existsSync(cartRoot)) {
+  throw new Error(`Cart app build output missing at ${cartRoot}. Run e2e:build first.`);
 }
 
 serve({
@@ -47,4 +52,12 @@ serve({
   routes: { '/*': createHandler(routerRoot) },
 });
 
-console.log('E2E servers running on http://localhost:4173 (contract) and http://localhost:4174 (router)');
+serve({
+  port: 4175,
+  development: false,
+  routes: { '/*': createHandler(cartRoot) },
+});
+
+console.log(
+  'E2E servers running on http://localhost:4173 (contract), http://localhost:4174 (router), and http://localhost:4175 (cart)',
+);

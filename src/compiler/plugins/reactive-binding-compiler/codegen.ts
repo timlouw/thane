@@ -26,7 +26,12 @@ import {
   renameIdentifierInExpression,
   parseArrowFunction,
 } from '../../utils/index.js';
-import { injectIdIntoFirstElement, escapeTemplateLiteral, escapeRawTemplateLiteral, normalizeHtmlWhitespace } from '../../utils/html-parser/index.js';
+import {
+  injectIdIntoFirstElement,
+  escapeTemplateLiteral,
+  escapeRawTemplateLiteral,
+  normalizeHtmlWhitespace,
+} from '../../utils/html-parser/index.js';
 import type { ImportInfo } from '../../types.js';
 import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
 import type { GeneratedInitBindingsArtifact } from '../../../contracts/index.js';
@@ -502,6 +507,7 @@ export const generateInitBindingsFunction = (
     const cleanupExprs: string[] = [];
     for (const { cm, globalIndex } of mounts) {
       const varName = `_cm${globalIndex}`;
+      const anchorVar = `_cma${globalIndex}`;
       let propsExpr = cm.propsExpression;
       // Step 10: Rename repeat-context variables in props expression
       if (repeatCtx) {
@@ -511,7 +517,14 @@ export const generateInitBindingsFunction = (
         }
       }
       setupLines.push(`${indent}const ${varName} = document.createElement('${cm.selector}');`);
-      setupLines.push(`${indent}_gid('${cm.anchorId}').replaceWith(${varName});`);
+      if (repeatCtx) {
+        setupLines.push(
+          `${indent}const ${anchorVar} = (_el.id === '${cm.anchorId}' ? _el : _el.querySelector('#${cm.anchorId}'));`,
+        );
+      } else {
+        setupLines.push(`${indent}const ${anchorVar} = _gid('${cm.anchorId}');`);
+      }
+      setupLines.push(`${indent}if (${anchorVar}) ${anchorVar}.replaceWith(${varName});`);
       cleanupExprs.push(`${BIND_FN.DESTROY_CHILD}(${cm.componentName}.__f(${varName}, ${propsExpr}))`);
     }
     return { setupLines, cleanupExprs };
@@ -623,8 +636,8 @@ export const generateInitBindingsFunction = (
   // Expression bindings: multi-subscribe pattern
   // e.g. const _upd_b2 = () => { b2.nextSibling.data = count() + 1; };
   //      count.subscribe(_upd_b2, true);
-  for (const binding of expressionBindings) {
-    const updFn = `_upd_${binding.id}`;
+  expressionBindings.forEach((binding, idx) => {
+    const updFn = `_upd_${binding.id}_${idx}`;
     const expr = binding.expression;
     const signals = binding.signalNames;
     if (binding.type === 'text') {
@@ -634,13 +647,14 @@ export const generateInitBindingsFunction = (
     } else if (binding.type === 'style' && binding.property) {
       lines.push(`    const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`);
     } else {
-      continue;
+      return;
     }
     lines.push(`    ${updFn}();`);
     for (const sig of signals) {
       lines.push(`    _subs.push(${ap.signal(sig)}.subscribe(${updFn}, true));`);
     }
-  }
+  });
+
   for (const cond of conditionals) {
     const nestedBindings = cond.nestedBindings;
     const nestedConds = cond.nestedConditionals || [];
@@ -665,10 +679,21 @@ export const generateInitBindingsFunction = (
       for (const binding of nestedSimpleBindings) {
         nestedLines.push(`      ${generateInitialValueCode(binding, ap)};`);
       }
-      for (const binding of nestedExpressionBindings) {
-        const updFn = `_upd_${binding.id}`;
-        nestedLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${binding.expression}; };`);
-      }
+      nestedExpressionBindings.forEach((binding, idx) => {
+        const updFn = `_upd_${binding.id}_${idx}`;
+        const expr = binding.expression;
+        if (binding.type === 'text') {
+          nestedLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
+        } else if (binding.type === 'attr' && binding.property) {
+          nestedLines.push(
+            `      const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`,
+          );
+        } else if (binding.type === 'style' && binding.property) {
+          nestedLines.push(
+            `      const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
+          );
+        }
+      });
       const nestedSignalGroups = groupBindingsBySignal(nestedSimpleBindings);
       if (cond.nestedEventBindings.length > 0) {
         const nestedEventLines = buildEventListenerStatements(cond.nestedEventBindings, 'r');
@@ -686,13 +711,13 @@ export const generateInitBindingsFunction = (
       for (const ce of condMountInfo.cleanupExprs) {
         nestedLines.push(`        ${ce},`);
       }
-      for (const binding of nestedExpressionBindings) {
-        const updFn = `_upd_${binding.id}`;
+      nestedExpressionBindings.forEach((binding, idx) => {
+        const updFn = `_upd_${binding.id}_${idx}`;
         const signals = binding.signalNames;
         for (const sig of signals) {
           nestedLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);
         }
-      }
+      });
       for (const nestedCond of nestedConds) {
         const nestedCondEscaped = escapeTemplateLiteral(nestedCond.templateContent);
         let innerNestedCode = '() => []';
@@ -714,23 +739,32 @@ export const generateInitBindingsFunction = (
           for (const binding of innerSimple) {
             innerBindingLines.push(`        ${generateInitialValueCode(binding, ap)};`);
           }
-          for (const binding of innerExpr) {
-            const updFn = `_upd_${binding.id}`;
-            innerBindingLines.push(
-              `        const ${updFn} = () => { ${binding.id}.nextSibling.data = ${binding.expression}; };`,
-            );
-          }
+          innerExpr.forEach((binding, idx) => {
+            const updFn = `_upd_${binding.id}_${idx}`;
+            const expr = binding.expression;
+            if (binding.type === 'text') {
+              innerBindingLines.push(`        const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
+            } else if (binding.type === 'attr' && binding.property) {
+              innerBindingLines.push(
+                `        const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`,
+              );
+            } else if (binding.type === 'style' && binding.property) {
+              innerBindingLines.push(
+                `        const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
+              );
+            }
+          });
           const innerGroups = groupBindingsBySignal(innerSimple);
           innerBindingLines.push('        return [');
           for (const [signalName, signalBindings] of innerGroups) {
             innerBindingLines.push(`          ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
           }
-          for (const binding of innerExpr) {
-            const updFn = `_upd_${binding.id}`;
+          innerExpr.forEach((binding, idx) => {
+            const updFn = `_upd_${binding.id}_${idx}`;
             for (const sig of binding.signalNames) {
               innerBindingLines.push(`          ${ap.signal(sig)}.subscribe(${updFn}, true),`);
             }
-          }
+          });
           innerBindingLines.push('        ];');
           innerBindingLines.push('      }');
           innerNestedCode = innerBindingLines.join('\n');
@@ -776,11 +810,18 @@ export const generateInitBindingsFunction = (
       bindings: BindingInfo[],
       nestedConds: ConditionalBlock[],
       nestedWE: WhenElseBlock[],
+      nestedReps: RepeatBlock[],
       directiveId?: string,
     ): string => {
       const weMountInfo = directiveId ? generateMountInfo(directiveId, '      ') : { setupLines: [], cleanupExprs: [] };
       const hasWeMounts = weMountInfo.setupLines.length > 0;
-      if (bindings.length === 0 && nestedConds.length === 0 && nestedWE.length === 0 && !hasWeMounts) {
+      if (
+        bindings.length === 0 &&
+        nestedConds.length === 0 &&
+        nestedWE.length === 0 &&
+        nestedReps.length === 0 &&
+        !hasWeMounts
+      ) {
         return '() => []';
       }
 
@@ -799,12 +840,144 @@ export const generateInitBindingsFunction = (
       for (const binding of simpleNestedBindings) {
         initLines.push(`      ${generateInitialValueCode(binding, ap)};`);
       }
-      for (const binding of exprNestedBindings) {
-        const updFn = `_upd_${binding.id}`;
-        initLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${binding.expression}; };`);
-      }
+      exprNestedBindings.forEach((binding, idx) => {
+        const updFn = `_upd_${binding.id}_${idx}`;
+        const expr = binding.expression;
+        if (binding.type === 'text') {
+          initLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
+        } else if (binding.type === 'attr' && binding.property) {
+          initLines.push(
+            `      const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`,
+          );
+        } else if (binding.type === 'style' && binding.property) {
+          initLines.push(
+            `      const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
+          );
+        }
+      });
       for (const sl of weMountInfo.setupLines) {
         initLines.push(sl);
+      }
+
+      const nestedRepeatCleanupVars: string[] = [];
+      for (const rep of nestedReps) {
+        const indexVarName = rep.indexVar || '_idx';
+        const anchorVar = `_wra_${rep.id}`;
+        const containerVar = `_wrc_${rep.id}`;
+        const startVar = `_wrs_${rep.id}`;
+        const renderItemVar = `_wri_${rep.id}`;
+        const bindEventsVar = `_wbe_${rep.id}`;
+        const renderVar = `_wrr_${rep.id}`;
+        const itemsGetterVar = `_wget_${rep.id}`;
+        const emptyFlagVar = `_wre_${rep.id}`;
+        const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+        const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
+        const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
+        const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');
+
+        initLines.push(`      let _wcleanup_${rep.id} = () => {};`);
+        initLines.push(`      const ${anchorVar} = _gid('${rep.id}');`);
+        initLines.push(`      if (${anchorVar}) {`);
+        initLines.push(`        const ${containerVar} = ${anchorVar}.parentNode;`);
+        initLines.push(`        const ${startVar} = document.createComment('r:${rep.id}');`);
+        initLines.push(`        ${containerVar}.insertBefore(${startVar}, ${anchorVar});`);
+        initLines.push(`        const ${itemsGetterVar} = () => ${rep.itemsExpression};`);
+        initLines.push(
+          `        const ${renderItemVar} = (item, ${indexVarName}) => {${itemSignalAccessorDecl}${itemAliasDecl} return \`${sourceTemplate}\`; };`,
+        );
+        initLines.push(`        const ${bindEventsVar} = (_frag, item, ${indexVarName}) => {`);
+        rep.itemEvents.forEach((evt, eventIdx) => {
+          let handlerExpr = renameIdentifierInExpression(evt.handlerExpression, rep.itemVar, 'item');
+          if (rep.indexVar && rep.indexVar !== indexVarName) {
+            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVarName);
+          }
+          const arrowParsed = parseArrowFunction(handlerExpr);
+          if (arrowParsed) {
+            handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
+          }
+
+          const bodyParts: string[] = [];
+          if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
+          const keyModifiers = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
+          if (keyModifiers.length > 0) {
+            const guard = compileKeyGuard(keyModifiers);
+            if (guard) bodyParts.push(`if (${guard}) return`);
+          }
+          if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
+          if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
+          bodyParts.push(handlerExpr);
+          const listenerBody = bodyParts.join('; ');
+
+          initLines.push(`          const _evt_${rep.id}_${eventIdx} = _frag.querySelector('#${evt.elementId}');`);
+          initLines.push(`          if (_evt_${rep.id}_${eventIdx}) {`);
+          initLines.push(
+            `            _evt_${rep.id}_${eventIdx}.addEventListener('${evt.eventName}', (e) => { ${listenerBody}; });`,
+          );
+          initLines.push(`            _evt_${rep.id}_${eventIdx}.removeAttribute('id');`);
+          initLines.push('          }');
+        });
+        initLines.push('        };');
+        if (rep.emptyTemplate) {
+          initLines.push(`        let ${emptyFlagVar} = false;`);
+        }
+        initLines.push(`        const ${renderVar} = (items) => {`);
+        initLines.push(`          let _n = ${startVar}.nextSibling;`);
+        initLines.push(
+          `          while (_n && _n !== ${anchorVar}) { const _next = _n.nextSibling; _n.remove(); _n = _next; }`,
+        );
+        initLines.push(`          if (!items || items.length === 0) {`);
+        if (rep.emptyTemplate) {
+          initLines.push(`            if (!${emptyFlagVar}) {`);
+          initLines.push(`              const _et = _T(\`${emptyTemplate}\`).content;`);
+          initLines.push(
+            `              while (_et.firstChild) ${containerVar}.insertBefore(_et.firstChild, ${anchorVar});`,
+          );
+          initLines.push(`              ${emptyFlagVar} = true;`);
+          initLines.push('            }');
+        }
+        initLines.push('            return;');
+        initLines.push('          }');
+        if (rep.emptyTemplate) {
+          initLines.push(`          ${emptyFlagVar} = false;`);
+        }
+        initLines.push('          for (let i = 0; i < items.length; i++) {');
+        initLines.push('            const item = items[i];');
+        initLines.push("            const _t = document.createElement('template');");
+        initLines.push(`            _t.innerHTML = ${renderItemVar}(item, i);`);
+        initLines.push('            const _f = _t.content;');
+        if (rep.itemEvents.length > 0) {
+          initLines.push(`            ${bindEventsVar}(_f, item, i);`);
+        }
+        initLines.push(`            while (_f.firstChild) ${containerVar}.insertBefore(_f.firstChild, ${anchorVar});`);
+        initLines.push('          }');
+        initLines.push('        };');
+        initLines.push(`        ${renderVar}(${itemsGetterVar}());`);
+        if (rep.signalName) {
+          initLines.push(`        const _wsrc_${rep.id} = ${ap.signal(rep.signalName)};`);
+          initLines.push(
+            `        const _wsub_${rep.id} = typeof _wsrc_${rep.id}?.subscribe === 'function' ? _wsrc_${rep.id}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
+          );
+        } else {
+          initLines.push(`        const _wsub_${rep.id} = () => {};`);
+        }
+
+        const fallbackSignals = [
+          ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
+        ];
+        for (const sig of fallbackSignals) {
+          initLines.push(`        const _wsrc_${rep.id}_${sig} = ${ap.signal(sig)};`);
+          initLines.push(
+            `        const _wsub_${rep.id}_${sig} = typeof _wsrc_${rep.id}_${sig}?.subscribe === 'function' ? _wsrc_${rep.id}_${sig}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
+          );
+        }
+
+        const cleanupParts = [`_wsub_${rep.id}`];
+        for (const sig of fallbackSignals) {
+          cleanupParts.push(`_wsub_${rep.id}_${sig}`);
+        }
+        initLines.push(`        _wcleanup_${rep.id} = () => { ${cleanupParts.map((c) => `${c}();`).join(' ')} };`);
+        nestedRepeatCleanupVars.push(`_wcleanup_${rep.id}`);
+        initLines.push('      }');
       }
 
       initLines.push('      return [');
@@ -815,16 +988,16 @@ export const generateInitBindingsFunction = (
       for (const ce of weMountInfo.cleanupExprs) {
         initLines.push(`        ${ce},`);
       }
-      for (const binding of exprNestedBindings) {
-        const updFn = `_upd_${binding.id}`;
+      exprNestedBindings.forEach((binding, idx) => {
+        const updFn = `_upd_${binding.id}_${idx}`;
         const signals = binding.signalNames;
         for (const sig of signals) {
           initLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);
         }
-      }
+      });
       for (const cond of nestedConds) {
         const nestedEscapedTemplate = escapeTemplateLiteral(cond.templateContent);
-        const nestedBindingsCode = generateNestedInitializer(cond.nestedBindings, [], []);
+        const nestedBindingsCode = generateNestedInitializer(cond.nestedBindings, [], [], []);
         const isSimple = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
         if (isSimple) {
           initLines.push(
@@ -848,8 +1021,9 @@ export const generateInitBindingsFunction = (
             (c) => nestedWe.thenBindings.some((b) => b.conditionalId === c.id) || true,
           ),
           nestedWe.nestedWhenElse,
+          nestedWe.thenRepeats,
         );
-        const elseInitCode = generateNestedInitializer(nestedWe.elseBindings, [], []);
+        const elseInitCode = generateNestedInitializer(nestedWe.elseBindings, [], [], nestedWe.elseRepeats);
         const signalsArray = nestedWe.signalNames.map((s) => ap.signal(s)).join(', ');
         initLines.push(
           `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${nestedWe.jsExpression}, '${nestedWe.thenId}', \`${nestedThenTemplate}\`, ${thenInitCode}),`,
@@ -859,12 +1033,22 @@ export const generateInitBindingsFunction = (
         );
       }
 
+      for (const cleanupVar of nestedRepeatCleanupVars) {
+        initLines.push(`        ${cleanupVar},`);
+      }
+
       initLines.push('      ];');
       initLines.push('    }');
       return initLines.join('\n');
     };
-    const thenCode = generateNestedInitializer(we.thenBindings, we.nestedConditionals, we.nestedWhenElse, we.thenId);
-    const elseCode = generateNestedInitializer(we.elseBindings, [], [], we.elseId);
+    const thenCode = generateNestedInitializer(
+      we.thenBindings,
+      we.nestedConditionals,
+      we.nestedWhenElse,
+      we.thenRepeats,
+      we.thenId,
+    );
+    const elseCode = generateNestedInitializer(we.elseBindings, [], [], we.elseRepeats, we.elseId);
 
     const signalsArray = we.signalNames.map((s) => ap.signal(s)).join(', ');
     lines.push(
@@ -1289,9 +1473,7 @@ export const generateInitBindingsFunction = (
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           } else {
             const fallbackHtml = normalizeHtmlWhitespace(
-              nr.itemTemplate
-                .replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '')
-                .replace(/\s*id="[ib]\d+"/g, ''),
+              nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, ''),
             );
             const innerEscaped = fallbackHtml
               .replace(/\\/g, '\\\\')
@@ -1445,13 +1627,13 @@ export const generateInitBindingsFunction = (
           lines.push(`        _nrRc_${nr.id}.reconcile(${nrItemsExpr});`);
           // If the nested repeat is driven by a signal, subscribe
           if (nr.signalName) {
-            lines.push(`        _cleanups.push(${nrSignalRef}.subscribe(() => { _nrRc_${nr.id}.reconcile(${nrItemsExpr}); }, true));`);
+            lines.push(
+              `        _cleanups.push(${nrSignalRef}.subscribe(() => { _nrRc_${nr.id}.reconcile(${nrItemsExpr}); }, true));`,
+            );
           }
           lines.push(`        _cleanups.push(() => { _nrRc_${nr.id}.clearAll(); });`);
         }
-        lines.push(
-          `        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`,
-        );
+        lines.push(`        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`);
         lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
         lines.push(`      },`);
         lines.push(`    ${keyFnExpr});`);
@@ -1536,7 +1718,9 @@ export const generateInitBindingsFunction = (
           lines.push(sl);
         }
         if (fbRepMountInfo.cleanupExprs.length > 0) {
-          lines.push(`        return { el: _el, cleanups: [${fbRepMountInfo.cleanupExprs.join(', ')}], value: item, update: () => {} };`);
+          lines.push(
+            `        return { el: _el, cleanups: [${fbRepMountInfo.cleanupExprs.join(', ')}], value: item, update: () => {} };`,
+          );
         } else {
           lines.push(`        return { el: _el, cleanups: [], value: item, update: () => {} };`);
         }
@@ -1581,7 +1765,7 @@ export const generateInitBindingsFunction = (
         const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
         const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
         const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
-        const emptyTemplate = escapeRawTemplateLiteral((rep.emptyTemplate || ''));
+        const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');
 
         lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
         lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
@@ -1620,13 +1804,17 @@ export const generateInitBindingsFunction = (
         lines.push('      }');
         lines.push('    };');
         lines.push(`    ${renderVar}(${ap.signal(rep.signalName)}());`);
-        lines.push(`    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true));`);
+        lines.push(
+          `    _subs.push(${ap.signal(rep.signalName)}.subscribe((items) => { ${renderVar}(items); }, true));`,
+        );
 
         const fallbackSignals = [
           ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
         ];
         for (const sig of fallbackSignals) {
-          lines.push(`    _subs.push(${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true));`);
+          lines.push(
+            `    _subs.push(${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true));`,
+          );
         }
         continue;
       }
@@ -1647,7 +1835,7 @@ export const generateInitBindingsFunction = (
     const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
     const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
     const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
-    const emptyTemplate = escapeRawTemplateLiteral((rep.emptyTemplate || ''));
+    const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');
 
     lines.push(`    const ${anchorVar} = _gid('${rep.id}');`);
     lines.push(`    const ${containerVar} = ${anchorVar}.parentNode;`);
@@ -1689,7 +1877,9 @@ export const generateInitBindingsFunction = (
       ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
     ];
     for (const sig of fallbackSignals) {
-      lines.push(`    _subs.push(${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true));`);
+      lines.push(
+        `    _subs.push(${ap.signal(sig)}.subscribe(() => { ${renderVar}(${ap.signal(rep.signalName)}()); }, true));`,
+      );
     }
   }
   if (eventBindings.length > 0) {

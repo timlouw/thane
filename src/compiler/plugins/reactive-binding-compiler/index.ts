@@ -64,6 +64,17 @@ const stripDeadPropertiesAndDetectFeatures = (
     if (ts.isCallExpression(node) && isDefineComponentCall(node)) {
       const setupArg = node.arguments.length >= 2 ? node.arguments[1] : node.arguments[0];
       if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
+        if (ts.isArrowFunction(setupArg) && !ts.isBlock(setupArg.body)) {
+          let bodyExpr: ts.Expression = setupArg.body;
+          while (ts.isParenthesizedExpression(bodyExpr)) {
+            bodyExpr = bodyExpr.expression;
+          }
+          if (ts.isObjectLiteralExpression(bodyExpr)) {
+            returnObj = bodyExpr;
+            return;
+          }
+        }
+
         const findReturn = (n: ts.Node) => {
           if (returnObj) return;
           if (ts.isArrowFunction(n) && n !== setupArg) return;
@@ -662,7 +673,15 @@ export const transformDefineComponentSource = (
       if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
       if (hasComplexConditionals || allWhenElseIncludingNested.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
 
-      if (allRepeatBlocks.length > 0) {
+      const hasWhenElseNestedRepeats = (blocks: WhenElseBlock[]): boolean => {
+        for (const block of blocks) {
+          if (block.nestedRepeats.length > 0) return true;
+          if (hasWhenElseNestedRepeats(block.nestedWhenElse)) return true;
+        }
+        return false;
+      };
+
+      if (allRepeatBlocks.length > 0 || hasWhenElseNestedRepeats(allWhenElseBlocks)) {
         requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
       }
       // Events now use direct addEventListener — no runtime import needed
@@ -706,14 +725,19 @@ export const transformDefineComponentSource = (
       const varName = `_cm${globalIndex}`;
       mountLines.push(`const ${varName} = document.createElement('${cm.selector}');`);
       mountLines.push(`_gid('${cm.anchorId}').replaceWith(${varName});`);
-      mountLines.push(`_subs.push(${BIND_FN.DESTROY_CHILD}(${cm.componentName}.__f(${varName}, ${cm.propsExpression})));`);
+      mountLines.push(
+        `_subs.push(${BIND_FN.DESTROY_CHILD}(${cm.componentName}.__f(${varName}, ${cm.propsExpression})));`,
+      );
     }
     const mountCode = '\n    ' + mountLines.join('\n    ');
     // Insert BEFORE the return statement so code is reachable
     const returnIdx = processedBindings.lastIndexOf('return () =>');
     if (returnIdx !== -1) {
       processedBindings =
-        processedBindings.substring(0, returnIdx) + mountCode.trimStart() + '\n    ' + processedBindings.substring(returnIdx);
+        processedBindings.substring(0, returnIdx) +
+        mountCode.trimStart() +
+        '\n    ' +
+        processedBindings.substring(returnIdx);
     } else {
       processedBindings += mountCode;
     }

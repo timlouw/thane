@@ -327,7 +327,11 @@ export function parseHtmlTemplate(html: string): ParsedTemplate {
           let braceDepth = 0;
           let i = pos;
           while (i < html.length) {
-            if (html[i] === '$' && html[i + 1] === '{') { braceDepth++; i += 2; continue; }
+            if (html[i] === '$' && html[i + 1] === '{') {
+              braceDepth++;
+              i += 2;
+              continue;
+            }
             if (html[i] === '{') braceDepth++;
             else if (html[i] === '}') {
               braceDepth--;

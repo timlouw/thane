@@ -22,14 +22,45 @@ import { parseArrowFunction } from '../ast-utils.js';
 function parseDirectiveArgs(text: string, startPos: number): { args: string[]; end: number } | null {
   let pos = startPos;
   let parenDepth = 1;
+  let braceDepth = 0;
+  let bracketDepth = 0;
 
   const args: string[] = [];
   let currentArg = '';
   let inBacktick = false;
   let templateBraceDepth = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let escaped = false;
 
   while (pos < text.length) {
     const char = text[pos];
+
+    if (inSingleQuote) {
+      currentArg += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === "'") {
+        inSingleQuote = false;
+      }
+      pos++;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      currentArg += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inDoubleQuote = false;
+      }
+      pos++;
+      continue;
+    }
 
     if (char === '`' && !inBacktick) {
       inBacktick = true;
@@ -60,7 +91,30 @@ function parseDirectiveArgs(text: string, startPos: number): { args: string[]; e
       continue;
     }
 
+    if (inBacktick && templateBraceDepth > 0 && char === '{') {
+      templateBraceDepth++;
+      currentArg += char;
+      pos++;
+      continue;
+    }
+
     if (inBacktick) {
+      currentArg += char;
+      pos++;
+      continue;
+    }
+
+    if (char === "'") {
+      inSingleQuote = true;
+      escaped = false;
+      currentArg += char;
+      pos++;
+      continue;
+    }
+
+    if (char === '"') {
+      inDoubleQuote = true;
+      escaped = false;
       currentArg += char;
       pos++;
       continue;
@@ -72,7 +126,10 @@ function parseDirectiveArgs(text: string, startPos: number): { args: string[]; e
     } else if (char === ')') {
       parenDepth--;
       if (parenDepth === 0) {
-        args.push(currentArg.trim());
+        const finalArg = currentArg.trim();
+        if (finalArg !== '') {
+          args.push(finalArg);
+        }
         pos++;
         if (text[pos] === '}') {
           pos++;
@@ -80,7 +137,23 @@ function parseDirectiveArgs(text: string, startPos: number): { args: string[]; e
         return { args, end: pos };
       }
       currentArg += char;
-    } else if (char === ',' && parenDepth === 1) {
+    } else if (char === '{') {
+      braceDepth++;
+      currentArg += char;
+    } else if (char === '}') {
+      if (braceDepth > 0) {
+        braceDepth--;
+      }
+      currentArg += char;
+    } else if (char === '[') {
+      bracketDepth++;
+      currentArg += char;
+    } else if (char === ']') {
+      if (bracketDepth > 0) {
+        bracketDepth--;
+      }
+      currentArg += char;
+    } else if (char === ',' && parenDepth === 1 && braceDepth === 0 && bracketDepth === 0) {
       args.push(currentArg.trim());
       currentArg = '';
     } else {
@@ -207,11 +280,14 @@ export function parseWhenElseExpression(
 } | null {
   const argsStart = startPos + '${whenElse('.length;
   const parsed = parseDirectiveArgs(text, argsStart);
-  if (!parsed || parsed.args.length !== 3) return null;
+  if (!parsed) return null;
 
-  const condition = parsed.args[0];
-  const arg1 = parsed.args[1];
-  const arg2 = parsed.args[2];
+  const filteredArgs = parsed.args.filter((a) => a.trim() !== '');
+  if (filteredArgs.length !== 3) return null;
+
+  const condition = filteredArgs[0];
+  const arg1 = filteredArgs[1];
+  const arg2 = filteredArgs[2];
   if (!condition || !arg1 || !arg2) return null;
 
   const thenTemplate = extractHtmlTemplateContent(arg1);

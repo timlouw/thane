@@ -13,8 +13,7 @@ export const DestroyParentNested = defineComponent('destroy-parent-nested', () =
   template: html`
     <div data-testid="destroy-nested-root">
       <span>Nested parent</span>
-      ${DestroyTracker({ trackerId: 'nested-direct' })}
-      ${DestroyGrandchild({})}
+      ${DestroyTracker({ trackerId: 'nested-direct' })} ${DestroyGrandchild({})}
     </div>
   `,
 }));

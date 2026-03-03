@@ -7,6 +7,18 @@ const gotoApp = async ({ page }: { page: any }) => {
 
 const listItemIds = async (page: any): Promise<string[]> => page.locator('[data-testid="item-id"]').allTextContents();
 
+const assertRoundTripNoDuplicates = async (page: any, opts: { rowTestId: string; toggleTestId: string }) => {
+  const rowLocator = page.getByTestId(opts.rowTestId);
+  const before = await rowLocator.count();
+
+  await page.getByTestId(opts.toggleTestId).click();
+  await page.getByTestId(opts.toggleTestId).click();
+
+  await expect(rowLocator).toHaveCount(before);
+  const texts = await rowLocator.allTextContents();
+  expect(new Set(texts).size).toBe(texts.length);
+};
+
 test('basic render, click updates, when and whenElse branch switching', async ({ page }) => {
   await gotoApp({ page });
 
@@ -71,6 +83,116 @@ test('repeat supports count, add/remove/reorder, keyed identity, and empty state
 
   await page.getByTestId('reset-items').click();
   await expect(await listItemIds(page)).toEqual(['1', '2', '3']);
+});
+
+test('whenElse branch swaps preserve sibling DOM and branch-scoped bindings', async ({ page }) => {
+  await gotoApp({ page });
+
+  await expect(page.getByTestId('complex-prefix')).toHaveText('prefix');
+  await expect(page.getByTestId('complex-suffix')).toHaveText('suffix');
+  await expect(page.getByTestId('complex-then')).toBeVisible();
+  await expect(page.getByTestId('complex-then')).toHaveAttribute('class', '0');
+  await expect(page.getByTestId('complex-else')).toHaveCount(0);
+
+  await page.getByTestId('inc-complex-then').click();
+  await expect(page.getByTestId('complex-then-count')).toHaveText('1');
+  await expect(page.getByTestId('complex-shared')).toHaveText('shared-0');
+
+  await page.getByTestId('bump-complex-shared').click();
+  await expect(page.getByTestId('complex-shared')).toHaveText('shared-1');
+  await expect(page.getByTestId('complex-then')).toHaveAttribute('class', '1');
+
+  await page.getByTestId('toggle-complex-when-else').click();
+  await expect(page.getByTestId('complex-then')).toHaveCount(0);
+  await expect(page.getByTestId('complex-else')).toBeVisible();
+  await expect(page.getByTestId('complex-else')).toHaveAttribute('data-shared', '1');
+  await expect(page.getByTestId('complex-prefix')).toHaveText('prefix');
+  await expect(page.getByTestId('complex-suffix')).toHaveText('suffix');
+
+  await page.getByTestId('inc-complex-else').click();
+  await expect(page.getByTestId('complex-else-count')).toHaveText('1');
+  await expect(page.getByTestId('complex-shared')).toHaveText('shared-1');
+
+  await page.getByTestId('toggle-complex-when-else').click();
+  await expect(page.getByTestId('complex-then')).toBeVisible();
+  await expect(page.getByTestId('complex-then')).toHaveCount(1);
+  await expect(page.getByTestId('complex-prefix')).toHaveCount(1);
+  await expect(page.getByTestId('complex-suffix')).toHaveCount(1);
+  await expect(page.getByTestId('complex-then-count')).toHaveText('1');
+  await page.getByTestId('inc-complex-then').click();
+  await expect(page.getByTestId('complex-then-count')).toHaveText('2');
+});
+
+test('directive matrix handles mixed expression types and nested directive order/depth', async ({ page }) => {
+  await gotoApp({ page });
+
+  await expect(page.getByTestId('matrix-then')).toBeVisible();
+  await expect(page.getByTestId('matrix-else')).toHaveCount(0);
+  await expect(page.getByTestId('matrix-row')).toHaveCount(2);
+  await expect(page.getByTestId('matrix-stock').first()).toHaveText('in-1');
+  await expect(page.getByTestId('matrix-stock').nth(1)).toHaveText('in-0');
+
+  await assertRoundTripNoDuplicates(page, { rowTestId: 'matrix-row', toggleTestId: 'toggle-matrix-a' });
+
+  await page.getByTestId('toggle-matrix-a').click();
+  await expect(page.getByTestId('matrix-then')).toHaveCount(0);
+  await expect(page.getByTestId('matrix-else')).toHaveCount(1);
+  await expect(page.getByTestId('matrix-else-label')).toHaveText('matrix-else-active');
+
+  await page.getByTestId('toggle-matrix-b').click();
+  await expect(page.getByTestId('matrix-else')).toHaveCount(1);
+  await page.getByTestId('add-matrix-row').click();
+  await expect(page.getByTestId('matrix-then')).toBeVisible();
+  await expect(page.getByTestId('matrix-row')).toHaveCount(3);
+
+  await page.getByTestId('clear-matrix-label').click();
+  await page.getByTestId('toggle-matrix-b').click();
+  await expect(page.getByTestId('matrix-then')).toHaveCount(0);
+  await expect(page.getByTestId('matrix-else')).toHaveCount(1);
+  await expect(page.getByTestId('matrix-else-label')).toHaveText('matrix-else-active');
+
+  await page.getByTestId('set-matrix-label').click();
+  await page.getByTestId('toggle-matrix-a').click();
+  await expect(page.getByTestId('matrix-then')).toBeVisible();
+  await expect(page.getByTestId('matrix-row-label').first()).toHaveText('M-1-0');
+  await page.getByTestId('reset-matrix-rows').click();
+  await expect(page.getByTestId('matrix-row')).toHaveCount(2);
+  await assertRoundTripNoDuplicates(page, { rowTestId: 'matrix-row', toggleTestId: 'toggle-matrix-a' });
+});
+
+test('directive order permutations remain stable across remounts and depth toggles', async ({ page }) => {
+  await gotoApp({ page });
+
+  const cases = [
+    { rowTestId: 'order-a-row', toggleTestId: 'toggle-order-flag' },
+    { rowTestId: 'order-b-row', toggleTestId: 'toggle-order-flag' },
+    { rowTestId: 'order-c-row', toggleTestId: 'toggle-order-flag' },
+  ];
+
+  await expect(page.getByTestId('order-a-row')).toHaveCount(2);
+  await expect(page.getByTestId('order-b-row')).toHaveCount(2);
+  await expect(page.getByTestId('order-c-row')).toHaveCount(2);
+
+  for (const c of cases) {
+    await assertRoundTripNoDuplicates(page, c);
+  }
+
+  await page.getByTestId('add-order-item').click();
+  await expect(page.getByTestId('order-a-row')).toHaveCount(3);
+  await expect(page.getByTestId('order-b-row')).toHaveCount(3);
+  await expect(page.getByTestId('order-c-row')).toHaveCount(3);
+
+  await page.getByTestId('toggle-depth-flag').click();
+  await expect(page.getByTestId('order-c-row')).toHaveCount(0);
+  await page.getByTestId('toggle-depth-flag').click();
+  await expect(page.getByTestId('order-c-row')).toHaveCount(3);
+  const orderCTexts = await page.getByTestId('order-c-row').allTextContents();
+  expect(new Set(orderCTexts).size).toBe(orderCTexts.length);
+
+  await page.getByTestId('reset-order-items').click();
+  await expect(page.getByTestId('order-a-row')).toHaveCount(2);
+  await expect(page.getByTestId('order-b-row')).toHaveCount(2);
+  await expect(page.getByTestId('order-c-row')).toHaveCount(2);
 });
 
 test('nested repeat/when/whenElse keep structure and deep bindings correct', async ({ page }) => {
@@ -784,7 +906,9 @@ test('a throwing subscriber does not prevent subsequent subscribers from firing'
 // iteration — subscribers get skipped or the compaction never fires.
 // ══════════════════════════════════════════════════════════════════════════════
 
-test('Blocker 1.1: computed subscriber that unsubscribes mid-notification does not break remaining subscribers', async ({ page }) => {
+test('Blocker 1.1: computed subscriber that unsubscribes mid-notification does not break remaining subscribers', async ({
+  page,
+}) => {
   await gotoApp({ page });
 
   const section = page.getByTestId('blocker-11-section');

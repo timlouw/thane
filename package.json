@@ -1,6 +1,6 @@
 {
   "name": "thane",
-  "version": "0.0.130",
+  "version": "0.0.140",
   "description": "Lightweight compile-time optimized component framework",
   "author": "Tim Louw",
   "license": "MIT",
@@ -76,7 +76,13 @@
     "e2e:ui": "playwright test -c ./e2e/playwright.config.ts --ui --headed --workers=1",
     "e2e:ui:trace": "playwright test -c ./e2e/playwright.config.ts --ui --headed --trace on --workers=1",
     "format": "prettier --write \"**/*.{ts,json,html}\"",
-    "format:check": "prettier --check \"**/*.{ts,json,html}\""
+    "format:check": "prettier --check \"**/*.{ts,json,html}\"",
+    "typecheck:e2e": "tsc -p e2e/tsconfig.json --noEmit",
+    "typecheck:benchmark": "tsc -p benchmark/tsconfig.json --noEmit",
+    "typecheck:example": "tsc -p example-apps/thane-app/tsconfig.json --noEmit",
+    "test:apps": "bun run typecheck:e2e && bun run typecheck:benchmark && bun run typecheck:example",
+    "test:benchmark": "npm pack && cd benchmark && bun install && bun run build",
+    "verify": "bun run format && bun run build && bun run test:apps && bun run test:benchmark && bun run test && bun run e2e:test"
   },
   "dependencies": {
     "esbuild": "^0.27.1",

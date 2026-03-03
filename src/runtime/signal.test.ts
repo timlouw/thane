@@ -645,7 +645,9 @@ describe('NaN equality (Object.is)', () => {
   test('setting NaN when already NaN does NOT notify subscribers', () => {
     const s = signal(NaN);
     let notifyCount = 0;
-    s.subscribe(() => { notifyCount++; }, true);
+    s.subscribe(() => {
+      notifyCount++;
+    }, true);
     expect(notifyCount).toBe(0); // skipInitial
 
     s(NaN);
@@ -658,7 +660,9 @@ describe('NaN equality (Object.is)', () => {
   test('setting NaN from a number DOES notify', () => {
     const s = signal(42);
     let notifyCount = 0;
-    s.subscribe(() => { notifyCount++; }, true);
+    s.subscribe(() => {
+      notifyCount++;
+    }, true);
 
     s(NaN);
     expect(notifyCount).toBe(1);
@@ -668,7 +672,9 @@ describe('NaN equality (Object.is)', () => {
   test('setting a number from NaN DOES notify', () => {
     const s = signal(NaN);
     let notifyCount = 0;
-    s.subscribe(() => { notifyCount++; }, true);
+    s.subscribe(() => {
+      notifyCount++;
+    }, true);
 
     s(0);
     expect(notifyCount).toBe(1);
@@ -680,7 +686,9 @@ describe('NaN equality (Object.is)', () => {
     // correctly uses Object.is and differentiates them.
     const s = signal(0);
     let notifyCount = 0;
-    s.subscribe(() => { notifyCount++; }, true);
+    s.subscribe(() => {
+      notifyCount++;
+    }, true);
 
     s(-0);
     expect(notifyCount).toBe(1); // Object.is(0, -0) is false — they differ
@@ -693,8 +701,12 @@ describe('batch() — notification counting', () => {
     const b = signal(0);
     let aNotifyCount = 0;
     let bNotifyCount = 0;
-    a.subscribe(() => { aNotifyCount++; }, true);
-    b.subscribe(() => { bNotifyCount++; }, true);
+    a.subscribe(() => {
+      aNotifyCount++;
+    }, true);
+    b.subscribe(() => {
+      bNotifyCount++;
+    }, true);
 
     batch(() => {
       a(1);
@@ -728,7 +740,9 @@ describe('batch() — notification counting', () => {
   test('subscribers see only the FINAL value after batch', () => {
     const s = signal(0);
     const receivedValues: number[] = [];
-    s.subscribe((v) => { receivedValues.push(v); }, true);
+    s.subscribe((v) => {
+      receivedValues.push(v);
+    }, true);
 
     batch(() => {
       s(1);
@@ -743,7 +757,9 @@ describe('batch() — notification counting', () => {
   test('batch with no actual changes does not notify', () => {
     const s = signal(5);
     let notifyCount = 0;
-    s.subscribe(() => { notifyCount++; }, true);
+    s.subscribe(() => {
+      notifyCount++;
+    }, true);
 
     batch(() => {
       s(5); // same value
@@ -755,11 +771,13 @@ describe('batch() — notification counting', () => {
   test('batch that changes value back to original does not notify', () => {
     const s = signal(1);
     let notifyCount = 0;
-    s.subscribe(() => { notifyCount++; }, true);
+    s.subscribe(() => {
+      notifyCount++;
+    }, true);
 
     batch(() => {
-      s(2);  // change
-      s(1);  // change back to original
+      s(2); // change
+      s(1); // change back to original
     });
 
     // The signal's current value at batch end is 1 (original),
@@ -772,7 +790,9 @@ describe('batch() — notification counting', () => {
   test('nested batch only flushes at outermost level — inner batch does not flush', () => {
     const s = signal(0);
     const notifications: number[] = [];
-    s.subscribe((v) => { notifications.push(v); }, true);
+    s.subscribe((v) => {
+      notifications.push(v);
+    }, true);
 
     batch(() => {
       s(1);
@@ -885,7 +905,9 @@ describe('computed() — dispose', () => {
     c.dispose();
 
     let triggered = false;
-    c.subscribe(() => { triggered = true; }, true);
+    c.subscribe(() => {
+      triggered = true;
+    }, true);
 
     a(10);
     b(20);
@@ -949,7 +971,9 @@ describe('computed() — ReadonlySignal type', () => {
     const upper = computed(() => s().toUpperCase());
 
     const values: string[] = [];
-    const unsub = upper.subscribe((v) => { values.push(v); });
+    const unsub = upper.subscribe((v) => {
+      values.push(v);
+    });
 
     expect(values).toEqual(['HELLO']); // initial
 
@@ -1073,7 +1097,9 @@ describe('batch + computed integration', () => {
     const sum = computed(() => a() + b());
 
     const observations: number[] = [];
-    sum.subscribe((v) => { observations.push(v); }, true);
+    sum.subscribe((v) => {
+      observations.push(v);
+    }, true);
 
     batch(() => {
       a(10);

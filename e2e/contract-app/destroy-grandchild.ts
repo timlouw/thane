@@ -7,8 +7,6 @@ import { DestroyTracker } from './destroy-tracker';
  */
 export const DestroyGrandchild = defineComponent('destroy-grandchild', () => ({
   template: html`
-    <div data-testid="destroy-grandchild-root">
-      ${DestroyTracker({ trackerId: 'grandchild-tracker' })}
-    </div>
+    <div data-testid="destroy-grandchild-root"> ${DestroyTracker({ trackerId: 'grandchild-tracker' })} </div>
   `,
 }));

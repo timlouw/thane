@@ -1,7 +1,7 @@
 /** Helpers for working with the TypeScript AST. */
 
 import ts from 'typescript';
-import type { ComponentDefinition, Range } from '../types.js';
+import type { ComponentDefinition } from '../types.js';
 import { FN } from './constants.js';
 
 // ============================================================================
@@ -327,35 +327,83 @@ export const toKebabCase = (str: string): string => {
  * template literals, or property-access chains.
  */
 export const renameIdentifierInExpression = (expression: string, oldName: string, newName: string): string => {
-  // Wrap in parens so the expression is parseable as a statement
-  const wrapped = `(${expression})`;
+  const wrapped = `const __expr__ = (${expression});`;
   const sf = ts.createSourceFile('__expr.ts', wrapped, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 
-  // Collect all identifier positions that match (in reverse order for safe splicing)
-  const positions: Range[] = [];
+  const stmt = sf.statements[0];
+  if (!stmt || !ts.isVariableStatement(stmt)) return expression;
+  const decl = stmt.declarationList.declarations[0];
+  if (!decl?.initializer) return expression;
 
-  const visit = (node: ts.Node) => {
-    if (ts.isIdentifier(node) && node.text === oldName) {
-      // Exclude property-access names (x.item should not rename 'item')
-      const parent = node.parent;
-      if (parent && ts.isPropertyAccessExpression(parent) && parent.name === node) {
-        // This is the .prop part of x.prop — skip
-      } else {
-        // Adjust for the wrapping paren offset (subtract 1)
-        positions.push({ start: node.getStart(sf) - 1, end: node.getEnd() - 1 });
-      }
+  // Parse the replacement expression once (not per-visitor-call) to avoid
+  // re-creating a SourceFile on every matched identifier.
+  const replacementExpr: ts.Expression = (() => {
+    const replacementSf = ts.createSourceFile(
+      '__replacement.ts',
+      `const __replacement__ = (${newName});`,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const replacementStmt = replacementSf.statements[0];
+    if (!replacementStmt || !ts.isVariableStatement(replacementStmt)) {
+      return ts.factory.createIdentifier(newName);
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(sf);
+    const replacementDecl = replacementStmt.declarationList.declarations[0];
+    if (!replacementDecl?.initializer) {
+      return ts.factory.createIdentifier(newName);
+    }
+    return ts.isParenthesizedExpression(replacementDecl.initializer)
+      ? replacementDecl.initializer.expression
+      : replacementDecl.initializer;
+  })();
 
-  // Apply replacements in reverse order
-  positions.sort((a, b) => b.start - a.start);
-  let result = expression;
-  for (const pos of positions) {
-    result = result.substring(0, pos.start) + newName + result.substring(pos.end);
-  }
-  return result;
+  const shouldSkipIdentifierRename = (node: ts.Identifier): boolean => {
+    const parent = node.parent;
+    if (!parent) return false;
+
+    if (ts.isPropertyAccessExpression(parent) && parent.name === node) return true;
+    if (ts.isPropertyAssignment(parent) && parent.name === node) return true;
+    if (ts.isShorthandPropertyAssignment(parent)) return true;
+    if (ts.isBindingElement(parent) && parent.propertyName === node) return true;
+    if (ts.isMethodDeclaration(parent) && parent.name === node) return true;
+    if (ts.isGetAccessorDeclaration(parent) && parent.name === node) return true;
+    if (ts.isSetAccessorDeclaration(parent) && parent.name === node) return true;
+
+    return false;
+  };
+
+  const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => {
+    const visit: ts.Visitor = (node) => {
+      if (ts.isShorthandPropertyAssignment(node) && node.name.text === oldName) {
+        return ts.factory.createPropertyAssignment(ts.factory.createIdentifier(oldName), replacementExpr);
+      }
+
+      if (ts.isIdentifier(node) && node.text === oldName) {
+        if (shouldSkipIdentifierRename(node)) {
+          return node;
+        }
+        return replacementExpr;
+      }
+
+      return ts.visitEachChild(node, visit, context);
+    };
+
+    return (node) => ts.visitNode(node, visit) as ts.SourceFile;
+  };
+
+  const transformed = ts.transform(sf, [transformer]).transformed[0] as ts.SourceFile;
+  const transformedStmt = transformed.statements[0];
+  if (!transformedStmt || !ts.isVariableStatement(transformedStmt)) return expression;
+  const transformedDecl = transformedStmt.declarationList.declarations[0];
+  if (!transformedDecl?.initializer) return expression;
+
+  const outExpr = ts.isParenthesizedExpression(transformedDecl.initializer)
+    ? transformedDecl.initializer.expression
+    : transformedDecl.initializer;
+
+  const printer = ts.createPrinter({ removeComments: false });
+  return printer.printNode(ts.EmitHint.Expression, outExpr, transformed);
 };
 
 /** Check whether an expression references a given identifier (AST-based, not regex). */

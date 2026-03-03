@@ -314,7 +314,9 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
     const oldVal = value;
     evaluate();
     if (hasError || !Object.is(oldVal, value)) {
-      _notifyComputedSubs(subscribers, value, notifyCount, (nc) => { notifyCount = nc; });
+      _notifyComputedSubs(subscribers, value, notifyCount, (nc) => {
+        notifyCount = nc;
+      });
     }
   };
 

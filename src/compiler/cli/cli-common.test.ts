@@ -302,7 +302,10 @@ describe('createBuildConfig', () => {
 
   test('target defaults to empty array and can be overridden', () => {
     expect(createBuildConfig(baseOptions).target).toEqual([]);
-    expect(createBuildConfig({ ...baseOptions, target: ['es2020', 'chrome100'] }).target).toEqual(['es2020', 'chrome100']);
+    expect(createBuildConfig({ ...baseOptions, target: ['es2020', 'chrome100'] }).target).toEqual([
+      'es2020',
+      'chrome100',
+    ]);
   });
 
   test('hashFileNames defaults to true and can be disabled', () => {
@@ -312,7 +315,7 @@ describe('createBuildConfig', () => {
 
   test('define defaults to empty and merges env defines', () => {
     expect(createBuildConfig(baseOptions).define).toEqual({});
-    const config = createBuildConfig({ ...baseOptions, define: { '__VERSION__': '"1.0.0"' } });
+    const config = createBuildConfig({ ...baseOptions, define: { __VERSION__: '"1.0.0"' } });
     expect(config.define['__VERSION__']).toBe('"1.0.0"');
   });
 

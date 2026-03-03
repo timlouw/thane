@@ -74,8 +74,8 @@ export const MemoryLeakDemo = defineComponent('memory-leak-demo', () => {
       <div style="font-family: system-ui; max-width: 700px; margin: 2rem auto; padding: 1rem;">
         <h1>🔴 Memory Leak Demo — Child Destroy Bug</h1>
         <p style="color: #666; line-height: 1.6;">
-          Each cycle mounts a parent component containing a child, then immediately destroys the parent.
-          The child's <code>onDestroy</code> never fires, leaking 1 MB + an interval per cycle.
+          Each cycle mounts a parent component containing a child, then immediately destroys the parent. The child's
+          <code>onDestroy</code> never fires, leaking 1 MB + an interval per cycle.
         </p>
 
         <div style="display: flex; gap: 0.5rem; margin: 1rem 0;">

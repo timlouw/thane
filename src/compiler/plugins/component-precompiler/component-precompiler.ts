@@ -400,14 +400,14 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext): Plugin => ({
       let result = source.substring(0, callStart) + `mountComponent(${args.join(', ')})` + source.substring(callEnd);
 
       // 5. Fix the import: replace `mount` with `mountComponent` in the thane import
-      result = result.replace(
-        /import\s*\{([^}]*)\}\s*from\s*['"]thane['"]/,
-        (_match, specifiers: string) => {
-          const specs = specifiers.split(',').map((s: string) => s.trim()).filter(Boolean);
-          const updated = specs.map((s: string) => s === 'mount' ? 'mountComponent' : s);
-          return `import { ${updated.join(', ')} } from 'thane'`;
-        },
-      );
+      result = result.replace(/import\s*\{([^}]*)\}\s*from\s*['"]thane['"]/, (_match, specifiers: string) => {
+        const specs = specifiers
+          .split(',')
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+        const updated = specs.map((s: string) => (s === 'mount' ? 'mountComponent' : s));
+        return `import { ${updated.join(', ')} } from 'thane'`;
+      });
 
       return result;
     };

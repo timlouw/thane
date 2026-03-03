@@ -75,7 +75,6 @@ export function createWarning(message: string, location?: SourceLocation, code?:
   return createDiagnostic('warning', message, location, code);
 }
 
-
 /**
  * Format a diagnostic for display
  */
@@ -100,11 +99,9 @@ export function formatDiagnostic(diagnostic: Diagnostic): string {
   return result;
 }
 
-
 /**
  * Check if diagnostics contain any errors
  */
 export function hasErrors(diagnostics: Diagnostic[]): boolean {
   return diagnostics.some((d) => d.severity === 'error');
 }
-

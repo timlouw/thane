@@ -11,10 +11,6 @@
     "verbatimModuleSyntax": true,
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
-  "include": [
-    "contract-app/**/*.ts",
-    "memory-leak-demo/**/*.ts",
-    "router-app/**/*.ts"
-  ],
+  "include": ["contract-app/**/*.ts", "memory-leak-demo/**/*.ts", "router-app/**/*.ts"],
   "exclude": ["node_modules", "tests"]
 }

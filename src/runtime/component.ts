@@ -69,6 +69,165 @@ interface SetupWithSelector<P = {}> extends SetupFunction<P> {
 // Style Management
 // ============================================================================
 
+function splitSelectorList(selectorList: string): string[] {
+  const parts: string[] = [];
+  let start = 0;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = 0; i < selectorList.length; i++) {
+    const ch = selectorList[i];
+    const prev = i > 0 ? selectorList[i - 1] : '';
+
+    if (inSingle) {
+      if (ch === "'" && prev !== '\\') inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"' && prev !== '\\') inDouble = false;
+      continue;
+    }
+
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+
+    if (ch === '(') parenDepth++;
+    else if (ch === ')' && parenDepth > 0) parenDepth--;
+    else if (ch === '[') bracketDepth++;
+    else if (ch === ']' && bracketDepth > 0) bracketDepth--;
+
+    if (ch === ',' && parenDepth === 0 && bracketDepth === 0) {
+      parts.push(selectorList.slice(start, i));
+      start = i + 1;
+    }
+  }
+
+  parts.push(selectorList.slice(start));
+  return parts;
+}
+
+function scopeSingleSelector(selector: string, hostSelector: string): string {
+  const trimmed = selector.trim();
+  if (!trimmed) return trimmed;
+
+  if (trimmed.includes('&')) {
+    return trimmed.replace(/&/g, hostSelector);
+  }
+
+  if (trimmed.startsWith(':host(')) {
+    const end = trimmed.indexOf(')');
+    if (end !== -1) {
+      const hostSuffix = trimmed.slice(':host('.length, end).trim();
+      const rest = trimmed.slice(end + 1);
+      return `${hostSelector}${hostSuffix}${rest}`;
+    }
+  }
+
+  if (trimmed === ':host') return hostSelector;
+  if (trimmed.startsWith(':host')) return `${hostSelector}${trimmed.slice(':host'.length)}`;
+
+  return `${hostSelector} ${trimmed}`;
+}
+
+function findMatchingBrace(source: string, openIndex: number): number {
+  let depth = 0;
+  let inSingle = false;
+  let inDouble = false;
+
+  for (let i = openIndex; i < source.length; i++) {
+    const ch = source[i];
+    const prev = i > 0 ? source[i - 1] : '';
+
+    if (inSingle) {
+      if (ch === "'" && prev !== '\\') inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"' && prev !== '\\') inDouble = false;
+      continue;
+    }
+
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
+
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+
+  return -1;
+}
+
+function scopeCssRules(cssText: string, hostSelector: string): string {
+  let out = '';
+  let cursor = 0;
+
+  while (cursor < cssText.length) {
+    const open = cssText.indexOf('{', cursor);
+    if (open === -1) {
+      out += cssText.slice(cursor);
+      break;
+    }
+
+    const prelude = cssText.slice(cursor, open);
+    const close = findMatchingBrace(cssText, open);
+    if (close === -1) {
+      out += cssText.slice(cursor);
+      break;
+    }
+
+    const body = cssText.slice(open + 1, close);
+    const preludeTrimmed = prelude.trim();
+
+    if (!preludeTrimmed) {
+      out += `${prelude}{${body}}`;
+      cursor = close + 1;
+      continue;
+    }
+
+    if (preludeTrimmed.startsWith('@')) {
+      if (
+        preludeTrimmed.startsWith('@media') ||
+        preludeTrimmed.startsWith('@supports') ||
+        preludeTrimmed.startsWith('@layer') ||
+        preludeTrimmed.startsWith('@container') ||
+        preludeTrimmed.startsWith('@document')
+      ) {
+        out += `${prelude}{${scopeCssRules(body, hostSelector)}}`;
+      } else {
+        out += `${prelude}{${body}}`;
+      }
+      cursor = close + 1;
+      continue;
+    }
+
+    const scopedSelectors = splitSelectorList(prelude)
+      .map((selector) => scopeSingleSelector(selector, hostSelector))
+      .join(', ');
+
+    out += `${scopedSelectors}{${body}}`;
+    cursor = close + 1;
+  }
+
+  return out;
+}
+
 /**
  * Register global styles (deduped by CSS text).
  *
@@ -100,10 +259,9 @@ export function __enableComponentStyles(): void {
   _onStyles = (selector, cssText) => {
     if (!registered.has(selector)) {
       registered.add(selector);
-      // Replace legacy :host with & for CSS nesting compat
-      const normalized = cssText.replace(/:host\b/g, '&').replace(/:host\(/g, '&(');
+      const scopedCss = scopeCssRules(cssText, `.${selector}`);
       const sheet = new CSSStyleSheet();
-      sheet.replaceSync(`.${selector} { ${normalized} }`);
+      sheet.replaceSync(scopedCss);
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
     }
   };
@@ -322,10 +480,12 @@ export function __registerComponentLean(
  *
  * @internal — emitted by the compiler; not part of the public API.
  */
-export const __dc = (i: ComponentInstance): (() => void) => () => {
-  if (i.__bindingsCleanup) i.__bindingsCleanup();
-  if (i.__onDestroy) i.__onDestroy();
-};
+export const __dc =
+  (i: ComponentInstance): (() => void) =>
+  () => {
+    if (i.__bindingsCleanup) i.__bindingsCleanup();
+    if (i.__onDestroy) i.__onDestroy();
+  };
 
 /**
  * Handle returned by mount(), allowing the caller to destroy the mounted

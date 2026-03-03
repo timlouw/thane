@@ -227,13 +227,17 @@ export function escapeRawTemplateLiteral(s: string): string {
 
 export function injectIdIntoFirstElement(html: string, id: string): string {
   const trimmed = html.trim();
-  const firstTagMatch = trimmed.match(/^<(\w+)/);
+  const firstTagMatch = trimmed.match(/^<(\w+)([^>]*)>/);
   if (!firstTagMatch) {
     return trimmed;
   }
 
   const tagName = firstTagMatch[1];
   if (!tagName) return trimmed;
+  const existingAttrs = firstTagMatch[2] || '';
+  if (/\sid\s*=\s*['"][^'"]*['"]/.test(existingAttrs)) {
+    return trimmed;
+  }
   const tagNameEnd = tagName.length + 1;
 
   return trimmed.substring(0, tagNameEnd) + ` id="${id}"` + trimmed.substring(tagNameEnd);

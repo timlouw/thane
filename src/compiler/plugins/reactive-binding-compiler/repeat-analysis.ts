@@ -604,9 +604,10 @@ const classifyParsedBindings = (
       // If so, this is a "mixed" binding (outer signal + item data) — skip
       // classifying as a signal binding; collectItemAttrBindings will handle it.
       const fullExpr = (binding as any).jsExpression || (binding as any).fullExpression || '';
-      const isMixed = fullExpr &&
+      const isMixed =
+        fullExpr &&
         (expressionReferencesIdentifier(fullExpr, itemVar) ||
-         (indexVar ? expressionReferencesIdentifier(fullExpr, indexVar) : false));
+          (indexVar ? expressionReferencesIdentifier(fullExpr, indexVar) : false));
       if (isMixed) continue;
 
       const spanId = `b${state.idCounter++}`;

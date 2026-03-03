@@ -178,7 +178,8 @@ const mergeCLIAndConfig = (args: string[], parsedCLI: CLIOptions): CLIOptions =>
   if (hasValueFlag(args, '--base') && parsedCLI.base != null) merged.base = parsedCLI.base;
   if (hasValueFlag(args, '--target') && parsedCLI.target != null) merged.target = parsedCLI.target;
   if (hasValueFlag(args, '--env-prefix') && parsedCLI.envPrefix != null) merged.envPrefix = parsedCLI.envPrefix;
-  if (hasValueFlag(args, '--legal-comments') && parsedCLI.legalComments != null) merged.legalComments = parsedCLI.legalComments;
+  if (hasValueFlag(args, '--legal-comments') && parsedCLI.legalComments != null)
+    merged.legalComments = parsedCLI.legalComments;
 
   return applyCommandModeDefaults(merged);
 };
@@ -314,7 +315,10 @@ export function parseArgs(args: string[]): CLIOptions {
         options.base = args[++i] || '/';
         break;
       case '--target':
-        options.target = (args[++i] || '').split(',').map((t) => t.trim()).filter(Boolean);
+        options.target = (args[++i] || '')
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean);
         break;
       case '--hash-file-names':
         options.hashFileNames = true;

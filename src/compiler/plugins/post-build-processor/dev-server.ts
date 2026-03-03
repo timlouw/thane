@@ -204,10 +204,12 @@ export class DevServer {
         const { platform } = process;
         const cmd = platform === 'win32' ? 'cmd' : platform === 'darwin' ? 'open' : 'xdg-open';
         const args = platform === 'win32' ? ['/c', 'start', '', url] : [url];
-        import('node:child_process').then(({ spawn }) => {
-          const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
-          child.unref();
-        }).catch(() => {});
+        import('node:child_process')
+          .then(({ spawn }) => {
+            const child = spawn(cmd, args, { stdio: 'ignore', detached: true });
+            child.unref();
+          })
+          .catch(() => {});
       }
     } catch (err: unknown) {
       const error = err as Error & { code?: string };

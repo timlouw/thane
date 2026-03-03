@@ -11,10 +11,10 @@
 if (typeof globalThis.Bun === 'undefined') {
   console.error(
     'Error: Thane CLI requires the Bun runtime.\n\n' +
-    '  Install Bun: https://bun.sh\n' +
-    '    curl -fsSL https://bun.sh/install | bash   (macOS/Linux)\n' +
-    '    powershell -c "irm bun.sh/install.ps1 | iex"  (Windows)\n\n' +
-    '  Then run: bun thane <command>\n',
+      '  Install Bun: https://bun.sh\n' +
+      '    curl -fsSL https://bun.sh/install | bash   (macOS/Linux)\n' +
+      '    powershell -c "irm bun.sh/install.ps1 | iex"  (Windows)\n\n' +
+      '  Then run: bun thane <command>\n',
   );
   process.exit(1);
 }

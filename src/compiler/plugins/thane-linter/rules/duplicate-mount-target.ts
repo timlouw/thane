@@ -44,11 +44,7 @@ const getTargetKey = (call: ts.CallExpression, sourceFile: ts.SourceFile): strin
   // New API: mount({ component?, target?, ... })
   if (firstArg && ts.isObjectLiteralExpression(firstArg)) {
     for (const prop of firstArg.properties) {
-      if (
-        ts.isPropertyAssignment(prop) &&
-        ts.isIdentifier(prop.name) &&
-        prop.name.text === 'target'
-      ) {
+      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'target') {
         const target = prop.initializer;
         if (ts.isIdentifier(target)) return `var:${target.text}`;
         if (ts.isPropertyAccessExpression(target)) return target.getText(sourceFile);

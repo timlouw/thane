@@ -54,12 +54,11 @@ export interface Register {}
  * a template literal type `/users/${string}/posts/${string}`.
  * Static routes like `/about` remain exact literal types.
  */
-export type RouteToPath<T extends string> =
-  T extends `${infer Before}:${infer _Param}/${infer After}`
-    ? `${Before}${string}/${RouteToPath<After>}`
-    : T extends `${infer Before}:${infer _Param}`
-      ? `${Before}${string}`
-      : T;
+export type RouteToPath<T extends string> = T extends `${infer Before}:${infer _Param}/${infer After}`
+  ? `${Before}${string}/${RouteToPath<After>}`
+  : T extends `${infer Before}:${infer _Param}`
+    ? `${Before}${string}`
+    : T;
 
 /** Exclude the special `notFound` key when computing navigable paths / params. */
 type RouteKeys<T> = Exclude<keyof T & string, 'notFound'>;
@@ -70,19 +69,16 @@ type NavigablePaths<T extends Record<string, any>> = {
 }[RouteKeys<T>];
 
 /** Extracts all parameter names from all route patterns. */
-type ExtractParams<T extends string> =
-  T extends `${string}:${infer Param}/${infer Rest}`
-    ? Param | ExtractParams<Rest>
-    : T extends `${string}:${infer Param}`
-      ? Param
-      : never;
+type ExtractParams<T extends string> = T extends `${string}:${infer Param}/${infer Rest}`
+  ? Param | ExtractParams<Rest>
+  : T extends `${string}:${infer Param}`
+    ? Param
+    : never;
 
 type AllRouteParams<T extends Record<string, any>> = ExtractParams<RouteKeys<T>>;
 
 /** Resolves to the navigable path union when Register is augmented, else `string`. */
-export type RoutePaths = Register extends { routes: infer R extends Record<string, any> }
-  ? NavigablePaths<R>
-  : string;
+export type RoutePaths = Register extends { routes: infer R extends Record<string, any> } ? NavigablePaths<R> : string;
 
 /** Resolves to the route param name union when Register is augmented, else `string`. */
 export type RouteParamNames = Register extends { routes: infer R extends Record<string, any> }
@@ -190,14 +186,13 @@ export function defineRoutes<const T extends Record<string, Route> & { notFound:
     if (options.component) {
       const shellHandle = mountComponent(options.component, target, options.props);
       const outletId = routerConfig.outletId ?? 'router-outlet';
-      const outlet = shellHandle.root.querySelector<HTMLElement>(`#${outletId}`)
-        ?? document.getElementById(outletId);
+      const outlet = shellHandle.root.querySelector<HTMLElement>(`#${outletId}`) ?? document.getElementById(outletId);
 
       if (!outlet) {
         throw new Error(
           `[thane] Router outlet element with id="${outletId}" not found. ` +
-          'In Mode B (shell + router), your shell component\'s template must contain ' +
-          `an element with id="${outletId}".`,
+            "In Mode B (shell + router), your shell component's template must contain " +
+            `an element with id="${outletId}".`,
         );
       }
 
@@ -216,7 +211,9 @@ export function defineRoutes<const T extends Record<string, Route> & { notFound:
     startRouter({ routes: routeMap, notFound }, target);
     return {
       root: target as any,
-      destroy: () => { stopRouter(); },
+      destroy: () => {
+        stopRouter();
+      },
     };
   });
 
@@ -225,7 +222,7 @@ export function defineRoutes<const T extends Record<string, Route> & { notFound:
     if (key !== 'notFound' && /^\/:/.test(key)) {
       throw new Error(
         `[thane-router] Root-level route parameter "${key}" is not allowed. ` +
-        'Every route must begin with a static segment (e.g. "/users/:id" not "/:id").',
+          'Every route must begin with a static segment (e.g. "/users/:id" not "/:id").',
       );
     }
   }
@@ -243,8 +240,6 @@ let _currentHandle: MountHandle | null = null;
 let _routeParams: Record<string, string> = {};
 let _started = false;
 let _popstateHandler: (() => void) | null = null;
-
-
 
 // ─────────────────────────────────────────────────────────────
 //  Route matching
@@ -335,7 +330,7 @@ const loadRoute = async (): Promise<void> => {
     // The dynamic import may return the component directly or as a module
     // with a default export.  Normalise both forms.
     const component: ComponentHTMLSelector<any> | undefined =
-      mod && typeof mod === 'object' && '__f' in mod ? mod : mod?.default ?? mod;
+      mod && typeof mod === 'object' && '__f' in mod ? mod : (mod?.default ?? mod);
 
     // Guard: the user may have navigated away while we were loading
     if (window.location.pathname !== _currentPath) return;
@@ -395,10 +390,7 @@ export function getRouteParam(name: RouteParamNames): string {
  * @param config - Router configuration with routes map and notFound.
  * @param target - The element to render pages into (outlet in Mode B, body/target in Mode C).
  */
-export function startRouter(
-  config: { routes: RoutesMap; notFound: Route },
-  target: HTMLElement,
-): void {
+export function startRouter(config: { routes: RoutesMap; notFound: Route }, target: HTMLElement): void {
   if (_started) {
     console.warn('[thane-router] Router already started — only one instance is allowed.');
     return;

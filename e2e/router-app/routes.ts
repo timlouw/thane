@@ -1,10 +1,10 @@
 import { defineRoutes } from 'thane/router';
 
 const Routes = defineRoutes({
-  '/':            { component: () => import('./pages/home.js'),      title: 'Home' },
-  '/about':       { component: () => import('./pages/about.js'),     title: 'About' },
-  '/users/:id':   { component: () => import('./pages/user.js'),      title: 'User' },
-  notFound:       { component: () => import('./pages/not-found.js'), title: '404 — Not Found' },
+  '/': { component: () => import('./pages/home.js'), title: 'Home' },
+  '/about': { component: () => import('./pages/about.js'), title: 'About' },
+  '/users/:id': { component: () => import('./pages/user.js'), title: 'User' },
+  'notFound': { component: () => import('./pages/not-found.js'), title: '404 — Not Found' },
 });
 
 type Routes = typeof Routes;

@@ -1,7 +1,10 @@
 import { defineConfig, devices } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 const traceMode = process.env.PW_E2E_TRACE === '1' ? 'on' : 'retain-on-failure';
 const headedMode = process.env.PW_E2E_HEADED === '1';
+const repoRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 export default defineConfig({
   testDir: './tests',
@@ -17,10 +20,12 @@ export default defineConfig({
     headless: !headedMode,
   },
   webServer: {
+    cwd: repoRoot,
     command: [
       'bun run build',
       'bun ./dist/compiler/cli/thane.js build --entry ./e2e/contract-app/main.ts --out ./dist/e2e --html ./e2e/contract-app/index.html --assets ./e2e/contract-app/assets',
       'bun ./dist/compiler/cli/thane.js build --entry ./e2e/router-app/main.ts --out ./dist/e2e-router --html ./e2e/router-app/index.html',
+      'bun ./dist/compiler/cli/thane.js build --entry ./e2e/cart-app/main.ts --out ./dist/e2e-cart-app --html ./e2e/cart-app/index.html',
       'bun ./e2e/server.ts',
     ].join(' && '),
     url: 'http://127.0.0.1:4173',
@@ -30,23 +35,28 @@ export default defineConfig({
   projects: [
     {
       name: 'contract-chromium',
-      testIgnore: 'router.spec.ts',
+      testIgnore: ['router.spec.ts', 'cart.spec.ts'],
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:4173' },
     },
     {
       name: 'contract-firefox',
-      testIgnore: 'router.spec.ts',
+      testIgnore: ['router.spec.ts', 'cart.spec.ts'],
       use: { ...devices['Desktop Firefox'], baseURL: 'http://127.0.0.1:4173' },
     },
     {
       name: 'contract-webkit',
-      testIgnore: 'router.spec.ts',
+      testIgnore: ['router.spec.ts', 'cart.spec.ts'],
       use: { ...devices['Desktop Safari'], baseURL: 'http://127.0.0.1:4173' },
     },
     {
       name: 'router-chromium',
       testMatch: 'router.spec.ts',
       use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:4174' },
+    },
+    {
+      name: 'cart-chromium',
+      testMatch: 'cart.spec.ts',
+      use: { ...devices['Desktop Chrome'], baseURL: 'http://127.0.0.1:4175' },
     },
   ],
 });

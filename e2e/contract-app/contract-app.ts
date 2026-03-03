@@ -52,6 +52,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const count = signal(0);
   const showWhen = signal(true);
   const whenElseFlag = signal(true);
+  const complexWhenElseFlag = signal(true);
   const items = signal<Item[]>(initialItems());
   const nestedItems = signal<NestedItem[]>(initialNestedItems());
   const fallbackRows = signal(initialFallbackRows());
@@ -67,10 +68,54 @@ export const ContractApp = defineComponent('contract-app', () => {
   const childMountsB = signal(0);
   const childEventsA = signal(0);
   const childEventsB = signal(0);
+  const complexThenClicks = signal(0);
+  const complexElseClicks = signal(0);
+  const complexSharedValue = signal(0);
+  const matrixGateA = signal(true);
+  const matrixGateB = signal(false);
+  const matrixMeta = signal<{ label: string } | null>({ label: 'alpha' });
+  const matrixRows = signal([
+    { id: 1, name: 'M-1', qty: 1 },
+    { id: 2, name: 'M-2', qty: 0 },
+  ]);
+  const orderFlag = signal(true);
+  const depthFlag = signal(true);
+  const orderItems = signal([
+    { id: 1, name: 'O-1' },
+    { id: 2, name: 'O-2' },
+  ]);
 
   const clickCount = () => count(count() + 1);
   const toggleWhen = () => showWhen(!showWhen());
   const toggleWhenElse = () => whenElseFlag(!whenElseFlag());
+  const toggleComplexWhenElse = () => complexWhenElseFlag(!complexWhenElseFlag());
+  const incComplexThen = () => complexThenClicks(complexThenClicks() + 1);
+  const incComplexElse = () => complexElseClicks(complexElseClicks() + 1);
+  const bumpComplexShared = () => complexSharedValue(complexSharedValue() + 1);
+  const toggleMatrixGateA = () => matrixGateA(!matrixGateA());
+  const toggleMatrixGateB = () => matrixGateB(!matrixGateB());
+  const clearMatrixLabel = () => matrixMeta(null);
+  const setMatrixLabel = () => matrixMeta({ label: 'alpha' });
+  const addMatrixRow = () => {
+    const next = matrixRows().length + 1;
+    matrixRows([...matrixRows(), { id: next, name: `M-${next}`, qty: next % 2 === 0 ? 0 : 2 }]);
+  };
+  const resetMatrixRows = () =>
+    matrixRows([
+      { id: 1, name: 'M-1', qty: 1 },
+      { id: 2, name: 'M-2', qty: 0 },
+    ]);
+  const toggleOrderFlag = () => orderFlag(!orderFlag());
+  const toggleDepthFlag = () => depthFlag(!depthFlag());
+  const addOrderItem = () => {
+    const next = orderItems().length + 1;
+    orderItems([...orderItems(), { id: next, name: `O-${next}` }]);
+  };
+  const resetOrderItems = () =>
+    orderItems([
+      { id: 1, name: 'O-1' },
+      { id: 2, name: 'O-2' },
+    ]);
   const addItem = () => {
     const next = items().length + 1;
     items([...items(), { id: next, name: `New-${next}`, active: next % 2 === 0, children: [`N${next}`] }]);
@@ -233,12 +278,21 @@ export const ContractApp = defineComponent('contract-app', () => {
   // Subscribe three listeners; the second one will self-unsubscribe on first notification
   const b11Sub1Vals: number[] = [];
   const b11Sub3Vals: number[] = [];
-  b11Computed.subscribe((v) => { b11Sub1Vals.push(v); b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(',')); }, true);
+  b11Computed.subscribe((v) => {
+    b11Sub1Vals.push(v);
+    b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(','));
+  }, true);
   b11Unsub2 = b11Computed.subscribe(() => {
     // Self-unsubscribe during notification to trigger mid-notification null-slotting
-    if (b11Unsub2) { b11Unsub2(); b11Unsub2 = null; }
+    if (b11Unsub2) {
+      b11Unsub2();
+      b11Unsub2 = null;
+    }
   }, true);
-  b11Computed.subscribe((v) => { b11Sub3Vals.push(v); b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(',')); }, true);
+  b11Computed.subscribe((v) => {
+    b11Sub3Vals.push(v);
+    b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(','));
+  }, true);
 
   const b11Trigger = () => b11Source(b11Source() + 1);
 
@@ -260,8 +314,8 @@ export const ContractApp = defineComponent('contract-app', () => {
     b13Log(`ok-${val}`);
   });
 
-  const b13SetThrowing = () => b13Source(1);   // will throw
-  const b13SetRecovery = () => b13Source(2);   // should recover
+  const b13SetThrowing = () => b13Source(1); // will throw
+  const b13SetRecovery = () => b13Source(2); // should recover
 
   // ── Blocker 1.2: Reentrant reconciler ──
   // Two repeat lists sharing a trigger signal. When list1 changes, an effect
@@ -338,7 +392,133 @@ export const ContractApp = defineComponent('contract-app', () => {
 
         <section data-testid="when-else-section">
           <button data-testid="toggle-when-else" @click=${toggleWhenElse}>toggle whenElse</button>
-          ${whenElse(whenElseFlag(), html`<p data-testid="when-else-then">THEN</p>`, html`<p data-testid="when-else-else">ELSE</p>`)}
+          ${whenElse(
+            whenElseFlag(),
+            html`<p data-testid="when-else-then">THEN</p>`,
+            html`<p data-testid="when-else-else">ELSE</p>`,
+          )}
+        </section>
+
+        <section data-testid="when-else-dom-section">
+          <button data-testid="toggle-complex-when-else" @click=${toggleComplexWhenElse}
+            >toggle complex whenElse</button
+          >
+          <button data-testid="bump-complex-shared" @click=${bumpComplexShared}>bump complex shared</button>
+          <button data-testid="inc-complex-then" @click=${incComplexThen}>inc complex then</button>
+          <button data-testid="inc-complex-else" @click=${incComplexElse}>inc complex else</button>
+          <div data-testid="complex-wrapper">
+            <span data-testid="complex-prefix">prefix</span>
+            ${whenElse(
+              complexWhenElseFlag(),
+              html`
+                <article data-testid="complex-then" class=${complexSharedValue()}>
+                  <p data-testid="complex-then-count">${complexThenClicks()}</p>
+                  <span data-testid="complex-shared">shared-${complexSharedValue()}</span>
+                </article>
+              `,
+              html`
+                <article data-testid="complex-else" data-shared=${complexSharedValue()}>
+                  <p data-testid="complex-else-count">${complexElseClicks()}</p>
+                  <span data-testid="complex-shared">shared-${complexSharedValue()}</span>
+                </article>
+              `,
+            )}
+            <span data-testid="complex-suffix">suffix</span>
+          </div>
+        </section>
+
+        <section data-testid="directive-matrix-section">
+          <button data-testid="toggle-matrix-a" @click=${toggleMatrixGateA}>toggle matrix A</button>
+          <button data-testid="toggle-matrix-b" @click=${toggleMatrixGateB}>toggle matrix B</button>
+          <button data-testid="clear-matrix-label" @click=${clearMatrixLabel}>clear matrix label</button>
+          <button data-testid="set-matrix-label" @click=${setMatrixLabel}>set matrix label</button>
+          <button data-testid="add-matrix-row" @click=${addMatrixRow}>add matrix row</button>
+          <button data-testid="reset-matrix-rows" @click=${resetMatrixRows}>reset matrix rows</button>
+
+          ${whenElse(
+            ((matrixMeta()?.label ?? '').length > 0 && matrixGateA()) || (matrixGateB() && matrixRows().length > 2),
+            html`
+              <ul data-testid="matrix-then">
+                ${repeat(
+                  matrixRows(),
+                  (row, index) => html`
+                    <li data-testid="matrix-row">
+                      <span data-testid="matrix-row-label">${row.name}-${index}</span>
+                      <i data-testid="matrix-stock">${matrixGateA() ? 'in-' + row.qty : 'out'}</i>
+                    </li>
+                  `,
+                  html`<li data-testid="matrix-empty">matrix-empty</li>`,
+                  (row) => row.id,
+                )}
+              </ul>
+            `,
+            html`
+              <div data-testid="matrix-else">
+                <span data-testid="matrix-else-label">matrix-else-active</span>
+              </div>
+            `,
+          )}
+        </section>
+
+        <section data-testid="directive-order-section">
+          <button data-testid="toggle-order-flag" @click=${toggleOrderFlag}>toggle order flag</button>
+          <button data-testid="toggle-depth-flag" @click=${toggleDepthFlag}>toggle depth flag</button>
+          <button data-testid="add-order-item" @click=${addOrderItem}>add order item</button>
+          <button data-testid="reset-order-items" @click=${resetOrderItems}>reset order items</button>
+
+          <div data-testid="order-a">
+            ${whenElse(
+              orderFlag(),
+              html`
+                <ul data-testid="order-a-then">
+                  ${repeat(
+                    orderItems(),
+                    (item, index) => html` <li data-testid="order-a-row">${item.name}-${index}</li> `,
+                    html`<li data-testid="order-a-empty">order-a-empty</li>`,
+                    (item) => item.id,
+                  )}
+                </ul>
+              `,
+              html`<div data-testid="order-a-else">order-a-else</div>`,
+            )}
+          </div>
+
+          <div data-testid="order-b">
+            <ul data-testid="order-b-list">
+              ${repeat(
+                orderItems(),
+                (item, index) => html`
+                  <li data-testid="order-b-row">
+                    <span data-testid="order-b-label">${item.name}-${index}</span>
+                    ${whenElse(
+                      orderFlag(),
+                      html`<em data-testid="order-b-branch">then</em>`,
+                      html`<em data-testid="order-b-branch">else</em>`,
+                    )}
+                  </li>
+                `,
+                html`<li data-testid="order-b-empty">order-b-empty</li>`,
+                (item) => item.id,
+              )}
+            </ul>
+          </div>
+
+          <div data-testid="order-c-wrap">
+            ${whenElse(
+              depthFlag() && orderFlag(),
+              html`
+                <ol data-testid="order-c-then">
+                  ${repeat(
+                    orderItems(),
+                    (item, index) => html` <li data-testid="order-c-row">${item.name}-${index}</li> `,
+                    html`<li data-testid="order-c-empty">order-c-empty</li>`,
+                    (item) => item.id,
+                  )}
+                </ol>
+              `,
+              html`<p data-testid="order-c-else">order-c-else</p>`,
+            )}
+          </div>
         </section>
 
         <section data-testid="reactivity-section">
@@ -375,16 +555,16 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="expr-dup-a">${exprA()}</p>
           <p data-testid="expr-dup-b">${exprA()}</p>
           <div data-testid="attr-expr-target" class="${exprA() > exprB() ? 'gt' : 'le'}">attr-expr</div>
-          <div data-testid="style-expr-target" style="color: ${exprA() > exprB() ? 'rgb(255, 0, 0)' : 'rgb(0, 0, 255)'}">style-expr</div>
+          <div data-testid="style-expr-target" style="color: ${exprA() > exprB() ? 'rgb(255, 0, 0)' : 'rgb(0, 0, 255)'}"
+            >style-expr</div
+          >
           <p data-testid="ws-adjacent">${exprA()} ${exprB()}</p>
           <p data-testid="ws-none">${exprA()}${exprB()}</p>
-          <p data-testid="ws-multi">${exprA()}  ${exprB()}</p>
+          <p data-testid="ws-multi">${exprA()} ${exprB()}</p>
           <p data-testid="ws-surrounding"> hello ${exprA()} and ${exprB()} world </p>
         </section>
 
-        <section data-testid="template-injection-section">
-          ${loadingShell}
-        </section>
+        <section data-testid="template-injection-section"> ${loadingShell} </section>
 
         <section data-testid="repeat-section">
           <button data-testid="add-item" @click=${addItem}>add</button>
@@ -411,7 +591,9 @@ export const ContractApp = defineComponent('contract-app', () => {
         </section>
 
         <section data-testid="nested-section">
-          <button data-testid="nested-toggle-visibility" @click=${toggleNestedVisibility}>toggle-nested-visibility</button>
+          <button data-testid="nested-toggle-visibility" @click=${toggleNestedVisibility}
+            >toggle-nested-visibility</button
+          >
           <button data-testid="nested-add-child-second" @click=${addChildSecond}>add-child-second</button>
           <button data-testid="nested-clear" @click=${clearNested}>clear-nested</button>
           <button data-testid="nested-reset" @click=${resetNested}>reset-nested</button>
@@ -424,7 +606,11 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <span data-testid="nested-label">${item.label}-${index}</span>
                   <span data-testid="nested-parent-a">${exprA()}</span>
                   <div data-testid="nested-when" ${when(showWhen())}>visible</div>
-                  ${whenElse(showWhen(), html`<b data-testid="nested-branch">then</b>`, html`<b data-testid="nested-branch">else</b>`)}
+                  ${whenElse(
+                    showWhen(),
+                    html`<b data-testid="nested-branch">then</b>`,
+                    html`<b data-testid="nested-branch">else</b>`,
+                  )}
                   <ol data-testid="nested-children">
                     ${repeat(
                       item.children,
@@ -446,9 +632,7 @@ export const ContractApp = defineComponent('contract-app', () => {
           ${StyledChild({})}
         </section>
 
-        <section data-testid="css-import-section">
-          ${CssImportChild({})}
-        </section>
+        <section data-testid="css-import-section"> ${CssImportChild({})} </section>
 
         <section data-testid="global-styles-section">
           <div data-testid="global-styled">global-orange</div>

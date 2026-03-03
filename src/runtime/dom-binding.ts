@@ -31,18 +31,22 @@ const bindConditional = (
   if (!currentNode) return () => {};
   const initiallyShowing = currentNode.tagName !== 'TEMPLATE';
 
-  let contentEl: HTMLElement;
+  const cloneTemplateContent = (): HTMLElement => {
+    const tpl = getTempEl();
+    tpl.innerHTML = template;
+    return (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLElement;
+  };
+
+  let contentEl: HTMLElement | null;
   if (initiallyShowing) {
     contentEl = currentNode as HTMLElement;
   } else {
-    const tpl = getTempEl();
-    tpl.innerHTML = template;
-    contentEl = (tpl.content.cloneNode(true) as DocumentFragment).firstElementChild as HTMLElement;
+    contentEl = null;
   }
 
   let currentlyShowing = initiallyShowing;
 
-  if (initiallyShowing) {
+  if (initiallyShowing && contentEl) {
     bindingsInitialized = true;
     cleanups = initNested(contentEl);
   }
@@ -50,13 +54,13 @@ const bindConditional = (
   const show = () => {
     if (currentlyShowing) return;
     currentlyShowing = true;
-    if (currentNode && contentEl) {
-      currentNode.replaceWith(contentEl);
-      currentNode = contentEl;
-      if (!bindingsInitialized) {
-        bindingsInitialized = true;
-        cleanups = initNested(contentEl);
-      }
+    if (currentNode) {
+      const nextContentEl = cloneTemplateContent();
+      currentNode.replaceWith(nextContentEl);
+      currentNode = nextContentEl;
+      contentEl = nextContentEl;
+      bindingsInitialized = true;
+      cleanups = initNested(nextContentEl);
     }
   };
 
@@ -76,6 +80,7 @@ const bindConditional = (
       cleanups = [];
       bindingsInitialized = false;
     }
+    contentEl = null;
   };
 
   const update = () => {

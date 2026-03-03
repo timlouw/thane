@@ -1,0 +1,12 @@
+.appContainer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.routerOutletContainer {
+  padding: var(--global-padding);
+  height: calc(100% - var(--navbar-height));
+  overflow-y: auto;
+  overflow-x: hidden;
+}

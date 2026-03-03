@@ -6,7 +6,7 @@
  */
 
 import type { Range } from '../../types.js';
-import type { ConditionalBlock, WhenElseBlock, BindingInfo, EventBinding } from './types.js';
+import type { ConditionalBlock, WhenElseBlock, RepeatBlock, BindingInfo, EventBinding } from './types.js';
 import {
   findElementsWithWhenDirective,
   walkElements,
@@ -109,15 +109,20 @@ export const collectConditionalBlocks = (
     const condBindings = getBindingsForElement(condEl, parsed.bindings);
     const nestedBindings: BindingInfo[] = [];
 
-    // Track text binding comment-marker IDs: signalName → commentId
-    const textBindingCommentIds = new Map<string, string>();
+    // Track text binding comment-marker IDs: fullExpression → commentId[]
+    const textBindingCommentIds = new Map<string, string[]>();
     for (const binding of condBindings) {
       if (binding.type === 'when' || binding.type === 'event') continue;
       let elementId: string;
       if (binding.type === 'text') {
         // Text bindings always get a dedicated comment marker ID
         elementId = `b${state.idCounter++}`;
-        textBindingCommentIds.set(binding.signalName, elementId);
+        const existing = textBindingCommentIds.get(binding.fullExpression);
+        if (existing) {
+          existing.push(elementId);
+        } else {
+          textBindingCommentIds.set(binding.fullExpression, [elementId]);
+        }
       } else if (binding.element === condEl) {
         elementId = conditionalId;
       } else {
@@ -171,13 +176,18 @@ export const collectConditionalBlocks = (
         const nestedCondBindings = getBindingsForElement(nestedCondEl, parsed.bindings);
         const nestedNestedBindings: BindingInfo[] = [];
 
-        const nestedTextBindingCommentIds = new Map<string, string>();
+        const nestedTextBindingCommentIds = new Map<string, string[]>();
         for (const binding of nestedCondBindings) {
           if (binding.type === 'when' || binding.type === 'event') continue;
           let nestedElementId: string;
           if (binding.type === 'text') {
             nestedElementId = `b${state.idCounter++}`;
-            nestedTextBindingCommentIds.set(binding.signalName, nestedElementId);
+            const existing = nestedTextBindingCommentIds.get(binding.fullExpression);
+            if (existing) {
+              existing.push(nestedElementId);
+            } else {
+              nestedTextBindingCommentIds.set(binding.fullExpression, [nestedElementId]);
+            }
           } else if (binding.element === nestedCondEl) {
             nestedElementId = nestedCondId;
           } else {
@@ -304,6 +314,7 @@ export const collectWhenElseBlocks = (
     bindings: BindingInfo[];
     conditionals: ConditionalBlock[];
     whenElseBlocks: WhenElseBlock[];
+    repeatBlocks: RepeatBlock[];
     nextId: number;
   },
 ): WhenElseBlock[] => {
@@ -337,8 +348,11 @@ export const collectWhenElseBlocks = (
       endIndex: binding.expressionEnd,
       thenBindings: thenProcessed.bindings,
       elseBindings: elseProcessed.bindings,
+      thenRepeats: thenProcessed.repeatBlocks,
+      elseRepeats: elseProcessed.repeatBlocks,
       nestedConditionals: [...thenProcessed.conditionals, ...elseProcessed.conditionals],
       nestedWhenElse: [...thenProcessed.whenElseBlocks, ...elseProcessed.whenElseBlocks],
+      nestedRepeats: [...thenProcessed.repeatBlocks, ...elseProcessed.repeatBlocks],
     });
   }
 

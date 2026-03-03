@@ -74,10 +74,7 @@ test.describe('2. Client-Side Navigation', () => {
 
     // Verify shell header is the same DOM node (not re-rendered)
     const headerAfter = await page.getByTestId('shell-header').elementHandle();
-    const sameNode = await headerHandle!.evaluate(
-      (node, other) => node === other,
-      headerAfter,
-    );
+    const sameNode = await headerHandle!.evaluate((node, other) => node === other, headerAfter);
     expect(sameNode).toBe(true);
   });
 
@@ -142,9 +139,7 @@ test.describe('4. Not Found', () => {
   test('unknown path renders the not-found page', async ({ page }) => {
     await goto(page, '/nonexistent');
     await expect(page.getByTestId('not-found-page')).toBeVisible();
-    await expect(page.getByTestId('not-found-text')).toHaveText(
-      'The page you requested does not exist.',
-    );
+    await expect(page.getByTestId('not-found-text')).toHaveText('The page you requested does not exist.');
   });
 
   test('deeply nested unknown path renders not-found', async ({ page }) => {

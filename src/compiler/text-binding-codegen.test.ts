@@ -478,4 +478,27 @@ mount(App);
     // Should compile without errors — conditional markers must survive stripping
     expect(js.length).toBeGreaterThan(0);
   });
+
+  test('when conditional with expression text binding does not emit raw template expression', async () => {
+    const source = `
+import { defineComponent, signal, mount } from 'thane';
+
+export const App = defineComponent('test-app', () => {
+  const show = signal(true);
+  const count = signal(1);
+  return {
+    template: html\`
+      <div>
+        <span when=\${show()}>\${count() + 1}</span>
+      </div>
+    \`,
+  };
+});
+mount(App);
+`;
+    const js = await buildAndReadJs(source);
+    expect(js).toMatch(/<!--b\d+-->/);
+    expect(js).toContain('nextSibling.data');
+    expect(js).not.toContain('${count() + 1}');
+  });
 });

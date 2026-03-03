@@ -43,4 +43,3 @@ export const ansi = {
   dim: _wrap('\x1b[2m', 'raw'),
   reset: _wrap('\x1b[0m', 'raw'),
 } as const;
-
