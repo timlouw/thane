@@ -1,21 +1,17 @@
 import { defineRoutes } from 'thane/router';
+import ProductsPage from './pages/Products/Products.js';
+import CartPage from './pages/Cart/Cart.js';
+import ProductDetailsPage from './pages/ProductDetails/ProductDetails.js';
+import NotFound from './pages/NotFound/NotFound.js';
 
 const Routes = defineRoutes({
-  '/': { component: () => import('./pages/Products/Products.js'), title: 'Products' },
-  '/my-cart': { component: () => import('./pages/Cart/Cart.js'), title: 'My Cart' },
+  '/': { component: ProductsPage, title: 'Products' },
+  '/my-cart': { component: CartPage, title: 'My Cart' },
   '/product-details/:productID': {
-    component: () => import('./pages/ProductDetails/ProductDetails.js'),
+    component: ProductDetailsPage,
     title: 'Product Details',
   },
-  'notFound': { component: () => import('./pages/NotFound/NotFound.js'), title: 'Not Found' },
+  'notFound': { component: NotFound, title: 'Not Found' },
 });
-
-type Routes = typeof Routes;
-
-declare module 'thane' {
-  interface Register {
-    routes: Routes;
-  }
-}
 
 export default Routes;

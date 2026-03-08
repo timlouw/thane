@@ -252,127 +252,131 @@ export const ContractApp = defineComponent('contract-app', () => {
   const incEffectSource = () => effectSource(effectSource() + 1);
   const stopEffect = () => disposeEffect();
 
-  // ── subscriber exception handling test ──
-  const excSource = signal(0);
-  const excBefore = signal('');
-  const excAfter = signal('');
+  // ── throwing subscriber resilience ──
+  const throwingSubscriberSource = signal(0);
+  const throwingSubscriberBefore = signal('');
+  const throwingSubscriberAfter = signal('');
   // These subscribe WITHOUT skipInitial — but the template bakes in
   // compile-time initial values, so we only test post-interaction state.
-  excSource.subscribe((v) => excBefore(`before-${v}`), true);
-  excSource.subscribe(() => {
+  throwingSubscriberSource.subscribe((v) => throwingSubscriberBefore(`before-${v}`), true);
+  throwingSubscriberSource.subscribe(() => {
     throw new Error('boom');
   }, true);
-  excSource.subscribe((v) => excAfter(`after-${v}`), true);
+  throwingSubscriberSource.subscribe((v) => throwingSubscriberAfter(`after-${v}`), true);
 
-  const triggerExc = () => excSource(excSource() + 1);
+  const triggerThrowingSubscriber = () => throwingSubscriberSource(throwingSubscriberSource() + 1);
 
-  // ── Blocker 1.1: Computed notification-depth tracking ──
+  // ── computed notification-depth tracking ──
   // A computed with multiple subscribers where one unsubscribes mid-notification.
   // If _notifyComputedSubs depth tracking is broken, after the first cycle
   // notifyCount drifts negative and compaction / iteration corruption occurs.
-  const b11Source = signal(0);
-  const b11Computed = computed(() => b11Source() * 100);
-  const b11Log = signal('');
-  let b11Unsub2: (() => void) | null = null;
+  const notificationDepthSource = signal(0);
+  const notificationDepthComputed = computed(() => notificationDepthSource() * 100);
+  const notificationDepthLog = signal('');
+  let unsubscribeMidNotification: (() => void) | null = null;
 
   // Subscribe three listeners; the second one will self-unsubscribe on first notification
-  const b11Sub1Vals: number[] = [];
-  const b11Sub3Vals: number[] = [];
-  b11Computed.subscribe((v) => {
-    b11Sub1Vals.push(v);
-    b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(','));
+  const notificationDepthFirstSubscriberValues: number[] = [];
+  const notificationDepthThirdSubscriberValues: number[] = [];
+  notificationDepthComputed.subscribe((value) => {
+    notificationDepthFirstSubscriberValues.push(value);
+    notificationDepthLog(
+      notificationDepthFirstSubscriberValues.concat(notificationDepthThirdSubscriberValues).join(','),
+    );
   }, true);
-  b11Unsub2 = b11Computed.subscribe(() => {
+  unsubscribeMidNotification = notificationDepthComputed.subscribe(() => {
     // Self-unsubscribe during notification to trigger mid-notification null-slotting
-    if (b11Unsub2) {
-      b11Unsub2();
-      b11Unsub2 = null;
+    if (unsubscribeMidNotification) {
+      unsubscribeMidNotification();
+      unsubscribeMidNotification = null;
     }
   }, true);
-  b11Computed.subscribe((v) => {
-    b11Sub3Vals.push(v);
-    b11Log(b11Sub1Vals.concat(b11Sub3Vals).join(','));
+  notificationDepthComputed.subscribe((value) => {
+    notificationDepthThirdSubscriberValues.push(value);
+    notificationDepthLog(
+      notificationDepthFirstSubscriberValues.concat(notificationDepthThirdSubscriberValues).join(','),
+    );
   }, true);
 
-  const b11Trigger = () => b11Source(b11Source() + 1);
+  const triggerNotificationDepthCase = () => notificationDepthSource(notificationDepthSource() + 1);
 
-  // ── Blocker 1.3: Effect recovery after throw ──
+  // ── effect recovery after throw ──
   // An effect that throws on certain values but should still re-subscribe
   // and recover when the signal changes to a non-throwing value.
-  const b13Source = signal(0);
-  const b13Log = signal('init');
-  const b13Runs = signal(0);
-  let b13RunCount = 0;
+  const effectRecoverySource = signal(0);
+  const effectRecoveryLog = signal('init');
+  const effectRecoveryRuns = signal(0);
+  let effectRecoveryRunCount = 0;
 
   effect(() => {
-    const val = b13Source();
-    b13RunCount++;
-    b13Runs(b13RunCount);
-    if (val === 1) {
-      throw new Error('b13-intentional-throw');
+    const value = effectRecoverySource();
+    effectRecoveryRunCount++;
+    effectRecoveryRuns(effectRecoveryRunCount);
+    if (value === 1) {
+      throw new Error('effect-recovery-intentional-throw');
     }
-    b13Log(`ok-${val}`);
+    effectRecoveryLog(`ok-${value}`);
   });
 
-  const b13SetThrowing = () => b13Source(1); // will throw
-  const b13SetRecovery = () => b13Source(2); // should recover
+  const setEffectRecoveryThrowing = () => effectRecoverySource(1); // will throw
+  const setEffectRecoveryRecovered = () => effectRecoverySource(2); // should recover
 
-  // ── Blocker 1.2: Reentrant reconciler ──
+  // ── reentrant reconciler safety ──
   // Two repeat lists sharing a trigger signal. When list1 changes, an effect
   // synchronously updates list2. If the reconciler uses a shared module-scoped
   // Set, the inner reconcile clears it and the outer loses track of retained keys.
-  type B12Item = { id: number; label: string };
-  const b12List1 = signal<B12Item[]>([
+  type ReentrantListItem = { id: number; label: string };
+  const primaryReentrantList = signal<ReentrantListItem[]>([
     { id: 1, label: 'L1-A' },
     { id: 2, label: 'L1-B' },
     { id: 3, label: 'L1-C' },
   ]);
-  const b12List2 = signal<B12Item[]>([
+  const secondaryReentrantList = signal<ReentrantListItem[]>([
     { id: 10, label: 'L2-X' },
     { id: 20, label: 'L2-Y' },
   ]);
 
   // When list1 changes, synchronously mutate list2 — this triggers reentrant reconcile
   // because the subscriber notification from list1's reconcile is still in progress.
-  b12List1.subscribe(() => {
-    const current2 = b12List2();
-    if (current2.length === 2) {
-      b12List2([...current2, { id: 30, label: 'L2-Z' }]);
+  primaryReentrantList.subscribe(() => {
+    const currentSecondaryList = secondaryReentrantList();
+    if (currentSecondaryList.length === 2) {
+      secondaryReentrantList([...currentSecondaryList, { id: 30, label: 'L2-Z' }]);
     }
   }, true);
 
-  const b12RemoveFromList1 = () => {
+  const removeFromPrimaryReentrantList = () => {
     // Remove the middle item — triggers general keyed reconciliation path
-    b12List1([b12List1()[0]!, b12List1()[2]!]);
+    primaryReentrantList([primaryReentrantList()[0]!, primaryReentrantList()[2]!]);
   };
 
-  // ── 2.10: Computed .subscribe() error cleanup ──
+  // ── computed subscribe error cleanup ──
   // When subscribing to a computed whose derivation throws, the subscriber
   // callback must be cleaned up before the error propagates. Previously the
   // subscriber was left in the array (leaking) while the unsubscribe function
   // was never returned because the throw interrupted control flow.
-  const h210Source = signal(0);
-  const h210Computed = computed(() => {
-    if (h210Source() === 0) throw new Error('h210-initial-error');
-    return h210Source() * 10;
+  const computedSubscriptionErrorSource = signal(0);
+  const computedSubscriptionErrorValue = computed(() => {
+    if (computedSubscriptionErrorSource() === 0) throw new Error('computed-subscribe-initial-error');
+    return computedSubscriptionErrorSource() * 10;
   });
-  const h210Log = signal('init');
-  let h210SubCalled = false;
+  const computedSubscriptionErrorLog = signal('init');
+  let computedSubscriptionLeaked = false;
 
   try {
-    h210Computed.subscribe((v) => {
-      h210SubCalled = true;
-      h210Log(`sub-${v}`);
+    computedSubscriptionErrorValue.subscribe((value) => {
+      computedSubscriptionLeaked = true;
+      computedSubscriptionErrorLog(`sub-${value}`);
     });
   } catch (e) {
-    h210Log(`caught:${(e as Error).message}`);
+    computedSubscriptionErrorLog(`caught:${(e as Error).message}`);
   }
 
-  const h210Fix = () => {
-    h210Source(1);
-    // If subscriber was properly cleaned up, h210SubCalled stays false.
-    // If subscriber leaked, it fires with value 10 → h210SubCalled becomes true.
-    h210Log(h210SubCalled ? 'leaked' : 'cleaned-up');
+  const recoverComputedSubscriptionError = () => {
+    computedSubscriptionErrorSource(1);
+    // If subscriber was properly cleaned up, computedSubscriptionLeaked stays false.
+    // If subscriber leaked, it fires with value 10 and flips the flag.
+    computedSubscriptionErrorLog(computedSubscriptionLeaked ? 'leaked' : 'cleaned-up');
   };
 
   return {
@@ -714,11 +718,13 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="effect-runs">${effectRuns()}</p>
         </section>
 
-        <section data-testid="exc-section">
-          <button data-testid="exc-trigger" @click=${triggerExc}>triggerExc</button>
-          <p data-testid="exc-source">${excSource()}</p>
-          <p data-testid="exc-before">${excBefore()}</p>
-          <p data-testid="exc-after">${excAfter()}</p>
+        <section data-testid="throwing-subscriber-section">
+          <button data-testid="throwing-subscriber-trigger" @click=${triggerThrowingSubscriber}
+            >trigger throwing subscriber</button
+          >
+          <p data-testid="throwing-subscriber-source">${throwingSubscriberSource()}</p>
+          <p data-testid="throwing-subscriber-before">${throwingSubscriberBefore()}</p>
+          <p data-testid="throwing-subscriber-after">${throwingSubscriberAfter()}</p>
         </section>
 
         <section data-testid="destroy-section">
@@ -727,41 +733,51 @@ export const ContractApp = defineComponent('contract-app', () => {
           <div data-testid="destroy-nested-target"></div>
         </section>
 
-        <section data-testid="blocker-11-section">
-          <button data-testid="b11-trigger" @click=${b11Trigger}>b11 trigger</button>
-          <p data-testid="b11-log">${b11Log()}</p>
+        <section data-testid="computed-notification-depth-section">
+          <button data-testid="computed-notification-depth-trigger" @click=${triggerNotificationDepthCase}
+            >trigger notification depth case</button
+          >
+          <p data-testid="computed-notification-depth-log">${notificationDepthLog()}</p>
         </section>
 
-        <section data-testid="blocker-13-section">
-          <button data-testid="b13-set-throwing" @click=${b13SetThrowing}>b13 throw</button>
-          <button data-testid="b13-set-recovery" @click=${b13SetRecovery}>b13 recover</button>
-          <p data-testid="b13-log">${b13Log()}</p>
-          <p data-testid="b13-runs">${b13Runs()}</p>
+        <section data-testid="effect-recovery-section">
+          <button data-testid="effect-recovery-set-throwing" @click=${setEffectRecoveryThrowing}
+            >set throwing state</button
+          >
+          <button data-testid="effect-recovery-set-recovered" @click=${setEffectRecoveryRecovered}
+            >set recovered state</button
+          >
+          <p data-testid="effect-recovery-log">${effectRecoveryLog()}</p>
+          <p data-testid="effect-recovery-runs">${effectRecoveryRuns()}</p>
         </section>
 
-        <section data-testid="blocker-12-section">
-          <button data-testid="b12-remove" @click=${b12RemoveFromList1}>b12 remove</button>
-          <ul data-testid="b12-list1">
+        <section data-testid="reentrant-reconcile-section">
+          <button data-testid="reentrant-reconcile-remove-primary" @click=${removeFromPrimaryReentrantList}
+            >remove primary item</button
+          >
+          <ul data-testid="reentrant-reconcile-primary-list">
             ${repeat(
-              b12List1(),
-              (item) => html`<li data-testid="b12-item1">${item.label}</li>`,
+              primaryReentrantList(),
+              (item) => html`<li data-testid="reentrant-reconcile-primary-item">${item.label}</li>`,
               null,
               (item) => item.id,
             )}
           </ul>
-          <ul data-testid="b12-list2">
+          <ul data-testid="reentrant-reconcile-secondary-list">
             ${repeat(
-              b12List2(),
-              (item) => html`<li data-testid="b12-item2">${item.label}</li>`,
+              secondaryReentrantList(),
+              (item) => html`<li data-testid="reentrant-reconcile-secondary-item">${item.label}</li>`,
               null,
               (item) => item.id,
             )}
           </ul>
         </section>
 
-        <section data-testid="h210-section">
-          <button data-testid="h210-fix" @click=${h210Fix}>h210 fix</button>
-          <p data-testid="h210-log">${h210Log()}</p>
+        <section data-testid="computed-subscribe-cleanup-section">
+          <button data-testid="computed-subscribe-cleanup-recover" @click=${recoverComputedSubscriptionError}
+            >recover computed subscription</button
+          >
+          <p data-testid="computed-subscribe-cleanup-log">${computedSubscriptionErrorLog()}</p>
         </section>
       </main>
     `,

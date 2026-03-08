@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { logger } from '../../utils/index.js';
 
+type WatchCleanup = () => void;
+
 export const recursivelyCopyAssetsIntoDist = async (src: string, dest: string): Promise<void> => {
   await fs.promises.mkdir(dest, { recursive: true });
 
@@ -42,14 +44,14 @@ export function clearAllDebounceTimers(): void {
   debounceTimers.clear();
 }
 
-export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string, onUpdate?: () => void): void => {
+export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string, onUpdate?: () => void): WatchCleanup => {
   if (!fs.existsSync(src)) {
-    return;
+    return () => {};
   }
 
   recursivelyCopyAssetsIntoDist(src, dest);
 
-  fs.watch(src, { recursive: true }, (eventType: string, filename: string | null) => {
+  const watcher = fs.watch(src, { recursive: true }, (eventType: string, filename: string | null) => {
     if (!filename) return;
 
     // Debounce rapid saves to avoid redundant rebuilds
@@ -96,19 +98,23 @@ export const watchAndRecursivelyCopyAssetsIntoDist = (src: string, dest: string,
       }, DEBOUNCE_MS),
     );
   });
+
+  return () => {
+    watcher.close();
+  };
 };
 
 /**
  * Watch a single file for changes with debouncing
  */
-export const watchFileForChanges = (filePath: string, onChange: () => void): void => {
+export const watchFileForChanges = (filePath: string, onChange: () => void): WatchCleanup => {
   if (!fs.existsSync(filePath)) {
-    return;
+    return () => {};
   }
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  fs.watch(filePath, (eventType: string) => {
+  const watcher = fs.watch(filePath, (eventType: string) => {
     if (eventType !== 'change') return;
 
     if (debounceTimer) {
@@ -120,4 +126,12 @@ export const watchFileForChanges = (filePath: string, onChange: () => void): voi
       onChange();
     }, DEBOUNCE_MS);
   });
+
+  return () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    watcher.close();
+  };
 };

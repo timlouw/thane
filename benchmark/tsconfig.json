@@ -15,5 +15,5 @@
     "alwaysStrict": true,
     "noUnusedLocals": true
   },
-  "include": ["./**/*.ts", "./node_modules/thane/client.d.ts"]
+  "include": ["./**/*.ts", "./.thane/types/client.d.ts", "./.thane/types/router/**/*.d.ts"]
 }

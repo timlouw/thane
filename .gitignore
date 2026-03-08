@@ -26,6 +26,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+.thane/
 
 # Test coverage
 coverage/

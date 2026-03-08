@@ -1,6 +1,6 @@
 # Router
 
-Thane includes a built-in client-side router with per-route code splitting, type-safe navigation, and zero overhead for apps that don't use routing.
+Thane includes a built-in client-side router with optional per-route code splitting, type-safe navigation, and zero overhead for apps that don't use routing.
 
 ## Quick Start
 
@@ -19,22 +19,24 @@ const Routes = defineRoutes({
   notFound:     { component: () => import('./pages/not-found.js'), title: '404 — Not Found' },
 });
 
-type Routes = typeof Routes;
-
-// Register routes for type-safe navigate() and getRouteParam()
-declare module 'thane' {
-  interface Register {
-    routes: Routes;
-  }
-}
-
 export default Routes;
 ```
 
-> **Why `type Routes = typeof Routes`?** This creates a dual value/type name so the
-> `Register` interface can reference `Routes` without the user writing `typeof` in the
-> module augmentation. The compiler sees the value when you import it and the type when
-> you use it in `Register`.
+Routes can be declared in two ways:
+
+- Lazy route: `component: () => import('./pages/about.js')`
+- Eager route: `component: AboutPage`
+
+Lazy routes produce separate chunks when code splitting is enabled. Eager routes are bundled into the main app graph like normal imports.
+
+Run `thane dev`, `thane build`, or `thane serve` once and Thane will generate hidden
+types under `.thane/types/...`. Router declarations live in `.thane/types/router/...`, and
+shared ambient declarations such as CSS module support live alongside them.
+
+If you want to generate those hidden types without building, run `thane types`.
+
+Before the first Thane command runs, router component context falls back to broad types.
+That keeps the app buildable while still nudging you toward generated route-aware types.
 
 ### 2. Bootstrap Your App
 
@@ -81,7 +83,10 @@ import Routes from './routes.js';
 
 mount({
   component: ShellApp,
-  router: { routes: Routes },
+  router: {
+    routes: Routes,
+    scrollRestoration: true,
+  },
 });
 ```
 
@@ -160,7 +165,8 @@ navigate('/about');
 navigate('/users/42');
 ```
 
-`navigate` is a global function — no imports needed in page components. It's type-safe when the `Register` interface is augmented (see [Type-Safe Navigation](#type-safe-navigation)).
+`navigate` is a global function — no imports needed in page components. It becomes type-safe
+after the hidden router type file has been generated.
 
 ### `navigateBack()`
 
@@ -170,16 +176,73 @@ Go back in history (wrapper around `history.back()`):
 navigateBack();
 ```
 
-### `getRouteParam(name)`
+### `route.params`
 
-Retrieve a named route parameter from the current URL:
+Read route params from the component setup context:
 
 ```ts
-// For route '/users/:id' matched against '/users/42':
-const userId = getRouteParam('id'); // '42'
+export const UserPage = defineComponent('user-page', ({ route }) => {
+  const userId = route.params.id;
+
+  return {
+    template: html`<h1>User ${userId}</h1>`,
+  };
+});
 ```
 
-Both `navigate` and `getRouteParam` are global functions — no imports needed.
+Generated route typing also gives you `route.path`, `route.pattern`, `route.searchParams`,
+`route.hash`, `route.title`, and `route.state`.
+
+### `currentPath`
+
+The active router path is also exposed globally as a read-only signal:
+
+```ts
+const path = currentPath();
+
+currentPath.subscribe((nextPath) => {
+  console.log('route changed to', nextPath);
+});
+```
+
+`currentPath` is intentionally read-only in application code. Use `navigate(...)` or browser navigation to change the route.
+
+---
+
+## Scroll Restoration
+
+Router-managed scroll restoration is enabled by default.
+
+```ts
+mount({
+  component: ShellApp,
+  router: {
+    routes: Routes,
+    scrollRestoration: true,
+  },
+});
+```
+
+You can also configure it:
+
+```ts
+mount({
+  router: {
+    routes: Routes,
+    scrollRestoration: {
+      behavior: 'auto',
+      top: 0,
+      left: 0,
+      resetOnNavigate: true,
+      restoreOnBackForward: true,
+    },
+  },
+});
+```
+
+- `resetOnNavigate`: scroll to the configured top/left position after `navigate(...)`
+- `restoreOnBackForward`: restore the saved position when the user navigates with browser back/forward
+- `behavior`: forwarded to `window.scrollTo(...)`
 
 ---
 
@@ -198,8 +261,8 @@ const Routes = defineRoutes({
 Inside a page component:
 
 ```ts
-export const UserPage = defineComponent(() => {
-  const userId = getRouteParam('id');
+export const UserPage = defineComponent('user-page', ({ route }) => {
+  const userId = route.params.id;
   // ...
 });
 ```
@@ -226,23 +289,9 @@ defineRoutes({
 
 ## Type-Safe Navigation
 
-When you augment the `Register` interface, TypeScript provides full autocomplete and compile-time checking for `navigate()` and `getRouteParam()`:
-
-```ts
-// routes.ts
-const Routes = defineRoutes({
-  '/':          { component: () => import('./pages/home.js') },
-  '/about':     { component: () => import('./pages/about.js') },
-  '/users/:id': { component: () => import('./pages/user.js') },
-  notFound:     { component: () => import('./pages/not-found.js') },
-});
-
-type Routes = typeof Routes;
-
-declare module 'thane' {
-  interface Register { routes: Routes }
-}
-```
+After the first `thane dev`, `thane build`, or `thane serve` run, Thane generates a hidden
+route typing file from your `defineRoutes(...)` call. That gives TypeScript full autocomplete
+and compile-time checking for `navigate()` and typed page-local `route.params` access.
 
 Now in any file:
 
@@ -253,14 +302,34 @@ navigate('/users/42');    // ✅ — matches pattern /users/:id
 navigate('/users/alice'); // ✅ — matches pattern /users/:id
 navigate('/typo');        // ❌ — compile error, no matching route
 navigate('/users');       // ❌ — compile error, missing :id segment
+```
 
-getRouteParam('id');      // ✅ — declared in /users/:id
-getRouteParam('foo');     // ❌ — compile error, no route declares :foo
+Inside a routed page component:
+
+```ts
+export const UserPage = defineComponent('user-page', ({ route }) => {
+  route.params.id;   // ✅
+  route.pattern;     // '/users/:id'
+  route.path;        // `/users/${string}`
+});
 ```
 
 ### How It Works
 
-The `Register` interface uses TypeScript's module augmentation. When empty, `navigate()` accepts any `string`. When augmented with `routes`, the `RouteToPath` utility type converts patterns like `/users/:id` into template literal types like `` `/users/${string}` ``, giving you structural matching at the type level — **zero developer effort, no `.d.ts` files needed**.
+The generated `.thane/types/router/...` file augments Thane's route typing internally. It
+records your route pattern union for `navigate(...)` and maps routed page selectors back to
+their route patterns so `defineComponent('user-page', ({ route }) => ...)` can get a local,
+exact `route.params` type.
+
+The folder layout is intentionally scalable:
+
+```text
+.thane/
+  types/
+    client.d.ts
+    router/
+      src/routes.generated.d.ts
+```
 
 The `notFound` key is excluded from type-safe navigation — it's the fallback route, not a navigable path.
 
@@ -269,7 +338,7 @@ The `notFound` key is excluded from type-safe navigation — it's the fallback r
 ## Code Splitting & Hash Stability
 
 - Each route's `component` function uses dynamic `import()`, so page code is automatically split into separate chunks by esbuild.
-- `navigate()`, `navigateBack()`, and `getRouteParam()` live in the thane shared chunk — they have zero knowledge of your routes and never change when routes change.
+- `navigate()` and `navigateBack()` live in the thane shared chunk — they have zero knowledge of your routes and never change when routes change.
 - Changing a single page component only invalidates that page's chunk hash.
 - The router runtime is loaded via dynamic import inside `mount()` — **apps without a `router` option (Mode A) include zero router code**.
 
@@ -305,7 +374,7 @@ The return type of `defineRoutes()` — a record of path-pattern → Route pairs
 
 | Property | Type | Description |
 |---|---|---|
-| `component` | `() => Promise<any>` | Lazy component loader |
+| `component` | `ComponentHTMLSelector<any> \| (() => Promise<any>)` | Eager page component or lazy component loader |
 | `title` | `string?` | Document title |
 
 ### Global Functions
@@ -314,16 +383,24 @@ The return type of `defineRoutes()` — a record of path-pattern → Route pairs
 |---|---|
 | `navigate(path)` | Push a new path to history |
 | `navigateBack()` | Go back in history |
-| `getRouteParam(name)` | Get a route param value |
+| `currentPath()` | Read the active router path signal |
 
-### `Register` Interface
+### Hidden Router Types
 
-Augment to enable type-safe navigation:
+Generated during `thane dev`, `thane build`, and `thane serve`:
 
 ```ts
-type Routes = typeof Routes;
-
+/* Auto-generated by Thane. Do not edit by hand. */
 declare module 'thane' {
-  interface Register { routes: Routes }
+  interface Register {
+    routePaths: '/' | '/about' | '/users/:id';
+  }
+
+  interface RouteComponentRegister {
+    'user-page': '/users/:id';
+  }
 }
 ```
+
+Thane stores that file under a framework-owned `.thane` directory, similar to how Next.js uses
+`.next/types`, SvelteKit uses `.svelte-kit/types`, Nuxt uses `.nuxt`, and Astro uses `.astro`.

@@ -1,6 +1,5 @@
-export { TypeCheckPlugin } from './tsc-type-checker/tsc-type-checker.js';
-
-export { RoutesPrecompilerPlugin } from './routes-precompiler/routes-precompiler.js';
+export { TSCTypeCheckerPlugin } from './tsc-type-checker/tsc-type-checker.js';
+export { ProjectTypesSyncPlugin } from './router-typegen/router-typegen.js';
 
 export { ComponentPrecompilerPlugin } from './component-precompiler/component-precompiler.js';
 
@@ -16,6 +15,6 @@ export { HTMLBootstrapInjectorPlugin } from './html-bootstrap-injector/html-boot
 
 export { MinificationPlugin, minifySelectorsInHTML } from './minification/minification.js';
 
-export { JsOutputOptimizerPlugin } from './js-output-optimizer/js-output-optimizer.js';
+export { JSOutputOptimizerPlugin } from './js-output-optimizer/js-output-optimizer.js';
 
 export { PostBuildPlugin } from './post-build-processor/post-build-processor.js';

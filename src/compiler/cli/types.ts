@@ -4,7 +4,7 @@
 
 export interface CLIOptions {
   /** Command to execute */
-  command: 'build' | 'dev' | 'serve';
+  command: 'build' | 'dev' | 'serve' | 'types' | 'typecheck';
   /** Production mode */
   prod: boolean;
   /** Enable gzip/brotli compression */
@@ -128,6 +128,8 @@ export interface ThaneConfigFile extends ThaneBuildOptions {
         build?: ThaneBuildOptions | undefined;
         dev?: ThaneBuildOptions | undefined;
         serve?: ThaneBuildOptions | undefined;
+        types?: ThaneBuildOptions | undefined;
+        typecheck?: ThaneBuildOptions | undefined;
       }
     | undefined;
 }

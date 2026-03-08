@@ -25,6 +25,7 @@ test.describe('1. Basic Rendering', () => {
     await goto(page, '/');
     await expect(page.getByTestId('home-page')).toBeVisible();
     await expect(page.getByTestId('page-title')).toHaveText('Home');
+    await expect(page.getByTestId('current-path')).toHaveText('/');
   });
 
   test('about page renders when navigating to /about', async ({ page }) => {
@@ -51,16 +52,20 @@ test.describe('2. Client-Side Navigation', () => {
   test('clicking nav links navigates without full page reload', async ({ page }) => {
     await goto(page, '/');
     await expect(page.getByTestId('home-page')).toBeVisible();
+    await expect(page.getByTestId('nav-home')).toHaveClass(/active/);
 
     // Navigate to About via nav link
     await page.getByTestId('nav-about').click();
     await expect(page.getByTestId('about-page')).toBeVisible();
     await expect(page.getByTestId('home-page')).toHaveCount(0);
+    await expect(page.getByTestId('current-path')).toHaveText('/about');
+    await expect(page.getByTestId('nav-about')).toHaveClass(/active/);
 
     // Navigate to Home via nav link
     await page.getByTestId('nav-home').click();
     await expect(page.getByTestId('home-page')).toBeVisible();
     await expect(page.getByTestId('about-page')).toHaveCount(0);
+    await expect(page.getByTestId('current-path')).toHaveText('/');
   });
 
   test('shell persists during client-side navigation', async ({ page }) => {
@@ -96,9 +101,36 @@ test.describe('2. Client-Side Navigation', () => {
 
     await page.goBack();
     await expect(page.getByTestId('home-page')).toBeVisible();
+    await expect(page.getByTestId('current-path')).toHaveText('/');
 
     await page.goForward();
     await expect(page.getByTestId('about-page')).toBeVisible();
+    await expect(page.getByTestId('current-path')).toHaveText('/about');
+  });
+
+  test('scroll restoration resets on navigate and restores on browser back', async ({ page }) => {
+    await goto(page, '/');
+
+    await page.evaluate(() => {
+      window.scrollTo(0, 1400);
+    });
+    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeGreaterThan(1000);
+
+    // Use programmatic navigation here so the test does not auto-scroll the
+    // top nav link into view before clicking, which would overwrite the saved
+    // scroll position with 0 just before navigate() runs.
+    await page.evaluate(`window.navigate('/about')`);
+    await expect(page.getByTestId('about-page')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeLessThan(50);
+
+    await page.evaluate(() => {
+      window.scrollTo(0, 900);
+    });
+    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeGreaterThan(700);
+
+    await page.goBack();
+    await expect(page.getByTestId('home-page')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeGreaterThan(1000);
   });
 });
 
@@ -270,7 +302,9 @@ test.describe('7. Direct URL Access', () => {
 // ─────────────────────────────────────────────────────────────
 
 test.describe('8. Code Splitting', () => {
-  test('page components are loaded as separate chunks', async ({ page }) => {
+  test('lazy page components are loaded as separate chunks while eager routes stay in the main bundle', async ({
+    page,
+  }) => {
     // Load home page and track network requests
     const jsRequests: string[] = [];
     page.on('request', (req: any) => {
@@ -283,8 +317,9 @@ test.describe('8. Code Splitting', () => {
     // Wait for page to fully load
     await expect(page.getByTestId('home-page')).toBeVisible();
 
-    // There should be multiple JS files loaded (main chunk + page chunk at minimum)
-    expect(jsRequests.length).toBeGreaterThanOrEqual(2);
+    // Home is eager, so the initial route should not require an extra lazy page chunk.
+    const initialJsCount = jsRequests.length;
+    expect(initialJsCount).toBeGreaterThanOrEqual(1);
 
     // Navigate to about — should trigger loading of another chunk
     const beforeAbout = jsRequests.length;

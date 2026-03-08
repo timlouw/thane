@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type { BuildContext, ComponentDefinition } from '../types.js';
 import { sourceCache } from './cache.js';
 import { extractComponentDefinitions } from './ast-utils.js';
@@ -27,13 +28,13 @@ export const collectFilesRecursively = async (
     try {
       const entries = await fs.promises.readdir(currentDir, { withFileTypes: true });
       for (const entry of entries) {
-        const fullPath = `${currentDir}/${entry.name}`;
+        const fullPath = path.join(currentDir, entry.name);
         if (entry.isDirectory()) {
           if (!excludeDirs.has(entry.name)) {
             await collect(fullPath);
           }
         } else if (entry.isFile() && filter(entry.name)) {
-          files.push(fullPath);
+          files.push(path.normalize(fullPath));
         }
       }
     } catch (err) {

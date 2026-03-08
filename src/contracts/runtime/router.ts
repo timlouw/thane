@@ -15,7 +15,7 @@ export const ROUTER_FN = {
 export type RouterFunctionName = (typeof ROUTER_FN)[keyof typeof ROUTER_FN];
 
 export const ROUTER_PROP = {
-  /** Property name for the lazy component loader in a route definition */
+  /** Property name for the route component entry (lazy loader or eager component) */
   COMPONENT: 'component',
   /** Property name for the route title */
   TITLE: 'title',

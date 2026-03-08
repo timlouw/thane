@@ -75,6 +75,24 @@ export class DevServer {
     }
   }
 
+  stop(): void {
+    for (const client of this.sseClients) {
+      try {
+        client.controller.close();
+      } catch {
+        /* client already closed */
+      }
+    }
+    this.sseClients = [];
+
+    if (this.server) {
+      this.server.stop(true);
+      this.server = null;
+    }
+
+    this.serverStarted = false;
+  }
+
   start(port: number = this.serverPort): void {
     const { distDir, isProd, useGzip } = this.options;
 

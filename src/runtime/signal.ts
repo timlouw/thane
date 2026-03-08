@@ -94,7 +94,7 @@ let _notificationDepth = 0;
 let _computedFlushHook: (() => void) | null = null;
 
 /** @internal — called once by `computed()` to wire into the notification loop. */
-export function _installComputedFlush(hook: () => void): void {
+function _installComputedFlush(hook: () => void): void {
   _computedFlushHook = hook;
 }
 

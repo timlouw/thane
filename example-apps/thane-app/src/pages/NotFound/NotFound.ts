@@ -1,7 +1,6 @@
 import { defineComponent } from 'thane';
 import styles from './NotFound.module.css';
 import type { RouteError } from '../../models/router.models.js';
-import { currentPath } from '../../state/global-state.js';
 
 type NotFoundProps = {
   propsError?: RouteError;
@@ -9,7 +8,6 @@ type NotFoundProps = {
 
 export const NotFound = defineComponent<NotFoundProps>('not-found-page', ({ props }) => {
   const returnHome = () => {
-    currentPath('/');
     navigate('/');
   };
 

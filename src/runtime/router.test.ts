@@ -160,6 +160,16 @@ describe('matchRoute', () => {
 // ─────────────────────────────────────────────────────────────
 
 describe('defineRoutes', () => {
+  test('accepts eager component routes', () => {
+    const eagerComponent = { __f: () => ({ root: {} as any }) } as any;
+    const routes = defineRoutes({
+      '/': { component: eagerComponent, title: 'Home' },
+      'notFound': stubNotFound,
+    });
+
+    expect(routes['/']?.component).toBe(eagerComponent);
+  });
+
   test('returns the same routes object (identity function)', () => {
     const routes = {
       '/': stubRoute('Home'),
@@ -272,5 +282,16 @@ describe('matchRoute + defineRoutes integration', () => {
 
     const missResult = matchRoute('/nope', routeMap, notFound);
     expect(missResult!.route.title).toBe('404');
+  });
+});
+
+describe('currentPath global', () => {
+  test('is exposed as a readable signal-like global', () => {
+    const currentPathGlobal = (globalThis as any).currentPath;
+
+    expect(currentPathGlobal).toBeTruthy();
+    expect(typeof currentPathGlobal).toBe('function');
+    expect(typeof currentPathGlobal.subscribe).toBe('function');
+    expect(currentPathGlobal()).toBe('');
   });
 });

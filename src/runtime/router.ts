@@ -13,17 +13,19 @@
  *      created or required.
  *
  * Hash-stability guarantees:
- *   • navigate / navigateBack / getRouteParam are generic functions with zero
+ *   • navigate / navigateBack are generic functions with zero
  *     knowledge of user routes — they live in the thane shared chunk.
  *   • The ROUTES map is only imported by the file that calls mount(), so changing
  *     a single page only invalidates that page's chunk.
- *   • Type safety for paths uses the Register pattern — no compiler-generated
- *     .d.ts files are needed.
+ *   • Route typing is updated by hidden generated .d.ts files during normal
+ *     Thane commands, so page components can read `route.params` locally.
  */
 
 import type { MountHandle, ComponentHTMLSelector } from './component.js';
-import { mountComponent, unmount, __setRouterMount } from './component.js';
+import { mountComponent, unmount, __setRouteContextProvider, __setRouterMount } from './component.js';
 import type { MountOptions } from './component.js';
+import { signal } from './signal.js';
+import type { ReadonlySignal, Signal } from './types.js';
 
 // ─────────────────────────────────────────────────────────────
 //  Register pattern — module augmentation for type-safe routes
@@ -31,7 +33,7 @@ import type { MountOptions } from './component.js';
 
 /**
  * Augment this interface via `declare module 'thane'` to enable
- * type-safe `navigate()` and `getRouteParam()`.
+ * type-safe `navigate()`.
  *
  * ```ts
  * const Routes = defineRoutes({ ... });
@@ -42,8 +44,18 @@ import type { MountOptions } from './component.js';
  * }
  * ```
  */
+declare global {
+  namespace ThaneTypeRegistry {
+    interface Register {}
+    interface RouteComponentRegister {}
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface Register {}
+export interface Register extends ThaneTypeRegistry.Register {}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface RouteComponentRegister extends ThaneTypeRegistry.RouteComponentRegister {}
 
 // ─────────────────────────────────────────────────────────────
 //  Type-safe route path utilities
@@ -63,11 +75,6 @@ export type RouteToPath<T extends string> = T extends `${infer Before}:${infer _
 /** Exclude the special `notFound` key when computing navigable paths / params. */
 type RouteKeys<T> = Exclude<keyof T & string, 'notFound'>;
 
-/** Union of all navigable paths, expanding parameterised patterns. */
-type NavigablePaths<T extends Record<string, any>> = {
-  [K in RouteKeys<T>]: RouteToPath<K>;
-}[RouteKeys<T>];
-
 /** Extracts all parameter names from all route patterns. */
 type ExtractParams<T extends string> = T extends `${string}:${infer Param}/${infer Rest}`
   ? Param | ExtractParams<Rest>
@@ -75,19 +82,79 @@ type ExtractParams<T extends string> = T extends `${string}:${infer Param}/${inf
     ? Param
     : never;
 
-type AllRouteParams<T extends Record<string, any>> = ExtractParams<RouteKeys<T>>;
+export type ExtractRouteParams<T extends string> = ExtractParams<T>;
+
+declare const ROUTE_PATHS: unique symbol;
+
+type RouteMetadata<T extends Record<string, any>> = {
+  readonly [ROUTE_PATHS]?: RouteKeys<T>;
+};
+
+type RegisteredRoutePaths<T extends Record<string, any>> = T extends { readonly [ROUTE_PATHS]?: infer P extends string }
+  ? P
+  : RouteKeys<T>;
+
+type EffectiveRegister = ThaneTypeRegistry.Register & Register;
+type EffectiveRouteComponentRegister = ThaneTypeRegistry.RouteComponentRegister & RouteComponentRegister;
+
+type ExplicitRegisterRoutePaths = EffectiveRegister extends { routePaths: infer P extends string } ? P : never;
+type ExplicitRegisterRouteParamNames = EffectiveRegister extends { routeParamNames: infer P extends string } ? P : never;
+type RegisteredRoutePatterns = [ExplicitRegisterRoutePaths] extends [never]
+  ? EffectiveRegister extends { routes: infer R extends Record<string, any> }
+    ? RegisteredRoutePaths<R>
+    : never
+  : ExplicitRegisterRoutePaths;
 
 /** Resolves to the navigable path union when Register is augmented, else `string`. */
-export type RoutePaths = Register extends { routes: infer R extends Record<string, any> } ? NavigablePaths<R> : string;
+export type RoutePaths = [RegisteredRoutePatterns] extends [never] ? string : RouteToPath<RegisteredRoutePatterns>;
 
 /** Resolves to the route param name union when Register is augmented, else `string`. */
-export type RouteParamNames = Register extends { routes: infer R extends Record<string, any> }
-  ? AllRouteParams<R>
-  : string;
+export type RouteParamNames = [ExplicitRegisterRouteParamNames] extends [never]
+  ? [RegisteredRoutePatterns] extends [never]
+    ? string
+    : ExtractRouteParams<RegisteredRoutePatterns>
+  : ExplicitRegisterRouteParamNames;
+
+export type RouteParamsObject<T extends string> = [ExtractRouteParams<T>] extends [never]
+  ? Record<string, never>
+  : { readonly [K in ExtractRouteParams<T>]: string };
+
+type RegisteredRoutePatternForSelector<S extends string> = S extends keyof EffectiveRouteComponentRegister
+  ? EffectiveRouteComponentRegister[S] extends string
+    ? EffectiveRouteComponentRegister[S]
+    : never
+  : never;
+
+type RouteContextBase<TPattern extends string, TPath extends string, TParams> = Readonly<{
+  pattern: TPattern;
+  path: TPath;
+  params: TParams;
+  searchParams: URLSearchParams;
+  hash: string;
+  title: string;
+  state: unknown;
+}>;
+
+type ResolvedRouteContext<TPattern extends string> = TPattern extends 'notFound'
+  ? RouteContextBase<'notFound', string, Record<string, never>>
+  : RouteContextBase<TPattern, RouteToPath<TPattern>, RouteParamsObject<TPattern>>;
+
+export interface UntypedRouteContext extends RouteContextBase<string, string, Record<string, string>> {
+  /** @deprecated Run thane dev, thane build, or thane serve once to generate route-aware component types. */
+  readonly params: Record<string, string>;
+}
+
+export type RouteContextForSelector<S extends string> = [RegisteredRoutePatternForSelector<S>] extends [never]
+  ? UntypedRouteContext
+  : ResolvedRouteContext<RegisteredRoutePatternForSelector<S>>;
 
 // ─────────────────────────────────────────────────────────────
 //  Public types
 // ─────────────────────────────────────────────────────────────
+
+export type LazyRouteComponent = () => Promise<any>;
+export type EagerRouteComponent = ComponentHTMLSelector<any>;
+export type RouteComponent = LazyRouteComponent | EagerRouteComponent;
 
 /**
  * A single route definition.
@@ -100,8 +167,8 @@ export type RouteParamNames = Register extends { routes: infer R extends Record<
  * ```
  */
 export interface Route {
-  /** Lazy loader that resolves to the component factory (return value of defineComponent). */
-  component: () => Promise<any>;
+  /** Lazy loader or eager page component (return value of defineComponent). */
+  component: RouteComponent;
   /** Optional document title to set when this route is active. */
   title?: string | undefined;
 }
@@ -117,6 +184,22 @@ export type RoutesMap<T extends string = string> = Record<T, Route>;
  * The return type of `defineRoutes()` — a routes map with a mandatory `notFound` route.
  */
 export type RoutesConfig = Record<string, Route> & { notFound: Route };
+type RouteRecordFromKeys<K extends string> = Record<Exclude<K, 'notFound'>, Route> & { notFound: Route };
+export type RegisteredRoutes<K extends string = string> = RouteRecordFromKeys<K> &
+  RouteMetadata<RouteRecordFromKeys<K>>;
+
+export interface ScrollRestorationConfig {
+  /** Scroll behavior to use when applying restoration or reset. */
+  behavior?: ScrollBehavior | undefined;
+  /** Left offset used when resetting on programmatic navigation. */
+  left?: number | undefined;
+  /** Top offset used when resetting on programmatic navigation. */
+  top?: number | undefined;
+  /** Reset scroll on navigate(path). Defaults to true. */
+  resetOnNavigate?: boolean | undefined;
+  /** Restore saved positions on browser back/forward. Defaults to true. */
+  restoreOnBackForward?: boolean | undefined;
+}
 
 /**
  * Options for the `router` property of `mount()`.
@@ -137,6 +220,8 @@ export interface RouterConfig {
    * Must match the pattern `router-${string}`.
    */
   outletId?: `router-${string}` | undefined;
+  /** Enable or configure router-managed scroll restoration. Defaults to enabled. */
+  scrollRestoration?: boolean | ScrollRestorationConfig | undefined;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -157,7 +242,7 @@ type ValidateRoutes<T extends Record<string, Route>> = {
  *
  * Includes route patterns mapped to `Route` objects plus a mandatory `notFound`
  * fallback route.  This is an identity function at runtime — its purpose is to
- * preserve literal string keys so that `navigate()` and `getRouteParam()` get
+ * preserve literal string keys so that `navigate()` gets
  * full autocomplete and compile-time checking via the Register pattern.
  *
  * ```ts
@@ -172,9 +257,7 @@ type ValidateRoutes<T extends Record<string, Route>> = {
  *
  * @throws {Error} At runtime if any route key is a root-level param (`/:...`).
  */
-export function defineRoutes<const T extends Record<string, Route> & { notFound: Route }>(
-  routes: ValidateRoutes<T> & T,
-): T {
+export function defineRoutes<const T extends RoutesConfig>(routes: ValidateRoutes<T> & T): RegisteredRoutes<keyof T & string> {
   // Register the router mount handler with component.ts so mount() can delegate.
   // This is the entry point that activates routing — if defineRoutes is never called,
   // mount() won't find a router and the entire router module is tree-shaken away.
@@ -196,7 +279,7 @@ export function defineRoutes<const T extends Record<string, Route> & { notFound:
         );
       }
 
-      startRouter({ routes: routeMap, notFound }, outlet);
+      startRouter({ routes: routeMap, notFound }, outlet, routerConfig);
 
       return {
         root: shellHandle.root,
@@ -208,7 +291,7 @@ export function defineRoutes<const T extends Record<string, Route> & { notFound:
     }
 
     // ── Mode C: router only (no shell) ──
-    startRouter({ routes: routeMap, notFound }, target);
+    startRouter({ routes: routeMap, notFound }, target, routerConfig);
     return {
       root: target as any,
       destroy: () => {
@@ -226,7 +309,7 @@ export function defineRoutes<const T extends Record<string, Route> & { notFound:
       );
     }
   }
-  return routes;
+  return routes as RegisteredRoutes<keyof T & string>;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -235,17 +318,190 @@ export function defineRoutes<const T extends Record<string, Route> & { notFound:
 
 let _config: { routes: RoutesMap; notFound: Route } | null = null;
 let _target: HTMLElement | null = null;
-let _currentPath = '';
+const _currentPath: Signal<string> = signal<string>(typeof window !== 'undefined' ? window.location.pathname : '');
 let _currentHandle: MountHandle | null = null;
+let _currentRoutePattern = typeof window !== 'undefined' ? window.location.pathname : '';
+let _currentRouteTitle = typeof document !== 'undefined' ? document.title : '';
 let _routeParams: Record<string, string> = {};
 let _started = false;
-let _popstateHandler: (() => void) | null = null;
+let _popstateHandler: ((event: PopStateEvent) => void) | null = null;
+let _scrollHandler: (() => void) | null = null;
+let _previousHistoryScrollRestoration: History['scrollRestoration'] | null = null;
+let _pendingScrollAction: 'init' | 'navigate' | 'pop' = 'init';
+let _pendingPopScrollPosition: { left: number; top: number } | null = null;
+let _scrollPersistScheduled = false;
+let _scrollPositions = new Map<string, { left: number; top: number }>();
+
+interface NormalizedScrollRestorationConfig {
+  enabled: boolean;
+  behavior: ScrollBehavior;
+  left: number;
+  top: number;
+  resetOnNavigate: boolean;
+  restoreOnBackForward: boolean;
+}
+
+const DEFAULT_SCROLL_RESTORATION: NormalizedScrollRestorationConfig = {
+  enabled: true,
+  behavior: 'auto',
+  left: 0,
+  top: 0,
+  resetOnNavigate: true,
+  restoreOnBackForward: true,
+};
+
+let _scrollConfig: NormalizedScrollRestorationConfig = DEFAULT_SCROLL_RESTORATION;
+
+const SCROLL_STATE_KEY = '__thaneScroll';
+
+const currentPathSignal = _currentPath as ReadonlySignal<string>;
+
+const installCurrentPathGlobal = (): void => {
+  (globalThis as { currentPath?: ReadonlySignal<string> }).currentPath = currentPathSignal;
+};
+
+installCurrentPathGlobal();
+
+const createCurrentRouteContext = (): UntypedRouteContext => ({
+  params: { ..._routeParams },
+  path: typeof window !== 'undefined' ? window.location.pathname : _currentPath(),
+  pattern: _currentRoutePattern,
+  searchParams: new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
+  hash: typeof window !== 'undefined' ? window.location.hash : '',
+  title: _currentRouteTitle,
+  state: typeof window !== 'undefined' ? window.history.state : undefined,
+});
+
+__setRouteContextProvider(() => createCurrentRouteContext());
+
+const normalizeScrollRestoration = (config?: boolean | ScrollRestorationConfig): NormalizedScrollRestorationConfig => {
+  if (config === false) {
+    return { ...DEFAULT_SCROLL_RESTORATION, enabled: false };
+  }
+  if (config === true || config === undefined) {
+    return { ...DEFAULT_SCROLL_RESTORATION };
+  }
+
+  return {
+    enabled: true,
+    behavior: config.behavior ?? DEFAULT_SCROLL_RESTORATION.behavior,
+    left: config.left ?? DEFAULT_SCROLL_RESTORATION.left,
+    top: config.top ?? DEFAULT_SCROLL_RESTORATION.top,
+    resetOnNavigate: config.resetOnNavigate ?? DEFAULT_SCROLL_RESTORATION.resetOnNavigate,
+    restoreOnBackForward: config.restoreOnBackForward ?? DEFAULT_SCROLL_RESTORATION.restoreOnBackForward,
+  };
+};
+
+const readScrollPositionFromHistoryState = (state: unknown): { left: number; top: number } | null => {
+  if (!state || typeof state !== 'object' || !(SCROLL_STATE_KEY in state)) return null;
+
+  const candidate = (state as Record<string, unknown>)[SCROLL_STATE_KEY];
+  if (!candidate || typeof candidate !== 'object') return null;
+
+  const left = (candidate as Record<string, unknown>)['left'];
+  const top = (candidate as Record<string, unknown>)['top'];
+  if (typeof left !== 'number' || typeof top !== 'number') return null;
+
+  return { left, top };
+};
+
+const persistCurrentScrollPosition = (): void => {
+  if (!_scrollConfig.enabled || typeof window === 'undefined') return;
+
+  _scrollPositions.set(window.location.pathname, { left: window.scrollX, top: window.scrollY });
+
+  const currentState = window.history.state;
+  const baseState = currentState && typeof currentState === 'object' ? currentState : {};
+  window.history.replaceState(
+    {
+      ...baseState,
+      [SCROLL_STATE_KEY]: { left: window.scrollX, top: window.scrollY },
+    },
+    '',
+    window.location.pathname,
+  );
+};
+
+const schedulePersistCurrentScrollPosition = (): void => {
+  if (_scrollPersistScheduled || typeof window === 'undefined') return;
+
+  _scrollPersistScheduled = true;
+  requestAnimationFrame(() => {
+    _scrollPersistScheduled = false;
+    persistCurrentScrollPosition();
+  });
+};
+
+const applyScrollPosition = (pathname: string): void => {
+  if (!_scrollConfig.enabled || typeof window === 'undefined') return;
+
+  const action = _pendingScrollAction;
+  _pendingScrollAction = 'init';
+
+  const saved =
+    action === 'pop' && _scrollConfig.restoreOnBackForward
+      ? (_pendingPopScrollPosition ?? _scrollPositions.get(pathname))
+      : undefined;
+  const target =
+    saved ??
+    (action === 'navigate' && _scrollConfig.resetOnNavigate
+      ? { left: _scrollConfig.left, top: _scrollConfig.top }
+      : undefined);
+
+  _pendingPopScrollPosition = null;
+
+  if (!target) return;
+
+  const apply = () => {
+    window.scrollTo({ left: target.left, top: target.top, behavior: _scrollConfig.behavior });
+  };
+
+  queueMicrotask(() => {
+    requestAnimationFrame(() => {
+      apply();
+      if (action === 'pop') {
+        requestAnimationFrame(apply);
+        setTimeout(apply, 50);
+        setTimeout(apply, 150);
+        setTimeout(apply, 300);
+        setTimeout(apply, 500);
+        setTimeout(apply, 800);
+      }
+    });
+  });
+};
+
+const isEagerRouteComponent = (value: unknown): value is ComponentHTMLSelector<any> => {
+  return !!value && typeof value === 'object' && '__f' in value;
+};
+
+const normalizeLoadedRouteComponent = (value: unknown): ComponentHTMLSelector<any> | undefined => {
+  if (isEagerRouteComponent(value)) {
+    return value;
+  }
+
+  if (value && typeof value === 'object' && 'default' in value) {
+    return normalizeLoadedRouteComponent((value as { default?: unknown }).default);
+  }
+
+  return undefined;
+};
+
+const resolveRouteComponent = async (route: Route): Promise<ComponentHTMLSelector<any> | undefined> => {
+  if (isEagerRouteComponent(route.component)) {
+    return route.component;
+  }
+
+  const mod = await route.component();
+  return normalizeLoadedRouteComponent(mod);
+};
 
 // ─────────────────────────────────────────────────────────────
 //  Route matching
 // ─────────────────────────────────────────────────────────────
 
 interface MatchResult {
+  pattern: string;
   route: Route;
   params: Record<string, string>;
 }
@@ -254,7 +510,7 @@ interface MatchResult {
 export const matchRoute = (pathname: string, routes: RoutesMap, notFound?: Route): MatchResult | null => {
   // 1. Exact match (fastest path)
   if (routes[pathname]) {
-    return { route: routes[pathname]!, params: {} };
+    return { pattern: pathname, route: routes[pathname]!, params: {} };
   }
 
   // 2. Parameterised match (:param segments)
@@ -278,13 +534,13 @@ export const matchRoute = (pathname: string, routes: RoutesMap, notFound?: Route
     }
 
     if (matched) {
-      return { route: routes[pattern]!, params };
+      return { pattern, route: routes[pattern]!, params };
     }
   }
 
   // 3. Not found
   if (notFound) {
-    return { route: notFound, params: {} };
+    return { pattern: 'notFound', route: notFound, params: {} };
   }
 
   return null;
@@ -300,7 +556,7 @@ const loadRoute = async (): Promise<void> => {
   const pathname = window.location.pathname;
 
   // Skip if already on this path (guard against redundant popstate)
-  if (pathname === _currentPath && _currentHandle) return;
+  if (pathname === _currentPath() && _currentHandle) return;
 
   // Tear down current route
   if (_currentHandle) {
@@ -309,34 +565,35 @@ const loadRoute = async (): Promise<void> => {
     _currentHandle = null;
   }
 
-  _currentPath = pathname;
+  _currentPath(pathname);
 
   const match = matchRoute(pathname, _config.routes, _config.notFound);
   if (!match) {
+    _currentRoutePattern = pathname;
+    _currentRouteTitle = typeof document !== 'undefined' ? document.title : '';
     _routeParams = {};
     _target.innerHTML = '';
     return;
   }
 
+  _currentRoutePattern = match.pattern;
   _routeParams = match.params;
 
   // Set document title if provided
   if (match.route.title) {
     document.title = match.route.title;
   }
+  _currentRouteTitle = match.route.title ?? (typeof document !== 'undefined' ? document.title : '');
 
   try {
-    const mod = await match.route.component();
-    // The dynamic import may return the component directly or as a module
-    // with a default export.  Normalise both forms.
-    const component: ComponentHTMLSelector<any> | undefined =
-      mod && typeof mod === 'object' && '__f' in mod ? mod : (mod?.default ?? mod);
+    const component = await resolveRouteComponent(match.route);
 
     // Guard: the user may have navigated away while we were loading
-    if (window.location.pathname !== _currentPath) return;
+    if (window.location.pathname !== _currentPath()) return;
 
     if (component) {
-      _currentHandle = mountComponent(component, _target);
+      _currentHandle = mountComponent(component, _target, undefined, { route: createCurrentRouteContext() });
+      applyScrollPosition(pathname);
     }
   } catch (error) {
     console.error('[thane-router] Failed to load route:', error);
@@ -353,8 +610,10 @@ const loadRoute = async (): Promise<void> => {
  * Type-safe when the Register interface is augmented with `routes`.
  */
 export function navigate(path: RoutePaths): void {
-  if (_currentPath === path) return;
-  window.history.pushState({}, '', path);
+  if (_currentPath() === path) return;
+  persistCurrentScrollPosition();
+  _pendingScrollAction = 'navigate';
+  window.history.pushState({ [SCROLL_STATE_KEY]: { left: _scrollConfig.left, top: _scrollConfig.top } }, '', path);
   void loadRoute();
 }
 
@@ -366,17 +625,6 @@ export function navigateBack(): void {
 }
 
 /**
- * Retrieve the value of a named route parameter from the current URL.
- *
- * For a route pattern `/users/:id` matched against `/users/42`,
- * `getRouteParam('id')` returns `'42'`.
- *
- * Type-safe when the Register interface is augmented with `routes`.
- */
-export function getRouteParam(name: RouteParamNames): string {
-  return _routeParams[name as string] ?? '';
-}
-
 // ─────────────────────────────────────────────────────────────
 //  Router lifecycle — called internally by mount()
 // ─────────────────────────────────────────────────────────────
@@ -390,7 +638,11 @@ export function getRouteParam(name: RouteParamNames): string {
  * @param config - Router configuration with routes map and notFound.
  * @param target - The element to render pages into (outlet in Mode B, body/target in Mode C).
  */
-export function startRouter(config: { routes: RoutesMap; notFound: Route }, target: HTMLElement): void {
+export function startRouter(
+  config: { routes: RoutesMap; notFound: Route },
+  target: HTMLElement,
+  routerConfig?: Pick<RouterConfig, 'scrollRestoration'>,
+): void {
   if (_started) {
     console.warn('[thane-router] Router already started — only one instance is allowed.');
     return;
@@ -398,16 +650,34 @@ export function startRouter(config: { routes: RoutesMap; notFound: Route }, targ
   _started = true;
   _config = config;
   _target = target;
+  _scrollConfig = normalizeScrollRestoration(routerConfig?.scrollRestoration);
+  _pendingPopScrollPosition =
+    typeof window !== 'undefined' ? readScrollPositionFromHistoryState(window.history.state) : null;
+  _pendingScrollAction = _pendingPopScrollPosition ? 'pop' : 'init';
 
   // Expose navigation helpers globally (like when, whenElse, repeat)
   const g = globalThis as any;
+  g.currentPath = currentPathSignal;
   g.navigate = navigate;
   g.navigateBack = navigateBack;
-  g.getRouteParam = getRouteParam;
+
+  if (_scrollConfig.enabled && typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
+    _previousHistoryScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = 'manual';
+  }
+
+  if (_scrollConfig.enabled && typeof window !== 'undefined') {
+    persistCurrentScrollPosition();
+    _scrollHandler = () => {
+      schedulePersistCurrentScrollPosition();
+    };
+    window.addEventListener('scroll', _scrollHandler, { passive: true });
+  }
 
   // Listen for browser back/forward
-  _popstateHandler = () => {
-    _currentPath = '';
+  _popstateHandler = (event?: PopStateEvent) => {
+    _pendingPopScrollPosition = readScrollPositionFromHistoryState(event?.state);
+    _pendingScrollAction = 'pop';
     void loadRoute();
   };
   window.addEventListener('popstate', _popstateHandler);
@@ -437,15 +707,35 @@ export function stopRouter(): void {
     _popstateHandler = null;
   }
 
+  if (_scrollHandler) {
+    window.removeEventListener('scroll', _scrollHandler);
+    _scrollHandler = null;
+  }
+
   // Remove globals
   const g = globalThis as any;
   delete g.navigate;
   delete g.navigateBack;
-  delete g.getRouteParam;
 
   _config = null;
   _target = null;
-  _currentPath = '';
+  _currentPath(typeof window !== 'undefined' ? window.location.pathname : '');
+  _currentRoutePattern = typeof window !== 'undefined' ? window.location.pathname : '';
+  _currentRouteTitle = typeof document !== 'undefined' ? document.title : '';
   _routeParams = {};
   _started = false;
+  _pendingPopScrollPosition = null;
+  _scrollPositions = new Map<string, { left: number; top: number }>();
+  _scrollConfig = DEFAULT_SCROLL_RESTORATION;
+  _pendingScrollAction = 'init';
+  _scrollPersistScheduled = false;
+
+  if (
+    _previousHistoryScrollRestoration !== null &&
+    typeof window !== 'undefined' &&
+    'scrollRestoration' in window.history
+  ) {
+    window.history.scrollRestoration = _previousHistoryScrollRestoration;
+    _previousHistoryScrollRestoration = null;
+  }
 }

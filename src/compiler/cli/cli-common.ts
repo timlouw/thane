@@ -4,9 +4,11 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import type { CLIOptions, BuildConfig, ThaneBuildOptions, ThaneConfigFile } from './types.js';
 import { runBuild } from './build.js';
+import { syncProjectTypes } from '../plugins/router-typegen/router-typegen.js';
+import { runProjectTypeCheck } from '../plugins/tsc-type-checker/tsc-type-checker.js';
 import { logger } from '../utils/index.js';
 
-const COMMANDS = new Set(['build', 'dev', 'serve']);
+const COMMANDS = new Set(['build', 'dev', 'serve', 'types', 'typecheck']);
 
 const DEFAULT_OPTIONS: CLIOptions = {
   command: 'build',
@@ -393,6 +395,8 @@ Commands:
   build       Build the application
   dev         Start development server with watch mode
   serve       Build and serve the application
+  types       Generate hidden .thane types without building
+  typecheck   Run Thane-aware TypeScript checking without building
 
 Options:
   --prod, -p          Production build (default: development)
@@ -435,6 +439,8 @@ Examples:
   thane dev                    Start dev server
   thane build --prod           Production build
   thane serve --prod --gzip    Production build with gzip and server
+  thane types                  Generate hidden project types only
+  thane typecheck              Run typecheck with generated .thane types included
   thane build --verbose        Build with detailed logging
 `);
 }
@@ -519,6 +525,19 @@ export async function cliMain(): Promise<void> {
 
   // Wire log level from CLI flags
   logger.setLevel(cliOptions.logLevel);
+
+  if (cliOptions.command === 'types') {
+    const generatedCount = await syncProjectTypes();
+    if (generatedCount > 0) {
+      logger.info('types-sync', `Generated hidden type file(s) for ${generatedCount} route table(s)`);
+    }
+    return;
+  }
+
+  if (cliOptions.command === 'typecheck') {
+    await runProjectTypeCheck({ strict: true });
+    return;
+  }
 
   const buildConfig = createBuildConfig(cliOptions);
   await runBuild(buildConfig);

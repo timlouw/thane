@@ -36,7 +36,7 @@ const optimizeOutput = (source: string): string => {
   }
 };
 
-export const JsOutputOptimizerPlugin: Plugin = {
+export const JSOutputOptimizerPlugin: Plugin = {
   name: NAME,
   setup(build) {
     build.onEnd(async (result) => {

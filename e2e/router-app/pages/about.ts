@@ -14,6 +14,7 @@ export const AboutPage = defineComponent('about-page', () => {
         <button data-testid="about-set-message" @click=${setMessage}>Set Message</button>
         <div data-testid="about-visit-count">${visitCount()}</div>
         <div data-testid="about-shared-message">${sharedMessage()}</div>
+        <div data-testid="about-spacer" style="height: 1800px;"></div>
       </section>
     `,
   };

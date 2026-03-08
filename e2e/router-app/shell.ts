@@ -1,4 +1,4 @@
-import { defineComponent, signal } from 'thane';
+import { defineComponent } from 'thane';
 import { visitCount, sharedMessage } from './store.js';
 
 export const Shell = defineComponent('router-shell', () => {
@@ -9,6 +9,7 @@ export const Shell = defineComponent('router-shell', () => {
         <nav data-testid="nav">
           <a
             data-testid="nav-home"
+            class=${currentPath() === '/' ? 'active' : ''}
             href="/"
             @click=${(e: Event) => {
               e.preventDefault();
@@ -18,6 +19,7 @@ export const Shell = defineComponent('router-shell', () => {
           >
           <a
             data-testid="nav-about"
+            class=${currentPath() === '/about' ? 'active' : ''}
             href="/about"
             @click=${(e: Event) => {
               e.preventDefault();
@@ -27,6 +29,7 @@ export const Shell = defineComponent('router-shell', () => {
           >
           <a
             data-testid="nav-user"
+            class=${currentPath() === '/users/42' ? 'active' : ''}
             href="/users/42"
             @click=${(e: Event) => {
               e.preventDefault();
@@ -35,6 +38,7 @@ export const Shell = defineComponent('router-shell', () => {
             >User 42</a
           >
         </nav>
+        <div data-testid="current-path">${currentPath()}</div>
         <div data-testid="shell-visit-count">${visitCount()}</div>
         <div data-testid="shell-message">${sharedMessage()}</div>
       </header>

@@ -1,10 +1,10 @@
 import { defineComponent, signal } from 'thane';
 import { visitCount } from '../store.js';
 
-export const UserPage = defineComponent('user-page', () => {
+export const UserPage = defineComponent('user-page', ({ route }) => {
   visitCount(visitCount() + 1);
 
-  const userId = signal(getRouteParam('id'));
+  const userId = signal(route.params.id);
 
   return {
     template: html`

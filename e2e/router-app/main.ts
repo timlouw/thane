@@ -4,5 +4,8 @@ import Routes from './routes.js';
 
 mount({
   component: Shell,
-  router: { routes: Routes },
+  router: {
+    routes: Routes,
+    scrollRestoration: true,
+  },
 });

@@ -16,6 +16,7 @@ export const HomePage = defineComponent('home-page', () => {
         <button data-testid="home-increment" @click=${increment}>+1</button>
         <button data-testid="home-set-message" @click=${setMessage}>Set Message</button>
         <div data-testid="home-visit-count">${visitCount()}</div>
+        <div data-testid="home-spacer" style="height: 2200px;"></div>
       </section>
     `,
   };

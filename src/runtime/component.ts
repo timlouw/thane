@@ -3,6 +3,7 @@
  * Uses native DOM (no Shadow DOM). Scoped styles via adoptedStyleSheets.
  */
 
+import type { RouteContextForSelector, UntypedRouteContext } from './router.js';
 import type { ComponentRoot } from './types.js';
 
 // ============================================================================
@@ -15,11 +16,13 @@ export type ComponentHTMLSelector<T> = (props: T) => string;
 /**
  * Context object passed to the defineComponent setup function.
  */
-export interface ComponentContext<P = {}> {
+export interface ComponentContext<P = {}, S extends string = string> {
   /** The host element containing component content */
   root: ComponentRoot;
   /** Props passed to the component (typed via generic) */
   props: Readonly<P>;
+  /** Current route snapshot. Narrowed for routed pages after router types are generated. */
+  route: RouteContextForSelector<S>;
 }
 
 /**
@@ -45,7 +48,7 @@ interface InternalComponentResult extends ComponentReturnType {
 }
 
 /** Setup function signature for defineComponent. */
-type SetupFunction<P = {}> = (ctx: ComponentContext<P>) => ComponentReturnType;
+type SetupFunction<P = {}, S extends string = string> = (ctx: ComponentContext<P, S>) => ComponentReturnType;
 
 /** @internal */
 interface ComponentInstance {
@@ -56,13 +59,30 @@ interface ComponentInstance {
 
 /** @internal */
 interface ComponentRef {
-  __f: (target: HTMLElement, props?: any) => ComponentInstance;
+  __f: (target: HTMLElement, props?: any, extras?: { route?: UntypedRouteContext | undefined }) => ComponentInstance;
   [templateName: string]: unknown;
 }
 
 /** @internal */
-interface SetupWithSelector<P = {}> extends SetupFunction<P> {
+interface SetupWithSelector<P = {}, S extends string = string> extends SetupFunction<P, S> {
   __selector: string;
+}
+
+const createFallbackRouteContext = (): UntypedRouteContext => ({
+  params: {},
+  path: typeof window !== 'undefined' ? window.location.pathname : '',
+  pattern: typeof window !== 'undefined' ? window.location.pathname : '',
+  searchParams: new URLSearchParams(typeof window !== 'undefined' ? window.location.search : ''),
+  hash: typeof window !== 'undefined' ? window.location.hash : '',
+  title: typeof document !== 'undefined' ? document.title : '',
+  state: typeof window !== 'undefined' ? window.history.state : undefined,
+});
+
+let _getRouteContext = (): UntypedRouteContext => createFallbackRouteContext();
+
+/** @internal */
+export function __setRouteContextProvider(provider: () => UntypedRouteContext): void {
+  _getRouteContext = provider;
 }
 
 // ============================================================================
@@ -281,25 +301,25 @@ export function __enableComponentStyles(): void {
  * }));
  */
 export function defineComponent<P extends ComponentProps = {}>(setup: SetupFunction<P>): ComponentHTMLSelector<P>;
-export function defineComponent<P extends ComponentProps = {}>(
-  selector: string,
-  setup: SetupFunction<P>,
+export function defineComponent<P extends ComponentProps = {}, const S extends string = string>(
+  selector: S,
+  setup: SetupFunction<P, S>,
 ): ComponentHTMLSelector<P>;
 export function defineComponent<P extends ComponentProps = {}>(
-  selectorOrSetup: string | SetupFunction<P>,
-  maybeSetup?: SetupFunction<P> | any,
+  selectorOrSetup: string | SetupFunction<P, any>,
+  maybeSetup?: SetupFunction<P, any> | any,
   __compiledTemplate?: HTMLTemplateElement,
   ...extraStaticTemplates: any[]
 ): ComponentHTMLSelector<P> {
   let selector: string;
-  let setup: SetupFunction<P>;
+  let setup: SetupFunction<P, any>;
 
   if (typeof selectorOrSetup === 'string') {
     selector = selectorOrSetup;
-    setup = maybeSetup as SetupFunction<P>;
+      setup = maybeSetup as SetupFunction<P, any>;
   } else {
     // Auto-derived selector should have been injected by the compiler
-    selector = (selectorOrSetup as SetupWithSelector<P>).__selector;
+    selector = (selectorOrSetup as SetupWithSelector<P, any>).__selector;
     setup = selectorOrSetup;
     if (!selector) {
       throw new Error(
@@ -323,15 +343,20 @@ export function defineComponent<P extends ComponentProps = {}>(
   let stylesRegistered = false;
 
   // Create factory function for component instantiation
-  const factory = (target?: HTMLElement, props?: P): ComponentInstance => {
+  const factory = (
+    target?: HTMLElement,
+    props?: P,
+    extras?: { route?: UntypedRouteContext | undefined },
+  ): ComponentInstance => {
     if (!target) {
       throw new Error(`[thane] Component "${selector}" requires a target element to mount into.`);
     }
     target.classList.add(selector);
     const root = target as unknown as ComponentRoot;
-    const ctx: ComponentContext<P> = {
+    const ctx: ComponentContext<P, any> = {
       root,
       props: (props || {}) as Readonly<P>,
+      route: (extras?.route ?? _getRouteContext()) as RouteContextForSelector<any>,
     };
 
     const result = setup(ctx) as InternalComponentResult;
@@ -405,11 +430,19 @@ export function __registerComponent(
 ): any {
   let stylesRegistered = false;
 
-  const factory = (target: HTMLElement, props?: Record<string, any>): ComponentInstance => {
+  const factory = (
+    target: HTMLElement,
+    props?: Record<string, any>,
+    extras?: { route?: UntypedRouteContext | undefined },
+  ): ComponentInstance => {
     target.classList.add(selector);
     const root = target as ComponentRoot;
 
-    const ctx: ComponentContext = { root, props: (props || {}) as Readonly<any> };
+    const ctx: ComponentContext = {
+      root,
+      props: (props || {}) as Readonly<any>,
+      route: (extras?.route ?? _getRouteContext()) as RouteContextForSelector<any>,
+    };
     const result = setup(ctx) as InternalComponentResult;
 
     if (_onStyles && !stylesRegistered && result.styles) {
@@ -455,10 +488,18 @@ export function __registerComponentLean(
   setup: SetupFunction,
   compiledTemplate: HTMLTemplateElement,
 ): any {
-  const factory = (target: HTMLElement, props?: Record<string, any>): ComponentInstance => {
+  const factory = (
+    target: HTMLElement,
+    props?: Record<string, any>,
+    extras?: { route?: UntypedRouteContext | undefined },
+  ): ComponentInstance => {
     target.classList.add(selector);
     const root = target as ComponentRoot;
-    const ctx: ComponentContext = { root, props: (props || {}) as Readonly<any> };
+    const ctx: ComponentContext = {
+      root,
+      props: (props || {}) as Readonly<any>,
+      route: (extras?.route ?? _getRouteContext()) as RouteContextForSelector<any>,
+    };
     const result = setup(ctx) as InternalComponentResult;
     root.appendChild(compiledTemplate.content.cloneNode(true));
     const bindingsCleanup = result.__b ? result.__b(ctx) : undefined;
@@ -515,17 +556,18 @@ export function mountComponent(
   component: ComponentHTMLSelector<any>,
   target: HTMLElement = document.body,
   props?: Record<string, any>,
+  extras?: { route?: UntypedRouteContext | undefined },
 ): MountHandle {
   // Both registration paths (defineComponent, __registerComponent)
   // store the factory as __f on the ref.
-  const factory: ((t: HTMLElement, p?: Record<string, any>) => ComponentInstance) | undefined = (
+  const factory: ((t: HTMLElement, p?: Record<string, any>, e?: { route?: UntypedRouteContext | undefined }) => ComponentInstance) | undefined = (
     component as unknown as ComponentRef
   ).__f;
   if (!factory) {
     throw new Error('Invalid mount component');
   }
 
-  const instance = factory(target, props);
+  const instance = factory(target, props, extras);
   return {
     root: instance.root,
     destroy: () => {

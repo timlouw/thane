@@ -1,4 +1,4 @@
-import { defineComponent, signal } from 'thane';
+import { defineComponent } from 'thane';
 import styles from './Loader.module.css';
 
 type LoaderProps = {
@@ -6,13 +6,11 @@ type LoaderProps = {
 };
 
 export const Loader = defineComponent<LoaderProps>('ui-loader', ({ props }) => {
-  const text = signal(props.text);
-
   return {
     template: html`
       <div class="loaderContainer">
         <div class="spinner"></div>
-        <p>${text()}</p>
+        <p>${props.text}</p>
       </div>
     `,
     styles,

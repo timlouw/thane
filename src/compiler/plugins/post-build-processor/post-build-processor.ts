@@ -45,6 +45,7 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
   const config = options;
   let totalBundleSizeInBytes = 0;
   let fileSizeLog: { fileName: string; sizeInBytes: number }[] = [];
+  const cleanupCallbacks = new Set<() => void>();
 
   const devServer = new DevServer({
     distDir: config.distDir,
@@ -183,9 +184,11 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
         const { assetsInputDir, assetsOutputDir, serve, inputHTMLFilePath } = config;
         if (assetsInputDir && assetsOutputDir) {
           if (serve && !watchersStarted) {
-            watchAndRecursivelyCopyAssetsIntoDist(assetsInputDir, assetsOutputDir, () => {
-              devServer.notifyLiveReloadClients();
-            });
+            cleanupCallbacks.add(
+              watchAndRecursivelyCopyAssetsIntoDist(assetsInputDir, assetsOutputDir, () => {
+                devServer.notifyLiveReloadClients();
+              }),
+            );
           } else {
             await recursivelyCopyAssetsIntoDist(assetsInputDir, assetsOutputDir);
           }
@@ -196,12 +199,22 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
         }
 
         if (serve && !watchersStarted) {
-          watchFileForChanges(inputHTMLFilePath, () => {
-            console.info(consoleColors.blue, 'index.html changed, reloading...');
-            void reprocessAndReloadHTML();
-          });
+          cleanupCallbacks.add(
+            watchFileForChanges(inputHTMLFilePath, () => {
+              console.info(consoleColors.blue, 'index.html changed, reloading...');
+              void reprocessAndReloadHTML();
+            }),
+          );
           watchersStarted = true;
         }
+      });
+
+      build.onDispose(() => {
+        for (const cleanup of cleanupCallbacks) {
+          cleanup();
+        }
+        cleanupCallbacks.clear();
+        devServer.stop();
       });
     },
   };

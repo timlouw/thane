@@ -131,14 +131,6 @@ There is no way to pass data from an ancestor component to a deeply nested desce
 
 ---
 
-### Router Global Functions Have No Runtime Implementation
-
-`navigate()`, `navigateBack()`, and `getRouteParam()` are declared as globals in the runtime type definitions but have no runtime implementation exported from `thane`.
-
-**Why:** The routes precompiler injects selector strings into route config objects at compile time (CTFE). The routing runtime — URL matching, history API integration, outlet rendering — is expected to be provided by the user or a companion router library. This is a documentation and architecture gap rather than a fully deliberate design: the intent was to provide a full router but it was not completed.
-
----
-
 ### Selector Minification Uses Sequential Names
 
 In production builds, component selectors are minified to short alphabetic names (`a-a`, `a-b`, `b-a`, etc.) using a sequential counter. There is no collision detection against third-party element names.

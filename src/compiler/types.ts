@@ -46,23 +46,6 @@ export interface ComponentDefinition {
 }
 
 /**
- * Page selector info for routes
- */
-export interface PageSelectorInfo {
-  importPath: string;
-  selector: string;
-}
-
-/**
- * Route object for routes precompiler
- */
-export interface RouteObject {
-  importPath: string;
-  lastPropEnd: number;
-  needsComma: boolean;
-}
-
-/**
  * Template info from AST analysis
  */
 export interface TemplateInfo {

@@ -1,21 +1,13 @@
-import { computed, defineComponent, signal } from 'thane';
+import { computed, defineComponent } from 'thane';
 import styles from './ProductDetails.module.css';
 import { addToCart, products } from '../../state/global-state.js';
 
 const addToCartIconPath = '/assets/icons/add-to-cart.svg';
 
-export const ProductDetailsPage = defineComponent('product-details-page', () => {
-  const productID = signal(getRouteParam('productID'));
+export const ProductDetailsPage = defineComponent('product-details-page', ({ route }) => {
+  const productID = route.params.productID;
 
-  const product = computed(() => products().find((item) => item.id.toString() === productID()) ?? null);
-  const hasProduct = computed(() => product() !== null);
-  const productTitle = computed(() => product()?.title ?? '');
-  const productPrice = computed(() => product()?.price ?? 0);
-  const productDescription = computed(() => product()?.description ?? '');
-  const productCategory = computed(() => product()?.category ?? '');
-  const isInCart = computed(() => (product()?.cartCount ?? 0) > 0);
-  const cartItemCount = computed(() => product()?.cartCount ?? 0);
-  const cartButtonText = computed(() => (isInCart() ? 'Added to Cart' : 'Add to Cart'));
+  const product = computed(() => products().find((item) => item.id.toString() === productID) ?? null);
 
   const addCurrentToCart = () => {
     const selectedProduct = product();
@@ -30,16 +22,19 @@ export const ProductDetailsPage = defineComponent('product-details-page', () => 
           <img src=${product()?.image ?? ''} alt=${product()?.title ?? ''} class="productDetailImage" />
         </div>
         <div class="productInfo">
-          <h1 class="productTitle">${productTitle()}</h1>
-          <p class="productPrice">R${productPrice()}</p>
-          <p class="productDescription">${productDescription()}</p>
-          <p class="productCategory">Category: ${productCategory()}</p>
-          <button class=${isInCart() ? 'addToCartButton added' : 'addToCartButton'} @click=${addCurrentToCart}>
-            <span>${cartButtonText()}</span>
+          <h1 class="productTitle">${product()?.title ?? ''}</h1>
+          <p class="productPrice">R${product()?.price ?? 0}</p>
+          <p class="productDescription">${product()?.description ?? ''}</p>
+          <p class="productCategory">Category: ${product()?.category ?? ''}</p>
+          <button
+            class=${(product()?.cartCount ?? 0) > 0 ? 'addToCartButton added' : 'addToCartButton'}
+            @click=${addCurrentToCart}
+          >
+            <span>${(product()?.cartCount ?? 0) > 0 ? 'Added to Cart' : 'Add to Cart'}</span>
             <img class="addToCartIcon" src=${addToCartIconPath} alt="Add to cart icon" />
-            <span class="cartCounter" ${when(isInCart())}>${cartItemCount()}</span>
+            <span class="cartCounter" ${when((product()?.cartCount ?? 0) > 0)}>${product()?.cartCount ?? 0}</span>
           </button>
-          <p ${when(!hasProduct())}>The product you are looking for does not exist.</p>
+          <p ${when(product() === null)}>The product you are looking for does not exist.</p>
         </div>
       </div>
     `,

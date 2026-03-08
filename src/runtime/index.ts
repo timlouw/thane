@@ -44,10 +44,10 @@ declare global {
   function navigateBack(): void;
 
   /**
-   * Get a route parameter value (router).
-   * Type-safe when `Register` is augmented in `routes.ts`.
+   * The active router path as a read-only signal.
+   * Available globally when the router is used.
    */
-  function getRouteParam(name: import('./router.js').RouteParamNames): string;
+  const currentPath: import('./types.js').ReadonlySignal<string>;
 }
 
 // Export types
@@ -73,12 +73,20 @@ export { mount, unmount, type MountOptions, type MountHandle } from './component
 // VALUE exports live in the 'thane/router' subpath to keep router code tree-shakable.
 export type {
   Register,
+  RegisteredRoutes,
   Route,
+  RouteComponent,
+  LazyRouteComponent,
+  EagerRouteComponent,
   RoutesMap,
   RoutesConfig,
   RouterConfig,
+  ScrollRestorationConfig,
   RoutePaths,
-  RouteParamNames,
+  ExtractRouteParams,
+  RouteContextForSelector,
+  RouteComponentRegister,
+  UntypedRouteContext,
   RouteToPath,
 } from './router.js';
 
