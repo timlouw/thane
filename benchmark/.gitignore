@@ -1,0 +1,12 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+
+# Package tarballs
+*.tgz
+
+# Lock files
+bun.lock
+bun.lockb

@@ -1,0 +1,9 @@
+.appContainer {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.routerOutletContainer {
+  padding: var(--global-padding);
+}

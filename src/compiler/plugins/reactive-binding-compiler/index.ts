@@ -1,0 +1,982 @@
+/** Reactive binding compiler — source transformation and template processing. */
+
+import fs from 'node:fs';
+import type { Plugin } from 'esbuild';
+import ts from 'typescript';
+import type { ImportInfo, TemplateInfo } from '../../types.js';
+import {
+  findSignalInitializers,
+  extractTemplateContent,
+  isHtmlTemplate,
+  isCssTemplate,
+  isDefineComponentCall,
+  pascalToKebab,
+  applyEdits,
+  sourceCache,
+  logger,
+  hasHtmlTemplates,
+  extendsComponentQuick,
+  createLoaderResult,
+  PLUGIN_NAME,
+  BIND_FN,
+} from '../../utils/index.js';
+import type { BindingInfo, ConditionalBlock, WhenElseBlock, RepeatBlock, EventBinding } from './types.js';
+import { CLOSURE_ACCESS } from './types.js';
+import { processHtmlTemplateWithConditionals } from './template-processing.js';
+import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
+
+// ============================================================================
+// Lifecycle hook stripping
+// ============================================================================
+
+/** Property names eligible for dead-code removal when their body is empty */
+const STRIPPABLE_LIFECYCLE = new Set(['onMount', 'onDestroy']);
+
+/** Properties that should be stripped when a compiled template is injected */
+const STRIPPABLE_TEMPLATE = new Set(['template']);
+
+/**
+ * Check if an arrow function or function expression has an empty body.
+ * Matches: `() => {}` and `() => { }` (with optional whitespace).
+ */
+const isEmptyArrowFunction = (node: ts.Node): boolean => {
+  if (ts.isArrowFunction(node)) {
+    const body = node.body;
+    return ts.isBlock(body) && body.statements.length === 0;
+  }
+  return false;
+};
+
+/**
+ * Strip empty lifecycle hooks and redundant `template` property from the
+ * defineComponent return object. Also detects styles/lifecycle feature flags.
+ */
+const stripDeadPropertiesAndDetectFeatures = (
+  source: string,
+  hasCompiledTemplate: boolean,
+): { source: string; hasStyles: boolean; hasLifecycle: boolean } => {
+  const sf = ts.createSourceFile('__strip.ts', source, ts.ScriptTarget.Latest, true);
+
+  // Find the defineComponent return object
+  let returnObj: ts.ObjectLiteralExpression | null = null;
+  const find = (node: ts.Node) => {
+    if (returnObj) return;
+    if (ts.isCallExpression(node) && isDefineComponentCall(node)) {
+      const setupArg = node.arguments.length >= 2 ? node.arguments[1] : node.arguments[0];
+      if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
+        if (ts.isArrowFunction(setupArg) && !ts.isBlock(setupArg.body)) {
+          let bodyExpr: ts.Expression = setupArg.body;
+          while (ts.isParenthesizedExpression(bodyExpr)) {
+            bodyExpr = bodyExpr.expression;
+          }
+          if (ts.isObjectLiteralExpression(bodyExpr)) {
+            returnObj = bodyExpr;
+            return;
+          }
+        }
+
+        const findReturn = (n: ts.Node) => {
+          if (returnObj) return;
+          if (ts.isArrowFunction(n) && n !== setupArg) return;
+          if (ts.isFunctionExpression(n) && n !== setupArg) return;
+          if (ts.isReturnStatement(n) && n.expression && ts.isObjectLiteralExpression(n.expression)) {
+            returnObj = n.expression;
+          }
+          ts.forEachChild(n, findReturn);
+        };
+        findReturn(setupArg);
+      }
+    }
+    ts.forEachChild(node, find);
+  };
+  find(sf);
+
+  if (!returnObj) return { source, hasStyles: false, hasLifecycle: false };
+
+  // Collect ranges to remove (in reverse order for safe splicing)
+  const removals: Array<{ start: number; end: number }> = [];
+  const properties = (returnObj as ts.ObjectLiteralExpression).properties;
+  let hasStyles = false;
+  let hasLifecycle = false;
+
+  for (const prop of properties) {
+    // Handle shorthand property assignment: return { styles }
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      if (prop.name.text === 'styles') {
+        hasStyles = true;
+      }
+      continue; // shorthand props are never strippable
+    }
+
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const name = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : null;
+    if (!name) continue;
+
+    // ── Feature detection (styles) ──
+    // Supports both inline css`` and imported CSS file strings
+    if (name === 'styles') {
+      hasStyles = true;
+      continue; // keep in return — runtime handles it via _onStyles callback
+    }
+
+    // ── Feature detection (lifecycle) — non-empty hooks that survive stripping ──
+    if (STRIPPABLE_LIFECYCLE.has(name) && !isEmptyArrowFunction(prop.initializer)) {
+      hasLifecycle = true;
+      continue; // keep — runtime needs these
+    }
+
+    // ── Strippable properties ──
+    const shouldStripLifecycle = STRIPPABLE_LIFECYCLE.has(name) && isEmptyArrowFunction(prop.initializer);
+    const shouldStripTemplate = hasCompiledTemplate && STRIPPABLE_TEMPLATE.has(name);
+
+    if (!shouldStripLifecycle && !shouldStripTemplate) continue;
+
+    // Calculate the full removal range including leading/trailing comma + whitespace
+    let start = prop.getStart(sf);
+    let end = prop.getEnd();
+
+    // Extend to eat the trailing comma if present
+    const textAfter = source.substring(end);
+    const trailingCommaMatch = textAfter.match(/^\s*,/);
+    if (trailingCommaMatch) {
+      end += trailingCommaMatch[0].length;
+    }
+
+    // Extend to eat the preceding whitespace/newline so we don't leave blank lines
+    const textBefore = source.substring(0, start);
+    const precedingWhitespaceMatch = textBefore.match(/[\t ]*$/);
+    if (precedingWhitespaceMatch) {
+      start -= precedingWhitespaceMatch[0].length;
+      // Also eat a preceding newline if present
+      if (start > 0 && source[start - 1] === '\n') {
+        start--;
+        if (start > 0 && source[start - 1] === '\r') start--;
+      }
+    }
+
+    removals.push({ start, end });
+  }
+
+  if (removals.length === 0) return { source, hasStyles, hasLifecycle };
+
+  // Apply removals in reverse order
+  let modified = source;
+  for (const { start, end } of removals.reverse()) {
+    modified = modified.substring(0, start) + modified.substring(end);
+  }
+
+  return { source: modified, hasStyles, hasLifecycle };
+};
+import { generateInitBindingsFunction, generateStaticTemplate, generateUpdatedImport } from './codegen.js';
+import { ErrorCode, createError } from '../../errors.js';
+
+const NAME = PLUGIN_NAME.REACTIVE;
+
+/**
+ * Compute a deterministic starting seed for generated binding ids (b0, b1, …).
+ * Assigns each file a stable, non-overlapping id range to avoid DOM collisions.
+ */
+const computeInitialIdSeed = (filePath: string, source: string): number => {
+  // FNV-1a 32-bit hash of normalized file path (fast, deterministic)
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < filePath.length; i++) {
+    hash ^= filePath.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  const unsigned = hash >>> 0;
+
+  // Allocate a file-specific block of ids. 1000 ids per file keeps generated
+  // ids short while providing room for typical component templates.
+  const blockBase = (unsigned % 100000) * 1000;
+
+  // Respect any already-inserted bN ids present in the source (e.g. CTFE child mounts)
+  // so the next generated id does not overlap.
+  let maxExisting = -1;
+  const idRegex = /id="b(\d+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = idRegex.exec(source)) !== null) {
+    const n = Number(match[1]);
+    if (Number.isFinite(n) && n > maxExisting) maxExisting = n;
+  }
+
+  return Math.max(blockBase, maxExisting + 1);
+};
+
+/** Check if a module specifier refers to the Thane runtime. */
+export const isThaneRuntimeImport = (specifier: string): boolean => {
+  return (
+    specifier.includes('shadow-dom') ||
+    specifier.includes('dom/index') ||
+    specifier === 'thane' ||
+    specifier.startsWith('thane/')
+  );
+};
+
+/** Find the Thane runtime import in a source file. */
+export const findServicesImport = (sourceFile: ts.SourceFile): ImportInfo | null => {
+  for (const statement of sourceFile.statements) {
+    if (
+      ts.isImportDeclaration(statement) &&
+      statement.moduleSpecifier &&
+      ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
+      const specifier = statement.moduleSpecifier.text;
+
+      if (isThaneRuntimeImport(specifier)) {
+        const namedImports: string[] = [];
+
+        if (statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings)) {
+          for (const element of statement.importClause.namedBindings.elements) {
+            namedImports.push(element.name.text);
+          }
+        }
+
+        const fullText = statement.moduleSpecifier.getFullText(sourceFile);
+        const quoteChar = fullText.includes("'") ? "'" : '"';
+        const normalizedSpecifier =
+          specifier === 'thane' || specifier.startsWith('thane/')
+            ? specifier
+            : specifier.includes('shadow-dom')
+              ? specifier.replace('shadow-dom.js', 'index.js').replace('shadow-dom', 'index')
+              : specifier;
+
+        return {
+          namedImports,
+          moduleSpecifier: normalizedSpecifier,
+          start: statement.getStart(sourceFile),
+          end: statement.getEnd(),
+          quoteChar,
+        };
+      }
+    }
+  }
+  return null;
+};
+
+// ============================================================================
+// defineComponent Support
+// ============================================================================
+
+/**
+ * Recursively extract template content from an html tagged template,
+ * inlining any ${identifier} references that resolve to other html`` fragment variables.
+ */
+const extractAndInlineFragment = (
+  tplNode: ts.TaggedTemplateExpression,
+  sourceFile: ts.SourceFile,
+  scopeRoot: ts.Node,
+  visited: Set<string>,
+): string => {
+  const templateLiteral = tplNode.template;
+
+  if (ts.isNoSubstitutionTemplateLiteral(templateLiteral)) {
+    return templateLiteral.text;
+  }
+
+  if (!ts.isTemplateExpression(templateLiteral)) return '';
+
+  let content = templateLiteral.head.text;
+  for (const span of templateLiteral.templateSpans) {
+    const expr = span.expression;
+    if (ts.isIdentifier(expr) && !visited.has(expr.text)) {
+      const resolved = resolveTemplateIdentifier(sourceFile, scopeRoot, expr);
+      if (resolved) {
+        visited.add(expr.text);
+        content += extractAndInlineFragment(resolved, sourceFile, scopeRoot, visited);
+        content += span.literal.text;
+        continue;
+      }
+    }
+    const exprText = span.expression.getText(sourceFile);
+    content += '${' + exprText + '}';
+    content += span.literal.text;
+  }
+  return content;
+};
+
+/**
+ * Inline fragment template variables into the main template content.
+ * For each ${identifier} in the template where the identifier resolves to
+ * a const html`` variable, replaces it with the fragment's content (recursively).
+ */
+const inlineFragmentTemplates = (
+  templateNode: ts.TaggedTemplateExpression,
+  sourceFile: ts.SourceFile,
+  scopeRoot: ts.Node,
+): string => {
+  return extractAndInlineFragment(templateNode, sourceFile, scopeRoot, new Set());
+};
+
+const resolveTemplateIdentifier = (
+  sourceFile: ts.SourceFile,
+  scopeRoot: ts.Node,
+  identifier: ts.Identifier,
+): ts.TaggedTemplateExpression | null => {
+  let resolved: ts.TaggedTemplateExpression | null = null;
+
+  const visit = (node: ts.Node) => {
+    if (resolved) return;
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === identifier.text) {
+      if (node.initializer && ts.isTaggedTemplateExpression(node.initializer) && isHtmlTemplate(node.initializer)) {
+        resolved = node.initializer;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(scopeRoot);
+  if (resolved) return resolved;
+
+  let moduleResolved: ts.TaggedTemplateExpression | null = null;
+  const visitModule = (node: ts.Node) => {
+    if (moduleResolved) return;
+    if (ts.isVariableStatement(node)) {
+      for (const decl of node.declarationList.declarations) {
+        if (!ts.isIdentifier(decl.name) || decl.name.text !== identifier.text) continue;
+        if (decl.initializer && ts.isTaggedTemplateExpression(decl.initializer) && isHtmlTemplate(decl.initializer)) {
+          moduleResolved = decl.initializer;
+          return;
+        }
+      }
+    }
+    ts.forEachChild(node, visitModule);
+  };
+  visitModule(sourceFile);
+  return moduleResolved;
+};
+
+/**
+ * Find html`` templates in the defineComponent return object only.
+ * Fragment templates (const piece = html`...`) are intentionally skipped.
+ */
+const findHtmlTemplates = (sourceFile: ts.SourceFile, defineComponentCall: ts.CallExpression): TemplateInfo[] => {
+  const templates: TemplateInfo[] = [];
+  const seen = new Set<number>();
+
+  const setupArg =
+    defineComponentCall.arguments.length >= 2 ? defineComponentCall.arguments[1] : defineComponentCall.arguments[0];
+  if (!setupArg || (!ts.isArrowFunction(setupArg) && !ts.isFunctionExpression(setupArg))) {
+    return templates;
+  }
+
+  const collectFromReturnObject = (obj: ts.ObjectLiteralExpression) => {
+    for (const prop of obj.properties) {
+      if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name) || prop.name.text !== 'template') continue;
+
+      let tplNode: ts.TaggedTemplateExpression | null = null;
+      if (ts.isTaggedTemplateExpression(prop.initializer) && isHtmlTemplate(prop.initializer)) {
+        tplNode = prop.initializer;
+      } else if (ts.isIdentifier(prop.initializer)) {
+        tplNode = resolveTemplateIdentifier(sourceFile, setupArg, prop.initializer);
+      }
+
+      if (!tplNode) continue;
+      const start = tplNode.getStart(sourceFile);
+      if (seen.has(start)) continue;
+      seen.add(start);
+      templates.push({
+        node: tplNode,
+        expressions: [],
+        templateStart: start,
+        templateEnd: tplNode.getEnd(),
+      });
+    }
+  };
+
+  // Handle expression-body arrows: () => ({ template: html`...` })
+  // The body is a ParenthesizedExpression wrapping an ObjectLiteralExpression,
+  // not a Block with a ReturnStatement, so we unwrap it directly.
+  if (ts.isArrowFunction(setupArg) && !ts.isBlock(setupArg.body)) {
+    let expr: ts.Expression = setupArg.body;
+    // Unwrap parenthesized expression: () => ({...}) parses as Paren(ObjLiteral)
+    while (ts.isParenthesizedExpression(expr)) {
+      expr = expr.expression;
+    }
+    if (ts.isObjectLiteralExpression(expr)) {
+      collectFromReturnObject(expr);
+    }
+    return templates;
+  }
+
+  const visitSetup = (node: ts.Node) => {
+    if (ts.isArrowFunction(node) && node !== setupArg) return;
+    if (ts.isFunctionExpression(node) && node !== setupArg) return;
+    if (ts.isFunctionDeclaration(node)) return;
+
+    if (ts.isReturnStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression)) {
+      collectFromReturnObject(node.expression);
+    }
+
+    ts.forEachChild(node, visitSetup);
+  };
+
+  visitSetup(setupArg);
+  return templates;
+};
+
+/**
+ * Transform a defineComponent source file by processing HTML templates,
+ * generating binding code, and injecting static templates.
+ *
+ * The pipeline natively supports defineComponent's closure-based access pattern:
+ * 1. Parse templates directly — bare signal() calls are detected by the regex pipeline
+ * 2. Run template processing and codegen with CLOSURE_ACCESS pattern
+ * 3. Generated code uses bare signal references, ctx.root, etc.
+ * 4. Inject __template and __bindings as properties on the setup function
+ */
+export const transformDefineComponentSource = (
+  source: string,
+  filePath: string,
+  childMounts?: ChildMountInfo[],
+  _childMountCount?: number,
+): string | null => {
+  const sourceFile = sourceCache.parse(filePath, source);
+
+  // Find the defineComponent call
+  let defineComponentCall: ts.CallExpression | null = null;
+  let exportName: string | null = null;
+
+  const findDefineComponent = (node: ts.Node) => {
+    if (ts.isVariableStatement(node)) {
+      const hasExport = node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
+      for (const decl of node.declarationList.declarations) {
+        if (
+          ts.isIdentifier(decl.name) &&
+          decl.initializer &&
+          ts.isCallExpression(decl.initializer) &&
+          isDefineComponentCall(decl.initializer)
+        ) {
+          defineComponentCall = decl.initializer;
+          exportName = hasExport ? decl.name.text : null;
+        }
+      }
+    }
+    if (!defineComponentCall) ts.forEachChild(node, findDefineComponent);
+  };
+  findDefineComponent(sourceFile);
+
+  if (!defineComponentCall) return null;
+
+  // Narrow for TypeScript — the null check above guarantees this
+  const dcCall: ts.CallExpression = defineComponentCall;
+
+  // Determine selector
+  let selector: string | null = null;
+  let hasExplicitSelector = false;
+  const args = dcCall.arguments;
+
+  if (args.length >= 2 && ts.isStringLiteral(args[0]!)) {
+    selector = (args[0] as ts.StringLiteral).text;
+    hasExplicitSelector = true;
+  } else if (exportName) {
+    selector = pascalToKebab(exportName);
+  }
+
+  if (!selector) return null;
+
+  const signalInitializers = findSignalInitializers(sourceFile);
+
+  // Find html templates directly — no normalization needed.
+  // The regex pipeline natively matches bare signal() calls.
+  const servicesImport = findServicesImport(sourceFile);
+  const htmlTemplates = findHtmlTemplates(sourceFile, dcCall);
+  const setupArg = dcCall.arguments.length >= 2 ? dcCall.arguments[1]! : dcCall.arguments[0]!;
+
+  const edits: Array<{ start: number; end: number; replacement: string }> = [];
+  let allBindings: BindingInfo[] = [];
+  let allConditionals: ConditionalBlock[] = [];
+  let allWhenElseBlocks: WhenElseBlock[] = [];
+  let allRepeatBlocks: RepeatBlock[] = [];
+  let allEventBindings: EventBinding[] = [];
+  let idCounter = computeInitialIdSeed(filePath, source);
+  let lastProcessedTemplateContent = '';
+  let hasConditionals = false;
+
+  for (const templateInfo of htmlTemplates) {
+    let templateContent = inlineFragmentTemplates(templateInfo.node, sourceFile, setupArg);
+
+    const result = processHtmlTemplateWithConditionals(templateContent, signalInitializers, idCounter);
+    templateContent = result.processedContent;
+    allBindings = [...allBindings, ...result.bindings];
+    allConditionals = [...allConditionals, ...result.conditionals];
+    allWhenElseBlocks = [...allWhenElseBlocks, ...result.whenElseBlocks];
+    allRepeatBlocks = [...allRepeatBlocks, ...result.repeatBlocks];
+    allEventBindings = [...allEventBindings, ...result.eventBindings];
+    idCounter = result.nextId;
+    hasConditionals = hasConditionals || result.hasConditionals;
+
+    lastProcessedTemplateContent = templateContent;
+
+    edits.push({
+      start: templateInfo.templateStart,
+      end: templateInfo.templateEnd,
+      replacement: '``',
+    });
+  }
+
+  // Strip css tags
+  const visitCss = (node: ts.Node) => {
+    if (ts.isTaggedTemplateExpression(node) && isCssTemplate(node)) {
+      const cssContent = extractTemplateContent(node.template, sourceFile);
+      edits.push({
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+        replacement: '`' + cssContent + '`',
+      });
+    }
+    ts.forEachChild(node, visitCss);
+  };
+  visitCss(sourceFile);
+
+  // Early detection: check if the component has a `styles` property.
+  // This is needed before edits are applied so we can add __enableComponentStyles to imports.
+  let componentHasStyles = false;
+  {
+    const setupArg = dcCall.arguments.length >= 2 ? dcCall.arguments[1] : dcCall.arguments[0];
+    if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
+      const checkForStyles = (n: ts.Node): void => {
+        if (componentHasStyles) return;
+        if (ts.isArrowFunction(n) && n !== setupArg) return;
+        if (ts.isFunctionExpression(n) && n !== setupArg) return;
+
+        // Check object literals in return statements and arrow expression bodies
+        const checkObjectForStyles = (obj: ts.ObjectLiteralExpression) => {
+          for (const prop of obj.properties) {
+            if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === 'styles') {
+              componentHasStyles = true;
+            }
+            // Support shorthand: return { styles } (e.g. from CSS file import)
+            if (ts.isShorthandPropertyAssignment(prop) && prop.name.text === 'styles') {
+              componentHasStyles = true;
+            }
+          }
+        };
+
+        if (ts.isReturnStatement(n) && n.expression && ts.isObjectLiteralExpression(n.expression)) {
+          checkObjectForStyles(n.expression);
+        }
+
+        // Handle arrow expression body: () => ({ styles })
+        if (ts.isParenthesizedExpression(n) && ts.isObjectLiteralExpression(n.expression) && n.parent === setupArg) {
+          checkObjectForStyles(n.expression);
+        }
+        if (
+          ts.isObjectLiteralExpression(n) &&
+          n.parent &&
+          ts.isParenthesizedExpression(n.parent) &&
+          n.parent.parent === setupArg
+        ) {
+          checkObjectForStyles(n);
+        }
+
+        ts.forEachChild(n, checkForStyles);
+      };
+      checkForStyles(setupArg);
+    }
+  }
+
+  // ── Partition child mounts by directive containment ──
+  const directiveChildMounts = new Map<string, { cm: ChildMountInfo; globalIndex: number }[]>();
+  const topLevelChildMounts: { cm: ChildMountInfo; globalIndex: number }[] = [];
+
+  if (childMounts && childMounts.length > 0) {
+    const addToDirective = (key: string, cm: ChildMountInfo, idx: number) => {
+      if (!directiveChildMounts.has(key)) directiveChildMounts.set(key, []);
+      directiveChildMounts.get(key)!.push({ cm, globalIndex: idx });
+    };
+
+    // Recursive helper: search nested conditionals (depth-first, innermost match wins)
+    const findInConditionals = (marker: string, conds: ConditionalBlock[]): string | null => {
+      for (const c of conds) {
+        if (!c.templateContent.includes(marker)) continue;
+        // Check deeper nesting first
+        const inner = findInConditionals(marker, c.nestedConditionals || []);
+        if (inner) return inner;
+        return c.id;
+      }
+      return null;
+    };
+
+    const findInWhenElse = (marker: string, wes: WhenElseBlock[]): string | null => {
+      for (const we of wes) {
+        if (we.thenTemplate.includes(marker)) {
+          const inner = findInConditionals(marker, we.nestedConditionals || []);
+          if (inner) return inner;
+          const innerWE = findInWhenElse(marker, we.nestedWhenElse || []);
+          if (innerWE) return innerWE;
+          return we.thenId;
+        }
+        if (we.elseTemplate.includes(marker)) {
+          return we.elseId;
+        }
+      }
+      return null;
+    };
+
+    for (let i = 0; i < childMounts.length; i++) {
+      const cm = childMounts[i]!;
+      const marker = `id="${cm.anchorId}"`;
+      let placed = false;
+
+      // Check repeat blocks (and their nested directives)
+      for (const rep of allRepeatBlocks) {
+        if (!rep.itemTemplate.includes(marker)) continue;
+        const innerCond = findInConditionals(marker, rep.nestedConditionals);
+        if (innerCond) {
+          addToDirective(innerCond, cm, i);
+          placed = true;
+          break;
+        }
+        const innerWE = findInWhenElse(marker, rep.nestedWhenElse);
+        if (innerWE) {
+          addToDirective(innerWE, cm, i);
+          placed = true;
+          break;
+        }
+        addToDirective(rep.id, cm, i);
+        placed = true;
+        break;
+      }
+      if (placed) continue;
+
+      // Check top-level conditionals
+      const condId = findInConditionals(marker, allConditionals);
+      if (condId) {
+        addToDirective(condId, cm, i);
+        continue;
+      }
+
+      // Check whenElse blocks
+      const weId = findInWhenElse(marker, allWhenElseBlocks);
+      if (weId) {
+        addToDirective(weId, cm, i);
+        continue;
+      }
+
+      // Top-level mount
+      topLevelChildMounts.push({ cm, globalIndex: i });
+    }
+  }
+
+  // Generate bindings code with CLOSURE_ACCESS — natively emits bare signal refs,
+  // ctx.root, and closure-compatible code. No post-hoc stripping needed.
+  const ap = CLOSURE_ACCESS;
+  const { code: initBindingsFunction, staticTemplates: repeatStaticTemplates = [] } = generateInitBindingsFunction(
+    allBindings,
+    allConditionals,
+    allWhenElseBlocks,
+    allRepeatBlocks,
+    allEventBindings,
+    filePath,
+    ap,
+    directiveChildMounts.size > 0 ? directiveChildMounts : undefined,
+  );
+
+  let staticTemplateCode = '';
+  if (lastProcessedTemplateContent) {
+    staticTemplateCode = generateStaticTemplate(lastProcessedTemplateContent, ap);
+  }
+
+  if (repeatStaticTemplates.length > 0) {
+    staticTemplateCode += '\n' + repeatStaticTemplates.join('\n');
+  }
+
+  // Update imports: always replace defineComponent → __registerComponent,
+  // and add binding / styles imports as needed.
+  const hasAnyBindings =
+    allBindings.length > 0 ||
+    allConditionals.length > 0 ||
+    allWhenElseBlocks.length > 0 ||
+    allRepeatBlocks.length > 0 ||
+    allEventBindings.length > 0 ||
+    (childMounts != null && childMounts.length > 0);
+
+  if (servicesImport) {
+    // Filter out defineComponent (replaced by __registerComponent in compiled output)
+    const filteredImport: typeof servicesImport = {
+      ...servicesImport,
+      namedImports: servicesImport.namedImports.filter((n) => n !== 'defineComponent'),
+    };
+    // Determine which registration function to import — lean or full.
+    // At this point we don't yet know if the component has lifecycle hooks
+    // (that's detected later in stripDeadPropertiesAndDetectFeatures).
+    // We add a placeholder and fix it up after stripping.
+    const requiredFunctions: string[] = ['__REGISTER_PLACEHOLDER__'];
+
+    // ── Binding function imports ──
+    if (hasAnyBindings) {
+      if (allBindings.some((b) => b.type === 'style')) requiredFunctions.push(BIND_FN.STYLE);
+      if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
+      if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
+
+      // Check for conditionals at top level AND nested inside repeat items
+      const allConditionalsIncludingNested = [
+        ...allConditionals,
+        ...allRepeatBlocks.flatMap((r) => r.nestedConditionals),
+      ];
+      const allWhenElseIncludingNested = [...allWhenElseBlocks, ...allRepeatBlocks.flatMap((r) => r.nestedWhenElse)];
+      const hasSimpleConditionals = allConditionalsIncludingNested.some(
+        (c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`,
+      );
+      const hasComplexConditionals = allConditionalsIncludingNested.some(
+        (c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`,
+      );
+      if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
+      if (hasComplexConditionals || allWhenElseIncludingNested.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
+
+      const hasWhenElseNestedRepeats = (blocks: WhenElseBlock[]): boolean => {
+        for (const block of blocks) {
+          if (block.nestedRepeats.length > 0) return true;
+          if (hasWhenElseNestedRepeats(block.nestedWhenElse)) return true;
+        }
+        return false;
+      };
+
+      if (allRepeatBlocks.length > 0 || hasWhenElseNestedRepeats(allWhenElseBlocks)) {
+        requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
+      }
+      // Events now use direct addEventListener — no runtime import needed
+    }
+
+    // ── Styles enablement import ──
+    if (componentHasStyles) {
+      requiredFunctions.push(BIND_FN.ENABLE_STYLES);
+    }
+
+    // ── Child destroy helper — needed for child mounts and direct repeat components ──
+    const hasDirectRepeatComponent = allRepeatBlocks.some((rep) =>
+      /^\s*[A-Za-z_$][\w$]*\(/.test(rep.itemTemplate.trim()),
+    );
+    if ((childMounts && childMounts.length > 0) || hasDirectRepeatComponent) {
+      requiredFunctions.push(BIND_FN.DESTROY_CHILD);
+    }
+
+    const newImport = generateUpdatedImport(filteredImport, requiredFunctions);
+    edits.push({
+      start: servicesImport.start,
+      end: servicesImport.end,
+      replacement: newImport,
+    });
+  }
+
+  // Apply all edits to the source (no normalization pass — edits are against the original)
+  let result = applyEdits(source, edits);
+
+  // Injection strategy: static templates go BEFORE the export (no closure deps),
+  // __b binding function goes INSIDE the return object (needs closure access),
+  // and __tpl is passed as an extra arg to defineComponent().
+
+  // Extract initializeBindings body for use as __b arrow function.
+  let processedBindings = initBindingsFunction
+    .replace(/\s*initializeBindings = \(\) => \{\s*/, '')
+    .replace(/\};\s*$/, '');
+
+  // ── Child component mount code ──
+  // Top-level mounts are appended here; directive-nested mounts are handled by codegen.
+  if (topLevelChildMounts.length > 0) {
+    const mountLines: string[] = [];
+    for (const { cm, globalIndex } of topLevelChildMounts) {
+      const varName = `_cm${globalIndex}`;
+      mountLines.push(`const ${varName} = document.createElement('${cm.selector}');`);
+      mountLines.push(`_gid('${cm.anchorId}').replaceWith(${varName});`);
+      mountLines.push(
+        `_subs.push(${BIND_FN.DESTROY_CHILD}(${cm.componentName}.__f(${varName}, ${cm.propsExpression})));`,
+      );
+    }
+    const mountCode = '\n    ' + mountLines.join('\n    ');
+    // Insert BEFORE the return statement so code is reachable
+    const returnIdx = processedBindings.lastIndexOf('return () =>');
+    if (returnIdx !== -1) {
+      processedBindings =
+        processedBindings.substring(0, returnIdx) +
+        mountCode.trimStart() +
+        '\n    ' +
+        processedBindings.substring(returnIdx);
+    } else {
+      processedBindings += mountCode;
+    }
+  }
+
+  // Collect repeat static template names
+  const repeatTemplateNames: string[] = [];
+  const repeatTplRegex = /const (__tpl_\w+) =/g;
+  let tplMatch: RegExpExecArray | null;
+  while ((tplMatch = repeatTplRegex.exec(staticTemplateCode)) !== null) {
+    if (tplMatch[1]) repeatTemplateNames.push(tplMatch[1]);
+  }
+
+  // Inject selector if auto-derived (before the setup function argument)
+  if (!hasExplicitSelector && selector) {
+    result = result.replace(/defineComponent\s*((?:<[^(]*>)?)\s*\(/, `defineComponent$1('${selector}', `);
+  }
+
+  // ── AST-based injection: re-parse the transformed source for reliable positions ──
+  const injectionSf = ts.createSourceFile('__injection.ts', result, ts.ScriptTarget.Latest, true);
+
+  // Find the export declaration and defineComponent call via AST
+  let exportStart: number | null = null;
+  let dcCallNode: ts.CallExpression | null = null;
+  let dcCallCloseParen: number | null = null;
+  let returnObjectBracePos: number | null = null;
+
+  const findInjectionPoints = (node: ts.Node) => {
+    // Find: [export] const X = defineComponent(...)
+    if (ts.isVariableStatement(node)) {
+      for (const decl of node.declarationList.declarations) {
+        if (decl.initializer && ts.isCallExpression(decl.initializer) && isDefineComponentCall(decl.initializer)) {
+          exportStart = node.getStart(injectionSf);
+          dcCallNode = decl.initializer;
+          // The closing paren is at the end of the CallExpression minus 1
+          dcCallCloseParen = dcCallNode.getEnd() - 1;
+        }
+      }
+    }
+    ts.forEachChild(node, findInjectionPoints);
+  };
+  findInjectionPoints(injectionSf);
+
+  // Find the return statement inside the setup function
+  if (dcCallNode) {
+    const setupArg =
+      (dcCallNode as ts.CallExpression).arguments.length >= 2
+        ? (dcCallNode as ts.CallExpression).arguments[1]
+        : (dcCallNode as ts.CallExpression).arguments[0];
+    if (setupArg && (ts.isArrowFunction(setupArg) || ts.isFunctionExpression(setupArg))) {
+      // Handle concise arrow: () => ({...}) — no ReturnStatement in AST
+      if (ts.isArrowFunction(setupArg) && !ts.isBlock(setupArg.body)) {
+        let bodyExpr: ts.Expression = setupArg.body;
+        while (ts.isParenthesizedExpression(bodyExpr)) {
+          bodyExpr = bodyExpr.expression;
+        }
+        if (ts.isObjectLiteralExpression(bodyExpr)) {
+          returnObjectBracePos = bodyExpr.getStart(injectionSf) + 1; // after {
+        }
+      } else {
+        // Block body: () => { return {...}; }
+        const findReturn = (node: ts.Node) => {
+          // Only look at direct returns in this function, not nested functions
+          if (ts.isArrowFunction(node) && node !== setupArg) return;
+          if (ts.isFunctionExpression(node) && node !== setupArg) return;
+          if (ts.isFunctionDeclaration(node)) return;
+          if (ts.isReturnStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression)) {
+            returnObjectBracePos = node.expression.getStart(injectionSf) + 1; // after {
+          }
+          ts.forEachChild(node, findReturn);
+        };
+        findReturn(setupArg);
+      }
+    }
+  }
+
+  // Track strip result for lean/full registration decision
+  let stripResult: { source: string; hasStyles: boolean; hasLifecycle: boolean } = {
+    source: result,
+    hasStyles: false,
+    hasLifecycle: false,
+  };
+
+  if (exportStart !== null) {
+    // ── Insert static template declarations before the export ──
+    let declarations = '';
+    if (staticTemplateCode.trim()) {
+      declarations += staticTemplateCode.trim() + '\n';
+    }
+
+    if (declarations) {
+      result = result.substring(0, exportStart) + declarations + '\n' + result.substring(exportStart);
+      // Adjust downstream positions for the inserted text
+      const offset = declarations.length + 1; // +1 for newline
+      if (returnObjectBracePos !== null) returnObjectBracePos = returnObjectBracePos + offset;
+      if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + offset;
+    }
+
+    // ── Inject __bindings into the return object ──
+    if (hasAnyBindings && processedBindings.trim() && returnObjectBracePos !== null) {
+      const bindingsFnBody = `\n  __b: (ctx) => {\n  ${processedBindings.trim()}\n  },`;
+      result = result.substring(0, returnObjectBracePos) + bindingsFnBody + result.substring(returnObjectBracePos);
+      // Adjust closing paren position
+      if (dcCallCloseParen !== null) dcCallCloseParen = dcCallCloseParen + bindingsFnBody.length;
+    }
+
+    // Strip dead properties, then pass __tpl + repeat templates as extra args to defineComponent()
+    if (dcCallCloseParen !== null) {
+      // Strip dead properties before inserting extra args (positions would shift)
+      const hasCompiledTemplate = !!lastProcessedTemplateContent;
+      stripResult = stripDeadPropertiesAndDetectFeatures(result, hasCompiledTemplate);
+
+      // Adjust dcCallCloseParen for any characters removed by stripping
+      const charDelta = stripResult.source.length - result.length;
+      result = stripResult.source;
+      dcCallCloseParen = dcCallCloseParen + charDelta;
+
+      let extraArgs = '';
+
+      if (lastProcessedTemplateContent) {
+        extraArgs += ', __tpl';
+      }
+
+      for (const name of repeatTemplateNames) {
+        extraArgs += `, '${name}', ${name}`;
+      }
+
+      if (extraArgs) {
+        result = result.substring(0, dcCallCloseParen) + extraArgs + result.substring(dcCallCloseParen);
+      }
+
+      if (stripResult.hasStyles) {
+        result += '\n__enableComponentStyles();\n';
+      }
+    }
+  }
+
+  // Rename defineComponent → __registerComponent or __registerComponentLean
+  // Use the lean variant when the component has no styles and no lifecycle hooks,
+  // so esbuild can tree-shake the styles subsystem entirely for style-free apps.
+  const useLean = stripResult && !stripResult.hasStyles && !stripResult.hasLifecycle;
+  const registerFnName = useLean ? BIND_FN.REGISTER_COMPONENT_LEAN : BIND_FN.REGISTER_COMPONENT;
+  result = result.replace(/\bdefineComponent\s*(?:<[^(]*>)?\s*\(/, `${registerFnName}(`);
+
+  // Fix up the placeholder import to the actual registration function
+  result = result.replace('__REGISTER_PLACEHOLDER__', registerFnName);
+
+  return result;
+};
+
+// ============================================================================
+// esbuild Plugin
+// ============================================================================
+
+export const ReactiveBindingPlugin: Plugin = {
+  name: NAME,
+  setup(build) {
+    build.onLoad({ filter: /\.ts$/ }, async (args) => {
+      if (args.path.includes('scripts') || args.path.includes('node_modules')) {
+        return undefined;
+      }
+
+      const source = await fs.promises.readFile(args.path, 'utf8');
+
+      if (!extendsComponentQuick(source) || !hasHtmlTemplates(source)) {
+        return undefined;
+      }
+
+      try {
+        const transformed = transformDefineComponentSource(source, args.path);
+
+        if (transformed === null) {
+          return undefined;
+        }
+
+        return createLoaderResult(transformed);
+      } catch (error) {
+        const diagnostic = createError(
+          `Error processing ${args.path}: ${error instanceof Error ? error.message : error}`,
+          { file: args.path, line: 0, column: 0 },
+          ErrorCode.PLUGIN_ERROR,
+        );
+        logger.diagnostic(diagnostic);
+        return undefined;
+      }
+    });
+  },
+};

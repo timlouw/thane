@@ -1,0 +1,17 @@
+.productsTitle {
+  text-align: center;
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+.introText {
+  text-align: center;
+  max-width: 750px;
+  margin: auto;
+  margin-bottom: 40px;
+}
+
+.error {
+  text-align: center;
+  color: var(--error);
+}

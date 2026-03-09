@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["node", "@playwright/test"]
+  },
+  "include": [
+    "contract-app/**/*.ts",
+    "memory-leak-demo/**/*.ts",
+    "router-app/**/*.ts",
+    "node-compat.d.ts",
+    "tests/**/*.ts",
+    "playwright.config.ts",
+    "server.ts",
+    ".thane/types/client.d.ts",
+    ".thane/types/router/**/*.d.ts"
+  ],
+  "exclude": ["node_modules"]
+}
