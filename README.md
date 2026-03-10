@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⚡ Thane
+<img src="Thane-logo.png" alt="Thane logo" width="80" />
+
+# Thane
 
 ### The compile-time component framework
 
