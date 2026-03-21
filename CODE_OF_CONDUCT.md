@@ -1,19 +1,40 @@
 # Code of Conduct
 
-## Our Pledge
+This project is built by people who want to create something cool together. Let's
+keep it fun, welcoming, focused, and worth everyone's time.
 
-We pledge to make participation in this project a harassment-free experience for everyone, regardless of age, body size, disability, ethnicity, sex characteristics, gender identity and expression, level of experience, education, socio-economic status, nationality, personal appearance, race, religion, or sexual identity and orientation.
+### Do
 
-## Standards
+- **Be respectful** — Treat everyone with kindness. We're all here because we care
+  about the project.
+- **Bring real value** — Make contributions that help the project move forward:
+  thoughtful code, clear docs, useful bug reports, or constructive ideas. When
+  submitting pull requests, focus on solving real problems or improving things for
+  users/maintainers—not just adding your name to the contributors list. Small,
+  high-quality changes beat big, low-effort ones every time.
+- **Own your code** — If you're using AI tools to help write or suggest code,
+  review it carefully, understand it fully, test it, and make it your own.
+  Unreviewed or barely-touched AI output is just noise—don't spam the project with
+  it.
+- **Stay on topic** — Keep discussions, issues, and PRs related to the project.
+  Save off-topic stuff for somewhere else.
+- **Give constructive feedback** — Point out problems kindly and suggest fixes
+  when you can. We're all learning.
+- **Assume good intent** — People usually mean well. If something feels off, ask
+  for clarification before assuming the worst.
+- **Have fun and be excellent to each other** — Celebrate wins, thank people, and
+  enjoy the ride.
 
-Positive behavior includes: welcoming and inclusive language, respecting differing viewpoints, accepting constructive criticism, focusing on what is best for the community, and showing empathy.
+### Don't
 
-Unacceptable behavior includes: harassment, trolling, insulting or derogatory comments, publishing others' private information without permission, and other conduct that would be considered inappropriate in a professional setting.
+- **Spam** — No drive-by comments, promo links, unrelated noise, or low-effort PRs
+  (including untouched AI-generated ones).
+- **Harass or attack** — No insults, slurs, threats, personal attacks, or
+  unwelcome advances. Ever.
+- **Troll** — Don't derail conversations or pick fights.
+- **Push big drama** — If there's conflict, try to resolve it privately or with a
+  maintainer first.
 
-## Enforcement
 
-Instances of unacceptable behavior may be reported by opening an issue or contacting the maintainer directly. All reports will be reviewed and will result in a response appropriate to the circumstances.
-
-## Attribution
-
-Adapted from the [Contributor Covenant](https://www.contributor-covenant.org), version 2.1.
+Thanks for helping make this a great place to collaborate.
+Let's build the worlds fastest framework with the best DX and AX together!

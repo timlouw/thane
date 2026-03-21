@@ -1,0 +1,15 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 0,
+  "workspaces": {
+    "": {
+      "name": "sample-storefront-thane",
+      "dependencies": {
+        "thane": "file:../..",
+      },
+    },
+  },
+  "packages": {
+    "thane": ["/..@file:../..", { "bin": { "thane": "dist/compiler/cli/thane.js" } }],
+  }
+}

@@ -22,64 +22,13 @@ so the browser does the **absolute minimum work** at runtime.
 
 <br />
 
-[Quick Start](#-quick-start) · [Developer Docs](documentation/README.md) · [Contributing](contributing/README.md)
+[Quick Start](#-quick-start) · [Developer Docs](documentation/README.md) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
 <br />
 
 ---
-
-<br />
-
-## ✨ What makes Thane different?
-
-<table>
-<tr>
-<td width="50%">
-
-#### 💻 What you write
-
-```typescript
-export const Counter = defineComponent(() => {
-  const count = signal(0);
-  const inc = () => count(count() + 1);
-
-  return {
-    template: html`
-      <button @click=${inc}>
-        Clicks: ${count()}
-      </button>
-    `,
-  };
-});
-```
-
-</td>
-<td width="50%">
-
-#### ⚙️ What the compiler generates
-
-```javascript
-// Static template (cloned, never re-parsed)
-const _t = document.createElement('template');
-_t.innerHTML = `<button>Clicks: <!--b0-->0<!----></button>`;
-
-// TreeWalker finds all comment markers in one pass
-const _cm = _fcm(root); // { b0: CommentNode }
-
-// Direct DOM binding — subscribe with skip-initial
-count.subscribe(v => {
-  _cm['b0'].nextSibling.data = v;
-}, true);
-```
-
-</td>
-</tr>
-</table>
-
-> **No virtual DOM.** No runtime template compiler. No reconciliation algorithm.<br/>
-> The compiler traces every binding at build time and generates the exact DOM operations needed — nothing more.
 
 <br />
 
@@ -181,7 +130,7 @@ Complete framework reference — signals, components, templates, directives, rou
 </td>
 <td width="33%" align="center">
 
-### [Contributing](contributing/README.md)
+### [Contributing](CONTRIBUTING.md)
 
 Set up the dev environment, run tests, understand the architecture, and submit PRs.
 
