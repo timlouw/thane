@@ -1,85 +1,9 @@
 import { expect, test, describe } from 'bun:test';
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { runBuild } from './cli/build.js';
+import { buildAndReadJs as buildProjectAndReadJs, PROD_BUILD } from '../../testing/build-project.js';
 
-// ============================================================================
-// Helpers
-// ============================================================================
-
-const makeProject = async (entrySource: string, extraFiles: Record<string, string> = {}) => {
-  const root = await mkdtemp(join(process.cwd(), '.tmp-thane-text-binding-'));
-  const srcDir = join(root, 'src');
-  const outDir = join(root, 'dist');
-  const htmlPath = join(root, 'index.html');
-  const entryPath = join(srcDir, 'main.ts');
-
-  await mkdir(srcDir, { recursive: true });
-  await writeFile(
-    htmlPath,
-    '<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="app"></div></body></html>',
-    'utf8',
-  );
-  await writeFile(entryPath, entrySource, 'utf8');
-
-  for (const [relativePath, contents] of Object.entries(extraFiles)) {
-    const fullPath = join(root, relativePath);
-    await mkdir(join(fullPath, '..'), { recursive: true });
-    await writeFile(fullPath, contents, 'utf8');
-  }
-
-  return { root, outDir, htmlPath, entryPath };
-};
-
-const buildAndReadJs = async (source: string, extraFiles: Record<string, string> = {}): Promise<string> => {
-  const project = await makeProject(source, extraFiles);
-  try {
-    await runBuild({
-      entryPoints: [project.entryPath],
-      outDir: project.outDir,
-      inputHTMLFilePath: project.htmlPath,
-      outputHTMLFilePath: join(project.outDir, 'index.html'),
-      isProd: true,
-      serve: false,
-      useGzip: false,
-      strictTypeCheck: false,
-      dropConsole: true,
-      dropDebugger: true,
-      sourcemap: false,
-      port: 4200,
-      open: false,
-      host: 'localhost',
-      base: '/',
-      target: [],
-      hashFileNames: true,
-      define: {},
-      envPrefix: 'THANE_',
-      emptyOutDir: true,
-      splitting: true,
-      legalComments: 'none',
-      analyze: false,
-    });
-
-    const jsFiles: string[] = [];
-    const walk = async (dir: string): Promise<void> => {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) await walk(fullPath);
-        else if (entry.isFile() && entry.name.endsWith('.js') && !entry.name.endsWith('.map')) {
-          jsFiles.push(fullPath);
-        }
-      }
-    };
-    await walk(project.outDir);
-    expect(jsFiles.length).toBeGreaterThan(0);
-
-    const contents = await Promise.all(jsFiles.map((f) => readFile(f, 'utf8')));
-    return contents.join('\n');
-  } finally {
-    await rm(project.root, { recursive: true, force: true });
-  }
-};
+/** Production build of a fixture plus optional extra files, returning the emitted JavaScript. */
+const buildAndReadJs = (source: string, extraFiles: Record<string, string> = {}): Promise<string> =>
+  buildProjectAndReadJs(source, { extraFiles, config: PROD_BUILD });
 
 // ============================================================================
 // Tests — Sole-content text bindings in repeat (textContent mode)

@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  processHtmlTemplateWithConditionals,
-  processSubTemplateWithNesting,
-} from './plugins/reactive-binding-compiler/template-processing.js';
+import { processHtmlTemplateWithConditionals, processSubTemplateWithNesting } from './template-processing.js';
 
 const process = (template: string, inits = new Map<string, string | number | boolean>()) =>
   processHtmlTemplateWithConditionals(template, inits, 0);

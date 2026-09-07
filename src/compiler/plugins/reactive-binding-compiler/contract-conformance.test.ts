@@ -1,26 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { runBuild } from './cli/build.js';
-import { RUNTIME_HELPER } from '../contracts/index.js';
-
-const makeProject = async (entrySource: string) => {
-  const root = await mkdtemp(join(process.cwd(), '.tmp-thane-contract-conformance-'));
-  const srcDir = join(root, 'src');
-  const outDir = join(root, 'dist');
-  const htmlPath = join(root, 'index.html');
-  const entryPath = join(srcDir, 'main.ts');
-
-  await mkdir(srcDir, { recursive: true });
-  await writeFile(
-    htmlPath,
-    '<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="app"></div></body></html>',
-    'utf8',
-  );
-  await writeFile(entryPath, entrySource, 'utf8');
-
-  return { root, outDir, htmlPath, entryPath };
-};
+import { RUNTIME_HELPER } from '../../../contracts/index.js';
+import { buildAndReadJs as buildProjectAndReadJs } from '../../testing/build-project.js';
 
 const collectFiles = async (dir: string, predicate: (path: string) => boolean): Promise<string[]> => {
   const files: string[] = [];
@@ -43,78 +25,9 @@ const collectFiles = async (dir: string, predicate: (path: string) => boolean): 
   return files;
 };
 
-const buildConfig = (project: {
-  entryPath: string;
-  outDir: string;
-  htmlPath: string;
-}): {
-  entryPoints: string[];
-  outDir: string;
-  inputHTMLFilePath: string;
-  outputHTMLFilePath: string;
-  isProd: boolean;
-  serve: boolean;
-  useGzip: boolean;
-  strictTypeCheck: boolean;
-  dropConsole: boolean;
-  dropDebugger: boolean;
-  sourcemap: boolean;
-  port: number;
-  open: boolean;
-  host: string;
-  base: string;
-  target: string[];
-  hashFileNames: boolean;
-  define: Record<string, string>;
-  envPrefix: string;
-  emptyOutDir: boolean;
-  splitting: boolean;
-  legalComments: 'none';
-  analyze: boolean;
-} => ({
-  entryPoints: [project.entryPath],
-  outDir: project.outDir,
-  inputHTMLFilePath: project.htmlPath,
-  outputHTMLFilePath: join(project.outDir, 'index.html'),
-  isProd: false,
-  serve: false,
-  useGzip: false,
-  strictTypeCheck: true,
-  dropConsole: false,
-  dropDebugger: false,
-  sourcemap: true,
-  port: 4200,
-  open: false,
-  host: 'localhost',
-  base: '/',
-  target: [],
-  hashFileNames: true,
-  define: {},
-  envPrefix: 'THANE_',
-  emptyOutDir: true,
-  splitting: true,
-  legalComments: 'none' as const,
-  analyze: false,
-});
-
-const buildAndReadJs = async (source: string, opts?: { prod?: boolean }): Promise<string> => {
-  const project = await makeProject(source);
-  try {
-    const config = buildConfig(project);
-    if (opts?.prod) {
-      config.isProd = true;
-      config.sourcemap = false;
-    }
-    await runBuild(config);
-
-    const jsFiles = await collectFiles(project.outDir, (f) => f.endsWith('.js') && !f.endsWith('.js.map'));
-    expect(jsFiles.length).toBeGreaterThan(0);
-    const content = await Promise.all(jsFiles.map((f) => readFile(f, 'utf8')));
-    return content.join('\n');
-  } finally {
-    await rm(project.root, { recursive: true, force: true });
-  }
-};
+/** Build a fixture and return its emitted JavaScript (development build unless `prod` is set). */
+const buildAndReadJs = (source: string, opts?: { prod?: boolean }): Promise<string> =>
+  buildProjectAndReadJs(source, opts?.prod ? { config: { isProd: true, sourcemap: false } } : {});
 
 describe('compiler/runtime contract conformance', () => {
   test('generated output imports runtime helpers from internal runtime specifier', async () => {

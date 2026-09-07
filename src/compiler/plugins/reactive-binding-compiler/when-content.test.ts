@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { processHtmlTemplateWithConditionals } from './plugins/reactive-binding-compiler/template-processing.js';
-import { generateInitBindingsFunction } from './plugins/reactive-binding-compiler/codegen.js';
-import { transformDefineComponentSource } from './plugins/reactive-binding-compiler/index.js';
-import { CLOSURE_ACCESS } from './plugins/reactive-binding-compiler/types.js';
+import { processHtmlTemplateWithConditionals } from './template-processing.js';
+import { generateInitBindingsFunction } from './codegen.js';
+import { transformDefineComponentSource } from './index.js';
+import { CLOSURE_ACCESS } from './types.js';
 
 type Init = [string, string | number | boolean];
 const inits = (entries: Init[] = []) => new Map<string, string | number | boolean>(entries);
