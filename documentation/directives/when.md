@@ -49,6 +49,8 @@ template: html`
    - **Show:** The compiler-generated template is cloned and inserted (replacing the placeholder). Nested bindings are initialized.
    - **Hide:** The element is replaced with a `<template>` placeholder. All nested subscriptions are disposed to prevent memory leaks and stale effects.
 
+The compiler pre-renders the element into the static template when the condition is true for the signals' initial values. If the condition cannot be evaluated at build time — for example it reads a plain local variable instead of a signal — the element starts as a placeholder and the runtime decides at mount.
+
 ## Lifecycle Integration
 
 When `when()` hides a child component, that component's `onDestroy` hook fires. When shown again, it mounts as a fresh instance:
@@ -83,18 +85,21 @@ Hiding the timer stops the interval. Showing it again starts a new interval from
 
 ## Nesting
 
-`when()` can be nested inside `repeat()` items, `whenElse()` branches, or other `when()` blocks:
+A `when()` block can contain anything a template can: text, attribute and style bindings, event handlers, child components, and other directives (`when()`, `whenElse()`, `repeat()`). It can in turn be placed inside `repeat()` items, `whenElse()` branches, or other `when()` blocks:
 
 ```typescript
 template: html`
   <div ${when(isLoggedIn())}>
     <p>Welcome back!</p>
+    <button @click=${logout}>Log out</button>
     <div ${when(hasNotifications())}>
-      <span>You have new notifications</span>
+      ${repeat(notifications(), (n) => html`<p>${n.text}</p>`)}
     </div>
   </div>
 `
 ```
+
+Everything inside the block is initialized when it is shown and disposed when it is hidden.
 
 ## `when` vs `whenElse`
 

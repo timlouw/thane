@@ -41,6 +41,8 @@ When the condition changes:
 
 Only one branch is ever in the DOM — they are **mutually exclusive**.
 
+The compiler pre-renders the branch selected by the signals' initial values into the static template. If the condition cannot be evaluated at build time — for example it reads a plain local variable instead of a signal — both branches start as placeholders and the runtime picks one at mount.
+
 ## Bindings Inside Branches
 
 Each branch can contain its own signals, events, and directives:
