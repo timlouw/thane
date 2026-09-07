@@ -1109,4 +1109,23 @@ describe('batch + computed integration', () => {
     // Should observe 30, never the intermediate 12 (a=10, b=2)
     expect(observations).toEqual([30]);
   });
+
+  test('computed subscribers still notify when another source subscriber reads the computed first', () => {
+    const a = signal(1);
+    const b = signal(2);
+    const sum = computed(() => a() + b());
+
+    const observed: number[] = [];
+    sum.subscribe((value) => {
+      observed.push(value);
+    }, true);
+
+    a.subscribe(() => {
+      expect(sum()).toBe(4);
+    }, true);
+
+    a(2);
+
+    expect(observed).toEqual([4]);
+  });
 });

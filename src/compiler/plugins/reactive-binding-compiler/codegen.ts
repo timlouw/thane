@@ -1151,18 +1151,16 @@ export const generateInitBindingsFunction = (
         const nestedElseTemplate = escapeTemplateLiteral(nestedElseWithId);
         const thenInitCode = generateNestedInitializer(
           nestedWe.thenBindings,
-          nestedWe.nestedConditionals.filter(
-            (c) => nestedWe.thenBindings.some((b) => b.conditionalId === c.id) || true,
-          ),
-          nestedWe.nestedWhenElse,
+          nestedWe.thenConditionals,
+          nestedWe.thenWhenElse,
           nestedWe.thenRepeats,
           undefined,
           nestedWe.thenEventBindings ?? [],
         );
         const elseInitCode = generateNestedInitializer(
           nestedWe.elseBindings,
-          [],
-          [],
+          nestedWe.elseConditionals,
+          nestedWe.elseWhenElse,
           nestedWe.elseRepeats,
           undefined,
           nestedWe.elseEventBindings ?? [],
@@ -1186,16 +1184,16 @@ export const generateInitBindingsFunction = (
     };
     const thenCode = generateNestedInitializer(
       we.thenBindings,
-      we.nestedConditionals,
-      we.nestedWhenElse,
+      we.thenConditionals,
+      we.thenWhenElse,
       we.thenRepeats,
       we.thenId,
       we.thenEventBindings ?? [],
     );
     const elseCode = generateNestedInitializer(
       we.elseBindings,
-      [],
-      [],
+      we.elseConditionals,
+      we.elseWhenElse,
       we.elseRepeats,
       we.elseId,
       we.elseEventBindings ?? [],

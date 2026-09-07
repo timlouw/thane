@@ -353,6 +353,93 @@ test('expression bindings handle order, mixed text, ternary, and duplicate reads
   await expect(page.getByTestId('style-expr-target')).toHaveCSS('color', 'rgb(255, 0, 0)');
 });
 
+test('robust expression coverage handles constants, mixed signal/computed values, and local conditional branches', async ({
+  page,
+}) => {
+  await gotoApp({ page });
+
+  await expect(page.getByTestId('expr-const-text')).toHaveText('const-7');
+  await expect(page.getByTestId('expr-const-attr')).toHaveAttribute('data-value', 'fixed-3');
+  await expect(page.getByTestId('expr-const-style')).toHaveCSS('border-top-color', 'rgb(10, 20, 30)');
+  await expect(page.getByTestId('expr-sum')).toHaveText('3');
+
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-1-SUM-3-local');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveClass(/\bsum-low\b/);
+  await expect(page.getByTestId('expr-mixed-style')).toHaveCSS('color', 'rgb(128, 0, 0)');
+
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-1-3');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-1-3');
+  await expect(page.getByTestId('expr-local-then')).toHaveAttribute('data-value', 'local-1-3');
+  await expect(page.getByTestId('expr-local-then')).toHaveClass(/\bsum-odd\b/);
+  await expect(page.getByTestId('expr-local-then-style')).toHaveCSS('background-color', 'rgb(240, 240, 240)');
+  await expect(page.getByTestId('expr-local-then-nested')).toHaveCount(0);
+  await expect(page.getByTestId('expr-local-else')).toHaveCount(0);
+
+  await page.getByTestId('inc-expr-a').click();
+  await expect(page.getByTestId('expr-sum')).toHaveText('4');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-2-SUM-4-local');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveClass(/\bsum-low\b/);
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-2-4');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-2-4');
+  await expect(page.getByTestId('expr-local-then')).toHaveClass(/\bsum-even\b/);
+  await expect(page.getByTestId('expr-local-then-nested')).toHaveText('even-4');
+
+  await page.getByTestId('inc-expr-b').click();
+  await expect(page.getByTestId('expr-sum')).toHaveText('5');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-2-SUM-5-local');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveClass(/\bsum-high\b/);
+  await expect(page.getByTestId('expr-mixed-style')).toHaveCSS('color', 'rgb(0, 128, 0)');
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-2-5');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-2-5');
+  await expect(page.getByTestId('expr-local-then-style')).toHaveCSS('background-color', 'rgb(0, 0, 0)');
+  await expect(page.getByTestId('expr-local-then-nested')).toHaveCount(0);
+  await expect(page.getByTestId('expr-local-else')).toHaveCount(0);
+
+  await page.getByTestId('swap-expr').click();
+  await expect(page.getByTestId('expr-sum')).toHaveText('5');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-3-SUM-5-local');
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-3-5');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-3-5');
+});
+
+test('nested whenElse and when directives toggle correctly inside both then and else branches', async ({ page }) => {
+  await gotoApp({ page });
+
+  // Initial: outer=true, inner=true — statically pre-rendered then branch with nested then
+  await expect(page.getByTestId('gate-then-label')).toHaveText('outer-then');
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-then-1');
+  await expect(page.getByTestId('gate-else')).toHaveCount(0);
+
+  // Toggle the nested condition while the pre-rendered outer branch is showing.
+  // Regression guard: statically inlined nested branches must stay reactive.
+  await page.getByTestId('toggle-inner-gate').click();
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-else-1');
+  await expect(page.getByTestId('gate-then-inner')).toHaveCount(1);
+
+  // Nested content keeps reacting to unrelated signals
+  await page.getByTestId('inc-expr-a').click();
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-else-2');
+
+  // Switch to the else branch (inner=false): nested when hidden, nested whenElse shows its else
+  await page.getByTestId('toggle-outer-gate').click();
+  await expect(page.getByTestId('gate-then')).toHaveCount(0);
+  await expect(page.getByTestId('gate-else-label')).toHaveText('outer-else');
+  await expect(page.getByTestId('gate-else-when')).toHaveCount(0);
+  await expect(page.getByTestId('gate-else-inner')).toHaveText('else-inner-else');
+
+  // Regression guard: nested directives inside the ELSE branch must be initialized
+  await page.getByTestId('toggle-inner-gate').click();
+  await expect(page.getByTestId('gate-else-when')).toHaveText('else-when-visible');
+  await expect(page.getByTestId('gate-else-inner')).toHaveText('else-inner-then');
+  await expect(page.getByTestId('gate-else-inner')).toHaveCount(1);
+
+  // Round-trip back to the then branch — nested state still consistent (inner=true)
+  await page.getByTestId('toggle-outer-gate').click();
+  await expect(page.getByTestId('gate-else')).toHaveCount(0);
+  await expect(page.getByTestId('gate-then-label')).toHaveText('outer-then');
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-then-2');
+});
+
 test('whitespace between adjacent template bindings is preserved exactly', async ({ page }) => {
   await gotoApp({ page });
 

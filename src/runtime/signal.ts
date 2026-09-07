@@ -292,6 +292,8 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
    * During a notification cascade, defers to the computed pending queue.
    */
   let pendingNotify = false;
+  let pendingOldValue: T = undefined as T;
+  let hasPendingOldValue = false;
   const markDirty = () => {
     if (disposed) return;
     dirty = true;
@@ -300,6 +302,8 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
     if (_notificationDepth > 0) {
       if (!pendingNotify) {
         pendingNotify = true;
+        pendingOldValue = value;
+        hasPendingOldValue = true;
         _computedPendingQueue.push(notifyIfChanged);
       }
       return;
@@ -309,9 +313,10 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
 
   /** Re-evaluate if value changed and notify subscribers. */
   const notifyIfChanged = () => {
+    const oldVal = hasPendingOldValue ? pendingOldValue : value;
     pendingNotify = false;
+    hasPendingOldValue = false;
     if (disposed || subscribers.length === 0) return;
-    const oldVal = value;
     evaluate();
     if (hasError || !Object.is(oldVal, value)) {
       _notifyComputedSubs(subscribers, value, notifyCount, (nc) => {

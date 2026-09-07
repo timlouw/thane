@@ -47,7 +47,7 @@ export interface ConditionalBlock {
   signalName: string; // Primary signal (for simple cases)
   signalNames: string[]; // All signals in the expression
   jsExpression: string; // The full JS expression e.g. "!_loading()" or "_a() && _b()"
-  initialValue: boolean;
+  initialValue: boolean | undefined;
   templateContent: string; // HTML to insert when true
   startIndex: number; // Position in HTML where the element/block starts
   endIndex: number; // Position where it ends
@@ -63,7 +63,7 @@ export interface WhenElseBlock {
   signalName: string; // Primary signal
   signalNames: string[]; // All signals in the expression
   jsExpression: string; // The condition expression
-  initialValue: boolean;
+  initialValue: boolean | undefined;
   thenTemplate: string; // HTML to insert when true
   elseTemplate: string; // HTML to insert when false
   startIndex: number; // Position in HTML where ${whenElse starts
@@ -74,9 +74,13 @@ export interface WhenElseBlock {
   elseRepeats: RepeatBlock[]; // Repeat blocks inside else template
   thenEventBindings: EventBinding[]; // Event bindings inside then template
   elseEventBindings: EventBinding[]; // Event bindings inside else template
-  nestedConditionals: ConditionalBlock[]; // Nested when blocks inside then/else
-  nestedWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside then/else
-  nestedRepeats: RepeatBlock[]; // Nested repeat blocks inside then/else
+  nestedConditionals: ConditionalBlock[]; // Nested when blocks inside then/else (union)
+  nestedWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside then/else (union)
+  nestedRepeats: RepeatBlock[]; // Nested repeat blocks inside then/else (union)
+  thenConditionals: ConditionalBlock[]; // Nested when blocks inside then template only
+  elseConditionals: ConditionalBlock[]; // Nested when blocks inside else template only
+  thenWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside then template only
+  elseWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside else template only
 }
 
 export interface RepeatBlock {

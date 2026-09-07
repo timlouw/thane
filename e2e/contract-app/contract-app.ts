@@ -64,6 +64,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const rapidValue = signal(0);
   const exprA = signal(1);
   const exprB = signal(2);
+  const exprSum = computed(() => exprA() + exprB());
   const childMountsA = signal(0);
   const childMountsB = signal(0);
   const childEventsA = signal(0);
@@ -80,6 +81,10 @@ export const ContractApp = defineComponent('contract-app', () => {
   ]);
   const orderFlag = signal(true);
   const depthFlag = signal(true);
+  const outerGate = signal(true);
+  const innerGate = signal(true);
+  const localExpressionMode = 'then';
+  const localExpressionMeta = { branch: 'then', label: 'local' };
   const orderItems = signal([
     { id: 1, name: 'O-1' },
     { id: 2, name: 'O-2' },
@@ -107,6 +112,8 @@ export const ContractApp = defineComponent('contract-app', () => {
     ]);
   const toggleOrderFlag = () => orderFlag(!orderFlag());
   const toggleDepthFlag = () => depthFlag(!depthFlag());
+  const toggleOuterGate = () => outerGate(!outerGate());
+  const toggleInnerGate = () => innerGate(!innerGate());
   const addOrderItem = () => {
     const next = orderItems().length + 1;
     orderItems([...orderItems(), { id: next, name: `O-${next}` }]);
@@ -566,6 +573,80 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="ws-none">${exprA()}${exprB()}</p>
           <p data-testid="ws-multi">${exprA()} ${exprB()}</p>
           <p data-testid="ws-surrounding"> hello ${exprA()} and ${exprB()} world </p>
+        </section>
+
+        <section data-testid="expression-robust-section">
+          <p data-testid="expr-const-text">${'const-7'}</p>
+          <div data-testid="expr-const-attr" data-value="${'fixed-' + 3}">const-attr</div>
+          <div data-testid="expr-const-style" style="border-top-color: ${'rgb(10, 20, 30)'}">const-style</div>
+          <p data-testid="expr-sum">${exprSum()}</p>
+
+          <div
+            data-testid="expr-mixed-attr"
+            data-value="${'A-' + exprA() + '-SUM-' + exprSum() + '-local'}"
+            class="${exprSum() > 4 ? 'sum-high' : 'sum-low'}"
+            >mixed-attr</div
+          >
+          <div data-testid="expr-mixed-style" style="color: ${exprSum() > 4 ? 'rgb(0, 128, 0)' : 'rgb(128, 0, 0)'}"
+            >mixed-style</div
+          >
+
+          <div data-testid="expr-local-when" ${when(localExpressionMode === 'then')}
+            >${'local-when-' + exprA() + '-' + exprSum()}</div
+          >
+
+          ${whenElse(
+            localExpressionMeta.branch === 'then',
+            html`
+              <section data-testid="expr-local-then-shell">
+                <div
+                  data-testid="expr-local-then"
+                  data-value="${localExpressionMeta.label + '-' + exprA() + '-' + exprSum()}"
+                  class="${exprSum() % 2 === 0 ? 'sum-even' : 'sum-odd'}"
+                >
+                  ${localExpressionMeta.label + '-' + exprA() + '-' + exprSum()}
+                </div>
+                <div
+                  data-testid="expr-local-then-style"
+                  style="background-color: ${exprSum() > 4 ? 'rgb(0, 0, 0)' : 'rgb(240, 240, 240)'}"
+                >
+                  styled-local
+                </div>
+                <b data-testid="expr-local-then-nested" ${when(exprSum() % 2 === 0)}>even-${exprSum()}</b>
+              </section>
+            `,
+            html`<div data-testid="expr-local-else">else-local</div>`,
+          )}
+        </section>
+
+        <section data-testid="nested-when-else-section">
+          <button data-testid="toggle-outer-gate" @click=${toggleOuterGate}>toggle outer</button>
+          <button data-testid="toggle-inner-gate" @click=${toggleInnerGate}>toggle inner</button>
+
+          ${whenElse(
+            outerGate(),
+            html`
+              <div data-testid="gate-then">
+                <span data-testid="gate-then-label">outer-then</span>
+                ${whenElse(
+                  innerGate(),
+                  html`<em data-testid="gate-then-inner">inner-then-${exprA()}</em>`,
+                  html`<em data-testid="gate-then-inner">inner-else-${exprA()}</em>`,
+                )}
+              </div>
+            `,
+            html`
+              <div data-testid="gate-else">
+                <span data-testid="gate-else-label">outer-else</span>
+                <i data-testid="gate-else-when" ${when(innerGate())}>else-when-visible</i>
+                ${whenElse(
+                  innerGate(),
+                  html`<u data-testid="gate-else-inner">else-inner-then</u>`,
+                  html`<u data-testid="gate-else-inner">else-inner-else</u>`,
+                )}
+              </div>
+            `,
+          )}
         </section>
 
         <section data-testid="template-injection-section"> ${loadingShell} </section>
