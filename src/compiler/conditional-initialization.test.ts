@@ -99,7 +99,7 @@ describe('conditional initialization', () => {
     expect(result.processedContent).toContain('<p>AFTER-MARKER</p>');
   });
 
-  test('whenElse inside a when()-element content is skipped without corrupting adjacent content', () => {
+  test('whenElse inside a when() element is collected under the conditional, not at the top level', () => {
     const inits = new Map<string, string | number | boolean>([
       ['outerGate', true],
       ['innerGate', true],
@@ -111,6 +111,8 @@ describe('conditional initialization', () => {
     const result = process(template, inits);
 
     expect(result.whenElseBlocks).toHaveLength(0);
+    expect(result.conditionals).toHaveLength(1);
+    expect(result.conditionals[0]?.nestedWhenElse).toHaveLength(1);
     expect(result.processedContent).toContain('<p>AFTER-MARKER</p>');
   });
 });

@@ -23,6 +23,8 @@ import {
 import {
   collectConditionalBlocks,
   collectWhenElseBlocks,
+  collectDirectiveRanges,
+  isNestedInsideAny,
   buildConditionalEdits,
   buildWhenElseEdits,
   buildSignalReplacementEdits,
@@ -30,6 +32,7 @@ import {
   buildRangeOverlapChecker,
   applyTemplateEdits,
   type IdState,
+  type SubTemplateProcessor,
   type TemplateEdit,
 } from './template-utils.js';
 
@@ -129,7 +132,8 @@ const isInsideRepeatRange = (start: number, end: number, repeatBlocks: RepeatBlo
 };
 
 /**
- * Process a conditional element's HTML, injecting IDs and handling nested conditionals
+ * Process a conditional element's HTML for repeat item templates: strip the when()
+ * directive, inject the conditional id, fold initial values and extract events.
  */
 export const processConditionalElementHtml = (
   element: HtmlElement,
@@ -137,7 +141,6 @@ export const processConditionalElementHtml = (
   signalInitializers: Map<string, string | number | boolean>,
   elementIdMap: Map<HtmlElement, string>,
   conditionalId: string,
-  nestedConditionalBlocks?: ConditionalBlock[],
   eventIdCounter: { value: number } = { value: 0 },
   textBindingCommentIds?: Map<string, string[]>,
 ): { html: string; eventBindings: EventBinding[] } => {
@@ -217,60 +220,6 @@ export const processConditionalElementHtml = (
     eventBindings.push(eventBinding);
   }
   html = addIdsToNestedElements(html, element, elementIdMap, originalHtml);
-  if (nestedConditionalBlocks && nestedConditionalBlocks.length > 0) {
-    for (const nestedCond of nestedConditionalBlocks) {
-      // Build the exact when() attribute value to search for as a literal string
-      const whenAttrValue = `\${when(${nestedCond.jsExpression})}`;
-      const whenAttrIdx = html.indexOf(whenAttrValue);
-      if (whenAttrIdx !== -1) {
-        // Find the enclosing element for this when() directive
-        // Scan backwards from the when attr to find the opening '<'
-        let openTagStart = whenAttrIdx - 1;
-        while (openTagStart >= 0 && html[openTagStart] !== '<') openTagStart--;
-
-        if (openTagStart >= 0) {
-          // Extract the tag name
-          let tagNameEndPos = openTagStart + 1;
-          while (tagNameEndPos < html.length && /[\w-]/.test(html[tagNameEndPos]!)) tagNameEndPos++;
-          const tagName = html.substring(openTagStart + 1, tagNameEndPos);
-
-          // Find the closing tag for this element
-          const closeTag = `</${tagName}>`;
-          const openTagEndIdx = html.indexOf('>', whenAttrIdx);
-          if (openTagEndIdx !== -1) {
-            // Simple case: find the matching close tag (handles non-nested same-tag)
-            let depth = 1;
-            let searchPos = openTagEndIdx + 1;
-            let closeTagStart = -1;
-            while (searchPos < html.length && depth > 0) {
-              const nextOpen = html.indexOf(`<${tagName}`, searchPos);
-              const nextClose = html.indexOf(closeTag, searchPos);
-              if (nextClose === -1) break;
-              if (nextOpen !== -1 && nextOpen < nextClose) {
-                depth++;
-                searchPos = nextOpen + tagName.length + 1;
-              } else {
-                depth--;
-                if (depth === 0) {
-                  closeTagStart = nextClose;
-                }
-                searchPos = nextClose + closeTag.length;
-              }
-            }
-            if (closeTagStart !== -1) {
-              html =
-                html.substring(0, openTagStart) +
-                `<template id="${nestedCond.id}"></template>` +
-                html.substring(closeTagStart + closeTag.length);
-              continue;
-            }
-          }
-        }
-        // Fallback: just remove the when attribute value
-        html = html.replace(whenAttrValue, '');
-      }
-    }
-  }
   html = html
     .replace(/\s+/g, ' ')
     .replace(/>\s+<(?![!-])/g, '><')
@@ -362,76 +311,39 @@ export const processHtmlTemplateWithConditionals = (
   const elementIdMap = new Map<HtmlElement, string>();
   const state: IdState = { idCounter: startingId, eventIdCounter: { value: 0 }, elementIdMap };
 
-  // ── Conditionals (with nested conditional support) ──
+  const processSubTemplate: SubTemplateProcessor = (template, parentId) =>
+    processSubTemplateWithNesting(
+      template,
+      signalInitializers,
+      state.idCounter,
+      parentId,
+      { detectNonSignalBindings: true },
+      state.eventIdCounter,
+    );
+
+  // ── Conditionals — each when() element's content is processed as a sub-template ──
   const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state, {
-    handleNestedConditionals: true,
+    processSubTemplate,
   });
   const conditionals = condResult.conditionals;
   bindings.push(...condResult.bindings);
-  eventBindings.push(...condResult.eventBindings);
 
-  // ── WhenElse — pre-compute repeat ranges to filter out nested whenElse ──
-  const allRepeatRanges: Array<{ start: number; end: number }> = [];
-  for (const binding of parsed.bindings) {
-    if (binding.type === 'repeat') {
-      allRepeatRanges.push({ start: binding.expressionStart, end: binding.expressionEnd });
-    }
-  }
-  const isInsideRepeatRange = (start: number, end: number): boolean => {
-    for (const range of allRepeatRanges) {
-      if (start > range.start && end < range.end) return true;
-    }
-    return false;
-  };
-  // whenElse nested inside another whenElse's branches is handled by the
-  // recursive sub-template processing — collecting it at this level too would
-  // produce overlapping template edits that corrupt adjacent HTML.
-  const allWhenElseRanges: Array<{ start: number; end: number }> = [];
-  for (const binding of parsed.bindings) {
-    if (binding.type === 'whenElse') {
-      allWhenElseRanges.push({ start: binding.expressionStart, end: binding.expressionEnd });
-    }
-  }
-  const isInsideAnotherWhenElse = (start: number, end: number): boolean => {
-    for (const range of allWhenElseRanges) {
-      if (start > range.start && end < range.end) return true;
-    }
-    return false;
-  };
-  // whenElse()/repeat() inside a when()-element's content is not supported — the
-  // conditional's element range already gets a single replacement edit, so any
-  // directive edit inside that range would overlap and corrupt adjacent HTML.
-  const conditionalElementRanges = conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex }));
-  const isInsideConditionalElement = (start: number, end: number): boolean => {
-    for (const range of conditionalElementRanges) {
-      if (start > range.start && end < range.end) return true;
-    }
-    return false;
-  };
-  const warnUnsupportedInsideWhen = (directive: string) => {
-    logger.warn(
-      NAME,
-      `${directive} inside a when()-element's content is not supported and was skipped. ` +
-        `Restructure using whenElse() around the element or move the ${directive} outside the when() element.`,
-    );
-  };
+  // ── Directive ownership: a whenElse/repeat expression nested inside a repeat, another
+  //    whenElse, or a when() element belongs to that directive's recursive processing ──
+  const ranges = collectDirectiveRanges(parsed);
+  const isOwnedByNestedProcessing = (start: number, end: number): boolean =>
+    isNestedInsideAny(start, end, ranges.repeat) ||
+    isNestedInsideAny(start, end, ranges.whenElse) ||
+    isNestedInsideAny(start, end, ranges.conditional);
+
+  // ── WhenElse ──
   const filteredForWhenElse = {
     ...parsed,
-    bindings: parsed.bindings.filter((b) => {
-      if (b.type !== 'whenElse') return true;
-      if (isInsideRepeatRange(b.expressionStart, b.expressionEnd)) return false;
-      if (isInsideAnotherWhenElse(b.expressionStart, b.expressionEnd)) return false;
-      if (isInsideConditionalElement(b.expressionStart, b.expressionEnd)) {
-        warnUnsupportedInsideWhen('whenElse()');
-        return false;
-      }
-      return true;
-    }),
+    bindings: parsed.bindings.filter(
+      (b) => b.type !== 'whenElse' || !isOwnedByNestedProcessing(b.expressionStart, b.expressionEnd),
+    ),
   };
-  const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, (template, id) =>
-    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id, { detectNonSignalBindings: true }),
-  );
-  const whenElseRanges = whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex }));
+  const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, processSubTemplate);
 
   // ── Collect conditional element sets for filtering later bindings ──
   const allConditionalElements = findElementsWithWhenDirective(parsed.roots);
@@ -443,31 +355,11 @@ export const processHtmlTemplateWithConditionals = (
     });
   }
 
-  const isInsideOtherRepeat = (start: number, end: number): boolean => {
-    for (const range of allRepeatRanges) {
-      if (start > range.start && end < range.end) {
-        return true;
-      }
-    }
-    return false;
-  };
-  const isInsideWhenElse = (start: number, end: number): boolean => {
-    for (const range of whenElseRanges) {
-      if (start > range.start && end < range.end) {
-        return true;
-      }
-    }
-    return false;
-  };
+  // ── Repeats ──
   for (const binding of parsed.bindings) {
     if (binding.type !== 'repeat') continue;
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
-    if (isInsideOtherRepeat(binding.expressionStart, binding.expressionEnd)) continue;
-    if (isInsideWhenElse(binding.expressionStart, binding.expressionEnd)) continue;
-    if (isInsideConditionalElement(binding.expressionStart, binding.expressionEnd)) {
-      warnUnsupportedInsideWhen('repeat()');
-      continue;
-    }
+    if (isOwnedByNestedProcessing(binding.expressionStart, binding.expressionEnd)) continue;
 
     const signalNames = binding.signalNames || [binding.signalName];
     const repeatId = `b${state.idCounter++}`;
@@ -600,6 +492,8 @@ export const processHtmlTemplateWithConditionals = (
   for (const binding of parsed.bindings) {
     if (binding.type !== 'event') continue;
     if (!binding.eventName || !binding.handlerExpression) continue;
+    // Events inside a when() element are bound by that conditional's own initializer
+    if (elementsInsideConditionals.has(binding.element) || conditionalElementSet.has(binding.element)) continue;
 
     const eventId = `e${state.eventIdCounter.value++}`;
     // Use existing HTML id attribute if available, otherwise generate one
@@ -659,6 +553,7 @@ export const processSubTemplateWithNesting = (
   startingId: number,
   parentId: string,
   options?: { detectNonSignalBindings?: boolean },
+  eventIdCounter?: { value: number },
 ): {
   processedContent: string;
   bindings: BindingInfo[];
@@ -673,100 +568,42 @@ export const processSubTemplateWithNesting = (
   const repeatBlocks: RepeatBlock[] = [];
   const eventBindings: EventBinding[] = [];
   const elementIdMap = new Map<HtmlElement, string>();
-  const state: IdState = { idCounter: startingId, eventIdCounter: { value: 0 }, elementIdMap };
+  // Share the caller's event id counter so ids stay unique across nesting levels
+  const state: IdState = { idCounter: startingId, eventIdCounter: eventIdCounter ?? { value: 0 }, elementIdMap };
   const firstRootElement = parsed.roots[0] ?? null;
 
-  // ── Conditionals ──
-  const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state);
+  const processSubTemplate: SubTemplateProcessor = (template, id) =>
+    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id, options, state.eventIdCounter);
+
+  // ── Conditionals — each when() element's content is processed as a sub-template ──
+  //    Bindings inside a nested when() are owned by that conditional's initializer and are
+  //    deliberately not merged into this sub-template's own binding list.
+  const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state, {
+    processSubTemplate,
+  });
   const conditionals = condResult.conditionals;
 
-  // ── Pre-compute repeat ranges so we can filter out whenElse bindings nested inside repeats ──
-  const allRepeatRanges: Array<{ start: number; end: number }> = [];
-  for (const binding of parsed.bindings) {
-    if (binding.type === 'repeat') {
-      allRepeatRanges.push({ start: binding.expressionStart, end: binding.expressionEnd });
-    }
-  }
-  const isInsideRepeat = (start: number, end: number): boolean => {
-    for (const range of allRepeatRanges) {
-      if (start > range.start && end < range.end) return true;
-    }
-    return false;
-  };
+  // ── Directive ownership (see processHtmlTemplateWithConditionals) ──
+  const ranges = collectDirectiveRanges(parsed);
+  const isOwnedByNestedProcessing = (start: number, end: number): boolean =>
+    isNestedInsideAny(start, end, ranges.repeat) ||
+    isNestedInsideAny(start, end, ranges.whenElse) ||
+    isNestedInsideAny(start, end, ranges.conditional);
 
-  // ── WhenElse — filter out those nested inside repeats (handled by repeat item processing)
-  //    and those nested inside another whenElse (handled by recursive branch processing) ──
-  const allWhenElseRanges: Array<{ start: number; end: number }> = [];
-  for (const binding of parsed.bindings) {
-    if (binding.type === 'whenElse') {
-      allWhenElseRanges.push({ start: binding.expressionStart, end: binding.expressionEnd });
-    }
-  }
-  const isInsideAnotherWhenElse = (start: number, end: number): boolean => {
-    for (const range of allWhenElseRanges) {
-      if (start > range.start && end < range.end) return true;
-    }
-    return false;
-  };
-  // whenElse()/repeat() inside a when()-element's content is not supported (see main path)
-  const conditionalElementRanges = conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex }));
-  const isInsideConditionalElement = (start: number, end: number): boolean => {
-    for (const range of conditionalElementRanges) {
-      if (start > range.start && end < range.end) return true;
-    }
-    return false;
-  };
-  const warnUnsupportedInsideWhen = (directive: string) => {
-    logger.warn(
-      NAME,
-      `${directive} inside a when()-element's content is not supported and was skipped. ` +
-        `Restructure using whenElse() around the element or move the ${directive} outside the when() element.`,
-    );
-  };
+  // ── WhenElse ──
   const filteredForWhenElse = {
     ...parsed,
-    bindings: parsed.bindings.filter((b) => {
-      if (b.type !== 'whenElse') return true;
-      if (isInsideRepeat(b.expressionStart, b.expressionEnd)) return false;
-      if (isInsideAnotherWhenElse(b.expressionStart, b.expressionEnd)) return false;
-      if (isInsideConditionalElement(b.expressionStart, b.expressionEnd)) {
-        warnUnsupportedInsideWhen('whenElse()');
-        return false;
-      }
-      return true;
-    }),
+    bindings: parsed.bindings.filter(
+      (b) => b.type !== 'whenElse' || !isOwnedByNestedProcessing(b.expressionStart, b.expressionEnd),
+    ),
   };
-  const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, (template, id) =>
-    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id, options),
-  );
-  const whenElseRanges = whenElseBlocks.map((w) => ({ start: w.startIndex, end: w.endIndex }));
+  const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, processSubTemplate);
 
   // ── Repeats ──
-  const isInsideOtherRepeat = (start: number, end: number): boolean => {
-    for (const range of allRepeatRanges) {
-      if (start > range.start && end < range.end) {
-        return true;
-      }
-    }
-    return false;
-  };
-  const isInsideWhenElse = (start: number, end: number): boolean => {
-    for (const range of whenElseRanges) {
-      if (start > range.start && end < range.end) {
-        return true;
-      }
-    }
-    return false;
-  };
   for (const binding of parsed.bindings) {
     if (binding.type !== 'repeat') continue;
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
-    if (isInsideOtherRepeat(binding.expressionStart, binding.expressionEnd)) continue;
-    if (isInsideWhenElse(binding.expressionStart, binding.expressionEnd)) continue;
-    if (isInsideConditionalElement(binding.expressionStart, binding.expressionEnd)) {
-      warnUnsupportedInsideWhen('repeat()');
-      continue;
-    }
+    if (isOwnedByNestedProcessing(binding.expressionStart, binding.expressionEnd)) continue;
 
     const signalNames = binding.signalNames || [binding.signalName];
     const repeatId = `b${state.idCounter++}`;
@@ -1029,10 +866,12 @@ export const generateProcessedHtml = (
     }
   }
 
-  // Element ID injection (no event data attributes — events use direct addEventListener)
+  // Element ID injection (no event data attributes — events use direct addEventListener).
+  // Elements whose user-supplied id was reused as the binding id are left untouched.
   const isInsideRange = buildRangeOverlapChecker(allRanges);
   for (const [element, id] of elementIdMap) {
     if (isInsideRange(element.tagStart)) continue;
+    if (element.attributes.get('id')?.value === id) continue;
     edits.push({ start: element.tagNameEnd, end: element.tagNameEnd, replacement: ` id="${id}"` });
   }
 
