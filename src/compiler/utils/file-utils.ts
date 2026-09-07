@@ -104,3 +104,22 @@ export const createBuildContext = async (): Promise<BuildContext> => {
 
   return { tsFiles, componentsByName, componentsBySelector };
 };
+
+/**
+ * The directory that owns a project: the nearest ancestor of `entryFile` that
+ * contains a tsconfig.json or package.json, falling back to the entry's own
+ * directory. Type sync and type checking are scoped to it so that building one
+ * project never touches another project's generated types.
+ */
+export const resolveProjectRoot = (entryFile: string): string => {
+  const entryDir = path.dirname(path.resolve(entryFile));
+  let dir = entryDir;
+  for (;;) {
+    if (fs.existsSync(path.join(dir, 'tsconfig.json')) || fs.existsSync(path.join(dir, 'package.json'))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return entryDir;
+    dir = parent;
+  }
+};
