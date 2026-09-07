@@ -11,6 +11,7 @@ const repoRoot = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 export default defineConfig({
   testDir: './tests',
+  outputDir: './test-results',
   timeout: 30_000,
   expect: {
     timeout: 5_000,
@@ -26,9 +27,9 @@ export default defineConfig({
     cwd: repoRoot,
     command: [
       'bun run build',
-      'bun ./dist/compiler/cli/thane.js build --entry ./e2e/contract-app/main.ts --out ./dist/e2e --html ./e2e/contract-app/index.html --assets ./e2e/contract-app/assets',
-      'bun ./dist/compiler/cli/thane.js build --entry ./e2e/router-app/main.ts --out ./dist/e2e-router --html ./e2e/router-app/index.html',
-      'bun ./dist/compiler/cli/thane.js build --entry ./e2e/cart-app/main.ts --out ./dist/e2e-cart-app --html ./e2e/cart-app/index.html',
+      'bun ./dist/compiler/cli/thane.js build --entry ./e2e/contract-app/main.ts --out ./e2e/.build/contract --html ./e2e/contract-app/index.html --assets ./e2e/contract-app/assets',
+      'bun ./dist/compiler/cli/thane.js build --entry ./e2e/router-app/main.ts --out ./e2e/.build/router --html ./e2e/router-app/index.html',
+      'bun ./dist/compiler/cli/thane.js build --entry ./e2e/cart-app/main.ts --out ./e2e/.build/cart --html ./e2e/cart-app/index.html',
       'bun ./e2e/server.ts',
     ].join(' && '),
     url: 'http://127.0.0.1:4173',

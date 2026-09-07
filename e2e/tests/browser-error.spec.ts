@@ -31,7 +31,7 @@ test.describe('browser error relay', () => {
         '--entry',
         './e2e/browser-error-app/main.ts',
         '--out',
-        './dist/e2e-browser-error',
+        './e2e/.build/browser-error',
         '--html',
         './e2e/browser-error-app/index.html',
         '--port',

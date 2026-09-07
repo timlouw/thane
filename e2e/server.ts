@@ -24,9 +24,9 @@ function createHandler(root: string) {
   };
 }
 
-const contractRoot = resolve(process.cwd(), 'dist', 'e2e');
-const routerRoot = resolve(process.cwd(), 'dist', 'e2e-router');
-const cartRoot = resolve(process.cwd(), 'dist', 'e2e-cart-app');
+const contractRoot = resolve(process.cwd(), 'e2e', '.build', 'contract');
+const routerRoot = resolve(process.cwd(), 'e2e', '.build', 'router');
+const cartRoot = resolve(process.cwd(), 'e2e', '.build', 'cart');
 
 if (!existsSync(contractRoot)) {
   throw new Error(`Contract app build output missing at ${contractRoot}. Run e2e:build first.`);
