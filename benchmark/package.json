@@ -7,7 +7,7 @@
   "type": "module",
   "js-framework-benchmark": {
     "customURL": "/dist/",
-    "frameworkVersion": "0.1.0",
+    "frameworkVersion": "0.1.1",
     "frameworkHomeURL": "https://github.com/timlouw/thane"
   },
   "scripts": {
@@ -18,6 +18,6 @@
     "analyze": "thane build --analyze --entry ./main.ts --out ./dist --assets ./assets --html ./index.html"
   },
   "dependencies": {
-    "thane": "file:../thane-0.1.0.tgz"
+    "thane": "file:./thane.tgz"
   }
 }
