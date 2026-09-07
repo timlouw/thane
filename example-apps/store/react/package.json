@@ -1,0 +1,24 @@
+{
+  "name": "store-react",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "concurrently \"vite\" \"tsc -w \"",
+    "build-prod": "tsc && vite build",
+    "preview-prod": "npm run build-prod && vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.3"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "concurrently": "^8.2.2",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
+  }
+}

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none" role="img" aria-label="Store">
+  <path d="M6 14h52l4 12H2z" fill="#1e40af" />
+  <rect x="8" y="26" width="48" height="30" rx="3" fill="#2563eb" />
+  <rect x="26" y="38" width="12" height="18" rx="1.5" fill="#ffffff" />
+  <rect x="12" y="34" width="10" height="8" rx="1" fill="#bfdbfe" />
+  <rect x="42" y="34" width="10" height="8" rx="1" fill="#bfdbfe" />
+</svg>

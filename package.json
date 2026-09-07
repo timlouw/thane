@@ -77,14 +77,9 @@
     "e2e:ui:trace": "playwright test -c ./e2e/playwright.config.ts --ui --headed --trace on --workers=1",
     "format": "prettier --write \"**/*.{ts,json,html}\"",
     "format:check": "prettier --check \"**/*.{ts,json,html}\"",
-    "types:e2e": "cd e2e && bun ../src/compiler/cli/thane.ts types",
-    "types:benchmark": "cd benchmark && bun ../src/compiler/cli/thane.ts types",
-    "types:example": "cd example-apps/thane-app && bun ../../src/compiler/cli/thane.ts types",
-    "typecheck:e2e": "cd e2e && bun ../src/compiler/cli/thane.ts typecheck",
-    "typecheck:benchmark": "cd benchmark && bun ../src/compiler/cli/thane.ts typecheck",
-    "typecheck:example": "cd example-apps/thane-app && bun ../../src/compiler/cli/thane.ts typecheck",
-    "test:apps": "bun run typecheck:e2e && bun run typecheck:benchmark && bun run typecheck:example",
-    "test:benchmark": "bun pm pack --filename benchmark/thane.tgz && cd benchmark && bun install --force && bun run build",
+    "types:apps": "bun scripts/apps.ts types",
+    "test:apps": "bun scripts/apps.ts typecheck",
+    "test:benchmark": "bun pm pack --filename example-apps/benchmark/thane.tgz && cd example-apps/benchmark && bun install --force && bun run build",
     "verify": "bun run format:check && bun run build && bun run test:apps && bun run test:benchmark && bun run test && bun run e2e:test"
   },
   "dependencies": {

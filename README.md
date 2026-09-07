@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="Thane-logo.png" alt="Thane logo" width="80" />
+<img src="docs/assets/thane-logo.png" alt="Thane logo" width="80" />
 
 # Thane
 
@@ -22,7 +22,7 @@ so the browser does the **absolute minimum work** at runtime.
 
 <br />
 
-[Quick Start](#-quick-start) · [Developer Docs](documentation/README.md) · [Contributing](contributing/README.md)
+[Quick Start](#-quick-start) · [Developer Docs](docs/README.md) · [Contributing](docs/contributing/README.md)
 
 </div>
 
@@ -156,7 +156,7 @@ mount({ component: MyCounter });
 
 The compiler auto-derives the selector from the export name (`MyCounter` → `my-counter`), compiles the template to optimized DOM operations, and scopes CSS — all at build time.
 
-**→ [Full Getting Started Guide](documentation/getting-started.md)**
+**→ [Full Getting Started Guide](docs/getting-started.md)**
 
 <br />
 
@@ -174,14 +174,14 @@ The compiler auto-derives the selector from the export name (`MyCounter` → `my
 <tr>
 <td width="33%" align="center">
 
-### [Developer Docs](documentation/README.md)
+### [Developer Docs](docs/README.md)
 
 Complete framework reference — signals, components, templates, directives, routing, styling, CLI, and more.
 
 </td>
 <td width="33%" align="center">
 
-### [Contributing](contributing/README.md)
+### [Contributing](docs/contributing/README.md)
 
 Set up the dev environment, run tests, understand the architecture, and submit PRs.
 
