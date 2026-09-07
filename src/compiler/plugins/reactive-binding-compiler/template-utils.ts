@@ -367,6 +367,10 @@ export const collectWhenElseBlocks = (
       nestedConditionals: [...thenProcessed.conditionals, ...elseProcessed.conditionals],
       nestedWhenElse: [...thenProcessed.whenElseBlocks, ...elseProcessed.whenElseBlocks],
       nestedRepeats: [...thenProcessed.repeatBlocks, ...elseProcessed.repeatBlocks],
+      thenConditionals: thenProcessed.conditionals,
+      elseConditionals: elseProcessed.conditionals,
+      thenWhenElse: thenProcessed.whenElseBlocks,
+      elseWhenElse: elseProcessed.whenElseBlocks,
     });
   }
 
@@ -423,7 +427,7 @@ export const buildConditionalEdits = (conditionals: ConditionalBlock[]): Templat
   return conditionals.map((cond) => ({
     start: cond.startIndex,
     end: cond.endIndex,
-    replacement: cond.initialValue ? cond.templateContent : `<template id="${cond.id}"></template>`,
+    replacement: cond.initialValue === true ? cond.templateContent : `<template id="${cond.id}"></template>`,
   }));
 };
 
@@ -437,16 +441,21 @@ export const buildWhenElseEdits = (
   injectIdFn?: (html: string, id: string) => string,
 ): TemplateEdit[] => {
   return whenElseBlocks.map((we) => {
-    const thenReplacement = we.initialValue
-      ? injectIds && injectIdFn
-        ? injectIdFn(we.thenTemplate, we.thenId)
-        : we.thenTemplate
-      : `<template id="${we.thenId}"></template>`;
-    const elseReplacement = we.initialValue
-      ? `<template id="${we.elseId}"></template>`
-      : injectIds && injectIdFn
-        ? injectIdFn(we.elseTemplate, we.elseId)
-        : we.elseTemplate;
+    // initialValue === true  → pre-render then, defer else
+    // initialValue === false → pre-render else, defer then
+    // initialValue === undefined (not statically resolvable) → defer both; runtime evaluates at mount
+    const thenReplacement =
+      we.initialValue === true
+        ? injectIds && injectIdFn
+          ? injectIdFn(we.thenTemplate, we.thenId)
+          : we.thenTemplate
+        : `<template id="${we.thenId}"></template>`;
+    const elseReplacement =
+      we.initialValue === false
+        ? injectIds && injectIdFn
+          ? injectIdFn(we.elseTemplate, we.elseId)
+          : we.elseTemplate
+        : `<template id="${we.elseId}"></template>`;
     return {
       start: we.startIndex,
       end: we.endIndex,

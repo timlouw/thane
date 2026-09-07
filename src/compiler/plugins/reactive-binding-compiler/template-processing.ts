@@ -78,17 +78,20 @@ const _evalSandbox = vm.createContext(
  * @param jsExpression - The raw JS expression, e.g. "!_loading()" or "_a() && _b()"
  * @param signalNames - All signal names referenced in the expression
  * @param signalInitializers - Map of signal name → initial value
- * @returns The boolean result, defaulting to false on any failure
+ * @returns The boolean result, or undefined when the condition cannot be resolved safely at compile time
  */
 export const safeEvaluateCondition = (
   jsExpression: string,
   signalNames: string[],
   signalInitializers: Map<string, string | number | boolean>,
-): boolean => {
+): boolean | undefined => {
   let evalExpr = jsExpression;
   for (const sigName of signalNames) {
+    if (!signalInitializers.has(sigName)) {
+      return undefined;
+    }
     const initialVal = signalInitializers.get(sigName);
-    evalExpr = evalExpr.replaceAll(`${sigName}()`, JSON.stringify(initialVal ?? false));
+    evalExpr = evalExpr.replaceAll(`${sigName}()`, JSON.stringify(initialVal));
   }
 
   try {
@@ -99,7 +102,7 @@ export const safeEvaluateCondition = (
     });
     return Boolean(vm.runInContext(transpiled, _evalSandbox, { timeout: 50 }));
   } catch {
-    return false;
+    return undefined;
   }
 };
 
@@ -346,8 +349,11 @@ export const processHtmlTemplateWithConditionals = (
 
   // Surface any parse diagnostics to the developer
   for (const diag of parsed.diagnostics) {
-    const logFn = diag.severity === 'error' ? logger.warn : logger.info;
-    logFn(NAME, `Template parse ${diag.severity}: ${diag.message} (at position ${diag.position})`);
+    if (diag.severity === 'error') {
+      logger.warn(NAME, `Template parse ${diag.severity}: ${diag.message} (at position ${diag.position})`);
+    } else {
+      logger.info(NAME, `Template parse ${diag.severity}: ${diag.message} (at position ${diag.position})`);
+    }
   }
 
   const bindings: BindingInfo[] = [];
@@ -377,11 +383,50 @@ export const processHtmlTemplateWithConditionals = (
     }
     return false;
   };
+  // whenElse nested inside another whenElse's branches is handled by the
+  // recursive sub-template processing — collecting it at this level too would
+  // produce overlapping template edits that corrupt adjacent HTML.
+  const allWhenElseRanges: Array<{ start: number; end: number }> = [];
+  for (const binding of parsed.bindings) {
+    if (binding.type === 'whenElse') {
+      allWhenElseRanges.push({ start: binding.expressionStart, end: binding.expressionEnd });
+    }
+  }
+  const isInsideAnotherWhenElse = (start: number, end: number): boolean => {
+    for (const range of allWhenElseRanges) {
+      if (start > range.start && end < range.end) return true;
+    }
+    return false;
+  };
+  // whenElse()/repeat() inside a when()-element's content is not supported — the
+  // conditional's element range already gets a single replacement edit, so any
+  // directive edit inside that range would overlap and corrupt adjacent HTML.
+  const conditionalElementRanges = conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex }));
+  const isInsideConditionalElement = (start: number, end: number): boolean => {
+    for (const range of conditionalElementRanges) {
+      if (start > range.start && end < range.end) return true;
+    }
+    return false;
+  };
+  const warnUnsupportedInsideWhen = (directive: string) => {
+    logger.warn(
+      NAME,
+      `${directive} inside a when()-element's content is not supported and was skipped. ` +
+        `Restructure using whenElse() around the element or move the ${directive} outside the when() element.`,
+    );
+  };
   const filteredForWhenElse = {
     ...parsed,
-    bindings: parsed.bindings.filter(
-      (b) => b.type !== 'whenElse' || !isInsideRepeatRange(b.expressionStart, b.expressionEnd),
-    ),
+    bindings: parsed.bindings.filter((b) => {
+      if (b.type !== 'whenElse') return true;
+      if (isInsideRepeatRange(b.expressionStart, b.expressionEnd)) return false;
+      if (isInsideAnotherWhenElse(b.expressionStart, b.expressionEnd)) return false;
+      if (isInsideConditionalElement(b.expressionStart, b.expressionEnd)) {
+        warnUnsupportedInsideWhen('whenElse()');
+        return false;
+      }
+      return true;
+    }),
   };
   const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, (template, id) =>
     processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id, { detectNonSignalBindings: true }),
@@ -419,6 +464,10 @@ export const processHtmlTemplateWithConditionals = (
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
     if (isInsideOtherRepeat(binding.expressionStart, binding.expressionEnd)) continue;
     if (isInsideWhenElse(binding.expressionStart, binding.expressionEnd)) continue;
+    if (isInsideConditionalElement(binding.expressionStart, binding.expressionEnd)) {
+      warnUnsupportedInsideWhen('repeat()');
+      continue;
+    }
 
     const signalNames = binding.signalNames || [binding.signalName];
     const repeatId = `b${state.idCounter++}`;
@@ -630,7 +679,6 @@ export const processSubTemplateWithNesting = (
   // ── Conditionals ──
   const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state);
   const conditionals = condResult.conditionals;
-  bindings.push(...condResult.bindings);
 
   // ── Pre-compute repeat ranges so we can filter out whenElse bindings nested inside repeats ──
   const allRepeatRanges: Array<{ start: number; end: number }> = [];
@@ -646,12 +694,47 @@ export const processSubTemplateWithNesting = (
     return false;
   };
 
-  // ── WhenElse — filter out those nested inside repeats (handled by repeat item processing) ──
+  // ── WhenElse — filter out those nested inside repeats (handled by repeat item processing)
+  //    and those nested inside another whenElse (handled by recursive branch processing) ──
+  const allWhenElseRanges: Array<{ start: number; end: number }> = [];
+  for (const binding of parsed.bindings) {
+    if (binding.type === 'whenElse') {
+      allWhenElseRanges.push({ start: binding.expressionStart, end: binding.expressionEnd });
+    }
+  }
+  const isInsideAnotherWhenElse = (start: number, end: number): boolean => {
+    for (const range of allWhenElseRanges) {
+      if (start > range.start && end < range.end) return true;
+    }
+    return false;
+  };
+  // whenElse()/repeat() inside a when()-element's content is not supported (see main path)
+  const conditionalElementRanges = conditionals.map((c) => ({ start: c.startIndex, end: c.endIndex }));
+  const isInsideConditionalElement = (start: number, end: number): boolean => {
+    for (const range of conditionalElementRanges) {
+      if (start > range.start && end < range.end) return true;
+    }
+    return false;
+  };
+  const warnUnsupportedInsideWhen = (directive: string) => {
+    logger.warn(
+      NAME,
+      `${directive} inside a when()-element's content is not supported and was skipped. ` +
+        `Restructure using whenElse() around the element or move the ${directive} outside the when() element.`,
+    );
+  };
   const filteredForWhenElse = {
     ...parsed,
-    bindings: parsed.bindings.filter(
-      (b) => b.type !== 'whenElse' || !isInsideRepeat(b.expressionStart, b.expressionEnd),
-    ),
+    bindings: parsed.bindings.filter((b) => {
+      if (b.type !== 'whenElse') return true;
+      if (isInsideRepeat(b.expressionStart, b.expressionEnd)) return false;
+      if (isInsideAnotherWhenElse(b.expressionStart, b.expressionEnd)) return false;
+      if (isInsideConditionalElement(b.expressionStart, b.expressionEnd)) {
+        warnUnsupportedInsideWhen('whenElse()');
+        return false;
+      }
+      return true;
+    }),
   };
   const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, (template, id) =>
     processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id, options),
@@ -680,6 +763,10 @@ export const processSubTemplateWithNesting = (
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
     if (isInsideOtherRepeat(binding.expressionStart, binding.expressionEnd)) continue;
     if (isInsideWhenElse(binding.expressionStart, binding.expressionEnd)) continue;
+    if (isInsideConditionalElement(binding.expressionStart, binding.expressionEnd)) {
+      warnUnsupportedInsideWhen('repeat()');
+      continue;
+    }
 
     const signalNames = binding.signalNames || [binding.signalName];
     const repeatId = `b${state.idCounter++}`;
@@ -749,8 +836,7 @@ export const processSubTemplateWithNesting = (
         signalName: binding.signalName,
       });
 
-      const isExpressionBinding =
-        binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+      const isExpressionBinding = binding.jsExpression !== undefined;
       if (isExpressionBinding) {
         expressionBindingSpans.set(binding.expressionStart, {
           spanId,
@@ -804,8 +890,7 @@ export const processSubTemplateWithNesting = (
     if (binding.type !== 'style' && binding.type !== 'attr') {
       continue;
     }
-    const isExpressionBinding =
-      binding.jsExpression !== undefined && binding.signalNames && binding.signalNames.length > 0;
+    const isExpressionBinding = binding.jsExpression !== undefined;
     const isUnquotedAttrValue = binding.expressionStart > 0 && templateContent[binding.expressionStart - 1] === '=';
     if (isExpressionBinding) {
       inlineExpressionReplacements.set(binding.expressionStart, {
@@ -853,7 +938,10 @@ export const processSubTemplateWithNesting = (
   ];
   const edits: TemplateEdit[] = [
     ...buildConditionalEdits(rootConditionals),
-    ...buildWhenElseEdits(rootWhenElseBlocks, false),
+    // injectIds=true so statically pre-rendered nested whenElse branches carry their
+    // branch id — without it the runtime IF_EXPR lookup misses the inlined branch
+    // and the branch can never be toggled (matches main-template behavior).
+    ...buildWhenElseEdits(rootWhenElseBlocks, true, injectIdIntoFirstElement),
     ...repeatBlocks.map((rep) => ({
       start: rep.startIndex,
       end: rep.endIndex,
