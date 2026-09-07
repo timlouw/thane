@@ -84,7 +84,7 @@
     "typecheck:benchmark": "cd benchmark && bun ../src/compiler/cli/thane.ts typecheck",
     "typecheck:example": "cd example-apps/thane-app && bun ../../src/compiler/cli/thane.ts typecheck",
     "test:apps": "bun run typecheck:e2e && bun run typecheck:benchmark && bun run typecheck:example",
-    "test:benchmark": "npm pack && cd benchmark && bun install && bun run build",
+    "test:benchmark": "bun pm pack --filename benchmark/thane.tgz && cd benchmark && bun install --force && bun run build",
     "verify": "bun run format:check && bun run build && bun run test:apps && bun run test:benchmark && bun run test && bun run e2e:test"
   },
   "dependencies": {
