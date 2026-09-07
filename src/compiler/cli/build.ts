@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { BuildConfig } from './types.js';
-import { consoleColors, createBuildContext, BROWSER_TARGETS } from '../utils/index.js';
+import { consoleColors, createBuildContext, BROWSER_TARGETS, resolveProjectRoot } from '../utils/index.js';
 
 import { clearAllDebounceTimers } from '../plugins/post-build-processor/file-copy.js';
 import { ProjectTypesSyncPlugin } from '../plugins/router-typegen/router-typegen.js';
@@ -43,10 +43,12 @@ export async function runBuild(config: BuildConfig): Promise<void> {
   console.info(consoleColors.blue, `Running ${environment} build...`);
 
   const buildContext = await createBuildContext();
+  const firstEntry = config.entryPoints[0];
+  const projectRoot = config.projectRoot ?? (firstEntry ? resolveProjectRoot(firstEntry) : process.cwd());
 
   const basePlugins = [
-    ProjectTypesSyncPlugin,
-    TSCTypeCheckerPlugin({ strict: config.strictTypeCheck }),
+    ProjectTypesSyncPlugin(projectRoot),
+    TSCTypeCheckerPlugin({ strict: config.strictTypeCheck, projectRoot }),
     ThaneLinterPlugin(),
     ComponentPrecompilerPlugin(buildContext),
     ReactiveBindingPlugin,

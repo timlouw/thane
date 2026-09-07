@@ -245,8 +245,20 @@ const readClientTypesTemplate = async (): Promise<string> => {
   return fs.readFile(clientTypesUrl, 'utf8');
 };
 
-const getProjectConfigPath = (filePath: string): string | null => {
-  return ts.findConfigFile(path.dirname(filePath), ts.sys.fileExists, 'tsconfig.json') ?? null;
+/** The tsconfig.json that owns `filePath`, searching upwards but never above `projectRoot`. */
+const getProjectConfigPath = (filePath: string, projectRoot: string): string | null => {
+  const rootDir = path.resolve(projectRoot);
+  const sameDir = (a: string, b: string): boolean =>
+    process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+  let dir = path.dirname(path.resolve(filePath));
+  for (;;) {
+    const candidate = path.join(dir, 'tsconfig.json');
+    if (ts.sys.fileExists(candidate)) return candidate;
+    if (sameDir(dir, rootDir)) return null;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
 };
 
 const getGeneratedOutputPath = (projectConfigPath: string, routesFilePath: string): string => {
@@ -352,12 +364,17 @@ const collectRouteTyping = async (
   return foundRoutes ? { routePaths, selectorMap } : null;
 };
 
-export const syncProjectTypes = async (workspaceRoot: string = process.cwd()): Promise<number> => {
+/**
+ * Generate hidden .thane type files for every tsconfig project inside `projectRoot`.
+ * Files outside the root are never scanned, so building one project cannot write
+ * generated types into another.
+ */
+export const syncProjectTypes = async (projectRoot: string = process.cwd()): Promise<number> => {
   const tsFiles = await collectFilesRecursively(
-    workspaceRoot,
+    projectRoot,
     (fileName) => fileName.endsWith('.ts') && !fileName.endsWith('.d.ts'),
   );
-  const generatedRoot = path.join(workspaceRoot, GENERATED_ROOT_DIR);
+  const generatedRoot = path.join(projectRoot, GENERATED_ROOT_DIR);
   const generatedFiles = (await fs
     .stat(generatedRoot)
     .then(() => true)
@@ -365,7 +382,7 @@ export const syncProjectTypes = async (workspaceRoot: string = process.cwd()): P
     ? await collectFilesRecursively(generatedRoot, (fileName) => fileName.endsWith('.d.ts'))
     : [];
   const legacyGeneratedFiles = await collectFilesRecursively(
-    workspaceRoot,
+    projectRoot,
     (fileName) => fileName === '__thane-router.generated.d.ts',
   );
   const nextGeneratedFiles = new Set<string>();
@@ -374,7 +391,7 @@ export const syncProjectTypes = async (workspaceRoot: string = process.cwd()): P
   let generatedCount = 0;
 
   for (const filePath of tsFiles) {
-    const projectConfigPath = getProjectConfigPath(filePath);
+    const projectConfigPath = getProjectConfigPath(filePath, projectRoot);
     if (projectConfigPath) {
       projectConfigPaths.add(projectConfigPath);
     }
@@ -392,7 +409,7 @@ export const syncProjectTypes = async (workspaceRoot: string = process.cwd()): P
       continue;
     }
 
-    const projectConfigPath = getProjectConfigPath(filePath);
+    const projectConfigPath = getProjectConfigPath(filePath, projectRoot);
     if (!projectConfigPath) {
       continue;
     }
@@ -413,7 +430,7 @@ export const syncProjectTypes = async (workspaceRoot: string = process.cwd()): P
     await fs.rm(legacyFile, { force: true });
   }
 
-  const legacyGeneratedRouterDir = path.join(workspaceRoot, GENERATED_ROOT_DIR, 'router-types');
+  const legacyGeneratedRouterDir = path.join(projectRoot, GENERATED_ROOT_DIR, 'router-types');
   await fs.rm(legacyGeneratedRouterDir, { recursive: true, force: true }).catch(() => {
     /* ignore missing legacy dir */
   });
@@ -421,16 +438,16 @@ export const syncProjectTypes = async (workspaceRoot: string = process.cwd()): P
   return generatedCount;
 };
 
-export const ProjectTypesSyncPlugin: Plugin = {
+export const ProjectTypesSyncPlugin = (projectRoot?: string): Plugin => ({
   name: NAME,
   setup(build) {
     build.onStart(async () => {
-      const generatedCount = await syncProjectTypes();
+      const generatedCount = await syncProjectTypes(projectRoot ?? process.cwd());
       if (generatedCount > 0) {
         logger.info(NAME, `Generated hidden type file(s) for ${generatedCount} route table(s)`);
       }
     });
   },
-};
+});
 
 export const RouterTypegenPlugin = ProjectTypesSyncPlugin;

@@ -527,7 +527,7 @@ export async function cliMain(): Promise<void> {
   logger.setLevel(cliOptions.logLevel);
 
   if (cliOptions.command === 'types') {
-    const generatedCount = await syncProjectTypes();
+    const generatedCount = await syncProjectTypes(process.cwd());
     if (generatedCount > 0) {
       logger.info('types-sync', `Generated hidden type file(s) for ${generatedCount} route table(s)`);
     }
@@ -535,7 +535,7 @@ export async function cliMain(): Promise<void> {
   }
 
   if (cliOptions.command === 'typecheck') {
-    await runProjectTypeCheck({ strict: true });
+    await runProjectTypeCheck({ strict: true, projectRoot: process.cwd() });
     return;
   }
 

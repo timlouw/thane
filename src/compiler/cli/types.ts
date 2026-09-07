@@ -137,6 +137,11 @@ export interface ThaneConfigFile extends ThaneBuildOptions {
 export interface BuildConfig {
   /** Entry points for the build */
   entryPoints: string[];
+  /**
+   * Directory that owns the project being built: type sync and type checking are scoped to it.
+   * Defaults to the nearest ancestor of the first entry point that contains a tsconfig.json or package.json.
+   */
+  projectRoot?: string | undefined;
   /** Output directory */
   outDir: string;
   /** Assets input directory */

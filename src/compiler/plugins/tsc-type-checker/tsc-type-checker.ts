@@ -7,19 +7,34 @@ import { ErrorCode, createError } from '../../errors.js';
 
 const NAME = PLUGIN_NAME.TYPE_CHECK;
 
-export async function runProjectTypeCheck(options?: { strict?: boolean; cwd?: string }): Promise<void> {
+/**
+ * Type-check the project that lives in `projectRoot` (defaults to the current
+ * working directory). Only that project's own tsconfig.json is used; parent
+ * directories are never consulted, so a build inside a larger repository does
+ * not silently type-check the wrong project.
+ */
+export async function runProjectTypeCheck(options?: {
+  strict?: boolean;
+  projectRoot?: string | undefined;
+}): Promise<void> {
   const strict = options?.strict ?? true;
-  const currentWorkingDirectory = options?.cwd ?? process.cwd();
+  const projectRoot = path.resolve(options?.projectRoot ?? process.cwd());
 
-  logger.info(NAME, 'Running TypeScript type check...');
+  await syncProjectTypes(projectRoot);
 
-  await syncProjectTypes(currentWorkingDirectory);
-
-  const configPath = ts.findConfigFile(currentWorkingDirectory, ts.sys.fileExists, 'tsconfig.json');
-  if (!configPath) {
-    logger.diagnostic(createError('Could not find tsconfig.json', undefined, ErrorCode.FILE_NOT_FOUND));
+  const configPath = path.join(projectRoot, 'tsconfig.json');
+  if (!ts.sys.fileExists(configPath)) {
+    if (strict) {
+      logger.diagnostic(
+        createError(`Could not find tsconfig.json in ${projectRoot}`, undefined, ErrorCode.FILE_NOT_FOUND),
+      );
+    } else {
+      logger.verbose(`${NAME}: no tsconfig.json in ${projectRoot}, skipping type check`);
+    }
     return;
   }
+
+  logger.info(NAME, 'Running TypeScript type check...');
 
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
   if (configFile.error) {
@@ -67,9 +82,10 @@ export async function runProjectTypeCheck(options?: { strict?: boolean; cwd?: st
   console.error('---------------------------------------------------------------');
 }
 
-export const TSCTypeCheckerPlugin = (options?: { strict?: boolean }): Plugin => {
+export const TSCTypeCheckerPlugin = (options?: { strict?: boolean; projectRoot?: string | undefined }): Plugin => {
   let isRunning = false;
   const strict = options?.strict ?? true;
+  const projectRoot = options?.projectRoot;
 
   /** Run TypeScript type-checking asynchronously so esbuild is not blocked. */
   const runTypeCheck = async (): Promise<void> => {
@@ -77,7 +93,7 @@ export const TSCTypeCheckerPlugin = (options?: { strict?: boolean }): Plugin => 
     isRunning = true;
 
     try {
-      await runProjectTypeCheck({ strict });
+      await runProjectTypeCheck({ strict, projectRoot });
       isRunning = false;
     } catch (error) {
       isRunning = false;
