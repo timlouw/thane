@@ -10,9 +10,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import ts from 'typescript';
-import { ErrorCode } from './errors.js';
-import type { Diagnostic } from './types.js';
-import { createBuildConfig, resolveCLIOptions } from './cli/cli-common.js';
+import { ErrorCode } from '../../errors.js';
+import type { Diagnostic } from '../../types.js';
+import { createBuildConfig, resolveCLIOptions } from '../../cli/cli-common.js';
 import {
   noDefaultExportComponent,
   componentPropertyOrder,
@@ -26,7 +26,7 @@ import {
   noAliasedComponentExport,
   noCrossFileHtmlTemplate,
   duplicateMountTarget,
-} from './plugins/thane-linter/rules/index.js';
+} from './rules/index.js';
 
 const parse = (source: string): ts.SourceFile =>
   ts.createSourceFile('test.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

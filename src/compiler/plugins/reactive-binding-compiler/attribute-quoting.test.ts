@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import {
-  processHtmlTemplateWithConditionals,
-  replaceExpressionsWithValues,
-} from './plugins/reactive-binding-compiler/template-processing.js';
+import { processHtmlTemplateWithConditionals, replaceExpressionsWithValues } from './template-processing.js';
 
 /**
  * Regression tests for unquoted attribute value quoting.
