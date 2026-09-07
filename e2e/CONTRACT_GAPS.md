@@ -4,8 +4,8 @@ This file tracks **known user-visible contract behaviors** validated by automate
 
 ## Current status summary
 
-- ✅ Browser contract suite is green (`40/40`) under `bun run e2e:test`.
-- ✅ Runtime unit suite is green (`191/191`) under `bun run test`.
+- ✅ Browser contract suite is green (`163/163` across Chromium, Firefox and WebKit) under `bun run e2e:test`.
+- ✅ Runtime unit suite is green (`314/314`) under `bun run test`.
 
 ## Validated behaviors
 
@@ -24,6 +24,9 @@ This file tracks **known user-visible contract behaviors** validated by automate
 - variable-assigned `html` template fragment injection
 - CSS scoping: component `:host` styles applied, child styles don't leak to parent/siblings, parent styles cascade into child (light DOM behavior)
 - signal props: reactive signal references passed between parent → child → grandchild propagate updates at every level; fine-grained DOM identity verified (surgical text updates, no element re-creation); independent signals update only their own bindings
+- `when` content: event handlers on distinct nested elements, nested `whenElse`/`repeat`/`when` directives, and full re-initialisation after hide/show; content following the block is preserved
+- nested `whenElse` inside both the then and the else branch of another `whenElse`, including a `when` inside the else branch
+- conditions that cannot be resolved at compile time (local non-signal values) defer branch selection to mount
 
 ## Confirmed current limitations
 
@@ -47,11 +50,10 @@ This file tracks **known user-visible contract behaviors** validated by automate
 - Complex `${...}` expressions in attributes/styles with signal calls are now detected and subscribed.
 - Mixed static+expression attribute composition still applies expression to the whole attribute value.
 
-### 5) Conditional mixed-text content: static text is overwritten
+### 5) ~~Conditional mixed-text content: static text is overwritten~~ — RESOLVED
 
-- `when-visible-${count()}` inside a `when()` conditional renders as just the signal value.
-- The binding init sets `firstChild.nodeValue` to the signal value, overwriting any static text prefix.
-- Workaround: wrap the signal in a dedicated element (e.g., `<span>${count()}</span>`).
+- Text bindings inside conditionals use comment markers, so `when-visible-${count()}` keeps its static prefix.
+- Validated by the `conditional mixed-text preserves static content` contract test.
 
 ### 6) CSS scoping is class-based (no Shadow DOM)
 

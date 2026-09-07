@@ -440,6 +440,51 @@ test('nested whenElse and when directives toggle correctly inside both then and 
   await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-then-2');
 });
 
+test('when() content supports events, nested directives and re-initialises after remount', async ({ page }) => {
+  await gotoApp({ page });
+
+  await expect(page.getByTestId('when-clicks')).toHaveText('0-0');
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-then-0');
+  await expect(page.getByTestId('when-item')).toHaveCount(1);
+  await expect(page.getByTestId('when-nested')).toHaveText('nested-0');
+  // Regression guard: content after the when() block used to be truncated by nested event edits
+  await expect(page.getByTestId('when-content-after')).toHaveText('after-when-content');
+
+  // Events on distinct elements inside the block are bound to their own elements
+  await page.getByTestId('when-btn-a').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('1-0');
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-then-1');
+  await page.getByTestId('when-btn-b').click();
+  await page.getByTestId('when-btn-b').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('1-2');
+  await expect(page.getByTestId('when-nested')).toHaveText('nested-2');
+
+  // Nested whenElse and nested when inside the block react independently
+  await page.getByTestId('toggle-when-content-inner').click();
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-else');
+  await expect(page.getByTestId('when-nested')).toHaveCount(0);
+
+  // Nested repeat inside the block reacts to its source signal
+  await page.getByTestId('add-when-item').click();
+  await expect(page.getByTestId('when-item')).toHaveCount(2);
+
+  // Hide, then show again: every nested binding must be re-initialised on the fresh DOM
+  await page.getByTestId('toggle-when-content').click();
+  await expect(page.getByTestId('when-content')).toHaveCount(0);
+  await expect(page.getByTestId('when-content-after')).toHaveText('after-when-content');
+  await page.getByTestId('toggle-when-content').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('1-2');
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-else');
+  await expect(page.getByTestId('when-item')).toHaveCount(2);
+  await expect(page.getByTestId('when-nested')).toHaveCount(0);
+
+  await page.getByTestId('when-btn-a').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('2-2');
+  await page.getByTestId('toggle-when-content-inner').click();
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-then-2');
+  await expect(page.getByTestId('when-nested')).toHaveText('nested-2');
+});
+
 test('whitespace between adjacent template bindings is preserved exactly', async ({ page }) => {
   await gotoApp({ page });
 

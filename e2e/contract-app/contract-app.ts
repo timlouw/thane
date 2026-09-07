@@ -85,6 +85,11 @@ export const ContractApp = defineComponent('contract-app', () => {
   const innerGate = signal(true);
   const localExpressionMode = 'then';
   const localExpressionMeta = { branch: 'then', label: 'local' };
+  const whenContentGate = signal(true);
+  const whenContentInner = signal(true);
+  const whenClicksA = signal(0);
+  const whenClicksB = signal(0);
+  const whenItems = signal([{ id: 1, name: 'W-1' }]);
   const orderItems = signal([
     { id: 1, name: 'O-1' },
     { id: 2, name: 'O-2' },
@@ -114,6 +119,14 @@ export const ContractApp = defineComponent('contract-app', () => {
   const toggleDepthFlag = () => depthFlag(!depthFlag());
   const toggleOuterGate = () => outerGate(!outerGate());
   const toggleInnerGate = () => innerGate(!innerGate());
+  const toggleWhenContent = () => whenContentGate(!whenContentGate());
+  const toggleWhenContentInner = () => whenContentInner(!whenContentInner());
+  const incWhenA = () => whenClicksA(whenClicksA() + 1);
+  const incWhenB = () => whenClicksB(whenClicksB() + 1);
+  const addWhenItem = () => {
+    const next = whenItems().length + 1;
+    whenItems([...whenItems(), { id: next, name: `W-${next}` }]);
+  };
   const addOrderItem = () => {
     const next = orderItems().length + 1;
     orderItems([...orderItems(), { id: next, name: `O-${next}` }]);
@@ -647,6 +660,32 @@ export const ContractApp = defineComponent('contract-app', () => {
               </div>
             `,
           )}
+        </section>
+
+        <section data-testid="when-content-section">
+          <button data-testid="toggle-when-content" @click=${toggleWhenContent}>toggle when content</button>
+          <button data-testid="toggle-when-content-inner" @click=${toggleWhenContentInner}>toggle inner</button>
+          <button data-testid="add-when-item" @click=${addWhenItem}>add when item</button>
+          <div data-testid="when-content" ${when(whenContentGate())}>
+            <button data-testid="when-btn-a" @click=${incWhenA}>A</button>
+            <button data-testid="when-btn-b" @click=${incWhenB}>B</button>
+            <span data-testid="when-clicks">${whenClicksA()}-${whenClicksB()}</span>
+            ${whenElse(
+              whenContentInner(),
+              html`<em data-testid="when-inner">inner-then-${whenClicksA()}</em>`,
+              html`<em data-testid="when-inner">inner-else</em>`,
+            )}
+            <ul data-testid="when-list">
+              ${repeat(
+                whenItems(),
+                (item) => html`<li data-testid="when-item">${item.name}</li>`,
+                html`<li data-testid="when-empty">empty</li>`,
+                (item) => item.id,
+              )}
+            </ul>
+            <i data-testid="when-nested" ${when(whenContentInner())}>nested-${whenClicksB()}</i>
+          </div>
+          <p data-testid="when-content-after">after-when-content</p>
         </section>
 
         <section data-testid="template-injection-section"> ${loadingShell} </section>

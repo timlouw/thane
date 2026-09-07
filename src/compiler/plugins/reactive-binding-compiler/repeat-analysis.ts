@@ -879,7 +879,7 @@ export const processItemTemplateRecursively = (
 
   // ── WhenElse ──
   const whenElseBlocks = collectWhenElseBlocks(parsed, signalInitializers, state, (template, id) =>
-    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id),
+    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id, undefined, state.eventIdCounter),
   );
 
   // ── Nested repeats ──

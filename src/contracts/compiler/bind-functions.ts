@@ -1,9 +1,6 @@
 import { RUNTIME_HELPER } from '../runtime/internal-helpers.js';
 
 export const COMPILER_BIND_FN = {
-  TEXT: '__bindText',
-  STYLE: '__bindStyle',
-  ATTR: '__bindAttr',
   IF: RUNTIME_HELPER.IF,
   IF_EXPR: RUNTIME_HELPER.IF_EXPR,
   KEYED_RECONCILER: RUNTIME_HELPER.KEYED_RECONCILER,

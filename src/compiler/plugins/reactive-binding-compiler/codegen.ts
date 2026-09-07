@@ -622,15 +622,19 @@ export const generateInitBindingsFunction = (
   };
   const collectConditionalEventBindings = (conds: ConditionalBlock[]): EventBinding[] => {
     const collected: EventBinding[] = [];
-    const visit = (cond: ConditionalBlock) => {
-      if (cond.nestedEventBindings?.length) {
-        collected.push(...cond.nestedEventBindings);
-      }
-      if (cond.nestedConditionals?.length) {
-        for (const nested of cond.nestedConditionals) visit(nested);
-      }
+    const visitCond = (cond: ConditionalBlock): void => {
+      collected.push(...cond.nestedEventBindings);
+      cond.nestedConditionals.forEach(visitCond);
+      cond.nestedWhenElse.forEach(visitWE);
     };
-    for (const cond of conds) visit(cond);
+    const visitWE = (we: WhenElseBlock): void => {
+      collected.push(...we.thenEventBindings, ...we.elseEventBindings);
+      we.thenConditionals.forEach(visitCond);
+      we.elseConditionals.forEach(visitCond);
+      we.thenWhenElse.forEach(visitWE);
+      we.elseWhenElse.forEach(visitWE);
+    };
+    conds.forEach(visitCond);
     return collected;
   };
   const conditionalEventIds = new Set(collectConditionalEventBindings(conditionals).map((evt) => evt.id));
@@ -652,21 +656,18 @@ export const generateInitBindingsFunction = (
   // Check if _fcm (comment marker factory) is needed at any level — conditionals and
   // whenElse branches may reference it even when top-level text bindings don't exist.
   const hasConditionalTextBindings = (() => {
-    const checkCond = (cond: ConditionalBlock): boolean => {
-      if (cond.nestedBindings?.some((b) => b.type === 'text')) return true;
-      if (cond.nestedConditionals?.some((nc) => checkCond(nc))) return true;
-      return false;
-    };
-    if (conditionals.some(checkCond)) return true;
-    const checkWE = (we: WhenElseBlock): boolean => {
-      if (we.thenBindings?.some((b) => b.type === 'text')) return true;
-      if (we.elseBindings?.some((b) => b.type === 'text')) return true;
-      if (we.nestedConditionals?.some((nc) => checkCond(nc))) return true;
-      if (we.nestedWhenElse?.some((nwe) => checkWE(nwe))) return true;
-      return false;
-    };
-    if (whenElseBlocks.some(checkWE)) return true;
-    return false;
+    const checkCond = (cond: ConditionalBlock): boolean =>
+      cond.nestedBindings.some((b) => b.type === 'text') ||
+      cond.nestedConditionals.some(checkCond) ||
+      cond.nestedWhenElse.some(checkWE);
+    const checkWE = (we: WhenElseBlock): boolean =>
+      we.thenBindings.some((b) => b.type === 'text') ||
+      we.elseBindings.some((b) => b.type === 'text') ||
+      we.thenConditionals.some(checkCond) ||
+      we.elseConditionals.some(checkCond) ||
+      we.thenWhenElse.some(checkWE) ||
+      we.elseWhenElse.some(checkWE);
+    return conditionals.some(checkCond) || whenElseBlocks.some(checkWE);
   })();
   const needsFcm = textBindingIds.size > 0 || hasConditionalTextBindings;
   // Collect all comment markers (<!--bN-->) into a map for O(1) lookup.
@@ -716,143 +717,334 @@ export const generateInitBindingsFunction = (
     }
   });
 
-  for (const cond of conditionals) {
-    const nestedBindings = cond.nestedBindings;
-    const nestedConds = cond.nestedConditionals || [];
-    const escapedTemplate = escapeTemplateLiteral(cond.templateContent);
-    let nestedCode = '() => []';
-    const condMountInfo = generateMountInfo(cond.id, '      ');
-    const hasCondMounts = condMountInfo.setupLines.length > 0;
-    if (nestedBindings.length > 0 || nestedConds.length > 0 || hasCondMounts) {
-      const nestedTextIds = new Set(nestedBindings.filter((b) => b.type === 'text').map((b) => b.id));
-      const nestedIds = [...new Set(nestedBindings.map((b) => b.id))];
-      const nestedLines: string[] = [];
-      nestedLines.push('() => {');
-      // Re-scan for comment markers since conditional content was just inserted
-      if (nestedTextIds.size > 0) {
-        nestedLines.push(`      const _ncm = _fcm(r);`);
+  // Nested initializer shared by when() content and whenElse branches
+  const generateNestedInitializer = (
+    bindings: BindingInfo[],
+    nestedConds: ConditionalBlock[],
+    nestedWE: WhenElseBlock[],
+    nestedReps: RepeatBlock[],
+    directiveId?: string,
+    nestedEvents: EventBinding[] = [],
+  ): string => {
+    const weMountInfo = directiveId ? generateMountInfo(directiveId, '      ') : { setupLines: [], cleanupExprs: [] };
+    const hasWeMounts = weMountInfo.setupLines.length > 0;
+    if (
+      bindings.length === 0 &&
+      nestedConds.length === 0 &&
+      nestedWE.length === 0 &&
+      nestedReps.length === 0 &&
+      nestedEvents.length === 0 &&
+      !hasWeMounts
+    ) {
+      return '() => []';
+    }
+
+    const initLines: string[] = [];
+    initLines.push('() => {');
+    const weTextIds = new Set(bindings.filter((b) => b.type === 'text').map((b) => b.id));
+    const ids = [...new Set(bindings.map((b) => b.id))];
+    if (weTextIds.size > 0) {
+      initLines.push(`      const _wcm = _fcm(r);`);
+    }
+    for (const id of ids) {
+      initLines.push(`      const ${id} = ${weTextIds.has(id) ? `_wcm['${id}']` : `_gid('${id}')`};`);
+    }
+    const simpleNestedBindings = bindings.filter(isSimpleBinding);
+    const exprNestedBindings = bindings.filter(isExpressionBinding);
+    for (const binding of simpleNestedBindings) {
+      initLines.push(`      ${generateInitialValueCode(binding, ap)};`);
+    }
+    exprNestedBindings.forEach((binding, idx) => {
+      const updFn = `_upd_${binding.id}_${idx}`;
+      const expr = binding.expression;
+      if (binding.type === 'text') {
+        initLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
+      } else if (binding.type === 'attr' && binding.property) {
+        initLines.push(`      const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`);
+      } else if (binding.type === 'style' && binding.property) {
+        initLines.push(
+          `      const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
+        );
       }
-      for (const id of nestedIds) {
-        nestedLines.push(`      const ${id} = ${nestedTextIds.has(id) ? `_ncm['${id}']` : `_gid('${id}')`};`);
+      // Expression bindings always need an explicit initial call because
+      // subscribe(..., true) skips the initial notification.
+      initLines.push(`      ${updFn}();`);
+    });
+    for (const sl of weMountInfo.setupLines) {
+      initLines.push(sl);
+    }
+
+    // Generate addEventListener calls for event bindings inside whenElse branches
+    if (nestedEvents.length > 0) {
+      const nestedEventLines = buildEventListenerStatements(nestedEvents, 'r');
+      for (const line of nestedEventLines) {
+        initLines.push(`      ${line}`);
       }
-      const nestedSimpleBindings = nestedBindings.filter(isSimpleBinding);
-      const nestedExpressionBindings = nestedBindings.filter(isExpressionBinding);
-      for (const binding of nestedSimpleBindings) {
-        nestedLines.push(`      ${generateInitialValueCode(binding, ap)};`);
-      }
-      nestedExpressionBindings.forEach((binding, idx) => {
-        const updFn = `_upd_${binding.id}_${idx}`;
-        const expr = binding.expression;
-        if (binding.type === 'text') {
-          nestedLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
-        } else if (binding.type === 'attr' && binding.property) {
-          nestedLines.push(
-            `      const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`,
-          );
-        } else if (binding.type === 'style' && binding.property) {
-          nestedLines.push(
-            `      const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
-          );
+    }
+
+    const nestedRepeatCleanupVars: string[] = [];
+    for (const rep of nestedReps) {
+      const indexVarName = rep.indexVar || '_idx';
+      const anchorVar = `_wra_${rep.id}`;
+      const containerVar = `_wrc_${rep.id}`;
+      const startVar = `_wrs_${rep.id}`;
+      const renderItemVar = `_wri_${rep.id}`;
+      const bindEventsVar = `_wbe_${rep.id}`;
+      const renderVar = `_wrr_${rep.id}`;
+      const itemsGetterVar = `_wget_${rep.id}`;
+      const emptyFlagVar = `_wre_${rep.id}`;
+      const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+      const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
+      const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
+      const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');
+
+      initLines.push(`      let _wcleanup_${rep.id} = () => {};`);
+      initLines.push(`      const ${anchorVar} = _gid('${rep.id}');`);
+      initLines.push(`      if (${anchorVar}) {`);
+      initLines.push(`        const ${containerVar} = ${anchorVar}.parentNode;`);
+      initLines.push(`        const ${startVar} = document.createComment('r:${rep.id}');`);
+      initLines.push(`        ${containerVar}.insertBefore(${startVar}, ${anchorVar});`);
+      initLines.push(`        const ${itemsGetterVar} = () => ${rep.itemsExpression};`);
+      initLines.push(
+        `        const ${renderItemVar} = (item, ${indexVarName}) => {${itemSignalAccessorDecl}${itemAliasDecl} return \`${sourceTemplate}\`; };`,
+      );
+      initLines.push(`        const ${bindEventsVar} = (_frag, item, ${indexVarName}) => {`);
+      rep.itemEvents.forEach((evt, eventIdx) => {
+        let handlerExpr = renameIdentifierInExpression(evt.handlerExpression, rep.itemVar, 'item');
+        if (rep.indexVar && rep.indexVar !== indexVarName) {
+          handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVarName);
         }
-        // Expression bindings always need an explicit initial call because
-        // subscribe(..., true) skips the initial notification.
-        nestedLines.push(`      ${updFn}();`);
-      });
-      const nestedSignalGroups = groupBindingsBySignal(nestedSimpleBindings);
-      if (cond.nestedEventBindings.length > 0) {
-        const nestedEventLines = buildEventListenerStatements(cond.nestedEventBindings, 'r');
-        for (const line of nestedEventLines) {
-          nestedLines.push(`      ${line}`);
-        }
-      }
-      for (const sl of condMountInfo.setupLines) {
-        nestedLines.push(sl);
-      }
-      nestedLines.push('      return [');
-      for (const [signalName, signalBindings] of nestedSignalGroups) {
-        nestedLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
-      }
-      for (const ce of condMountInfo.cleanupExprs) {
-        nestedLines.push(`        ${ce},`);
-      }
-      nestedExpressionBindings.forEach((binding, idx) => {
-        const updFn = `_upd_${binding.id}_${idx}`;
-        const signals = binding.signalNames;
-        for (const sig of signals) {
-          nestedLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);
-        }
-      });
-      for (const nestedCond of nestedConds) {
-        const nestedCondEscaped = escapeTemplateLiteral(nestedCond.templateContent);
-        let innerNestedCode = '() => []';
-        if (nestedCond.nestedBindings.length > 0) {
-          const innerSimple = nestedCond.nestedBindings.filter(isSimpleBinding);
-          const innerExpr = nestedCond.nestedBindings.filter(isExpressionBinding);
-          const innerTextIds = new Set(nestedCond.nestedBindings.filter((b) => b.type === 'text').map((b) => b.id));
-          const innerBindingLines: string[] = [];
-          const innerIds = [...new Set(nestedCond.nestedBindings.map((b) => b.id))];
-          innerBindingLines.push('() => {');
-          if (innerTextIds.size > 0) {
-            innerBindingLines.push(`        const _icm = _fcm(r);`);
-          }
-          for (const id of innerIds) {
-            innerBindingLines.push(
-              `        const ${id} = ${innerTextIds.has(id) ? `_icm['${id}']` : `_gid('${id}')`};`,
-            );
-          }
-          for (const binding of innerSimple) {
-            innerBindingLines.push(`        ${generateInitialValueCode(binding, ap)};`);
-          }
-          innerExpr.forEach((binding, idx) => {
-            const updFn = `_upd_${binding.id}_${idx}`;
-            const expr = binding.expression;
-            if (binding.type === 'text') {
-              innerBindingLines.push(`        const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
-            } else if (binding.type === 'attr' && binding.property) {
-              innerBindingLines.push(
-                `        const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`,
-              );
-            } else if (binding.type === 'style' && binding.property) {
-              innerBindingLines.push(
-                `        const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
-              );
-            }
-            innerBindingLines.push(`        ${updFn}();`);
-          });
-          const innerGroups = groupBindingsBySignal(innerSimple);
-          innerBindingLines.push('        return [');
-          for (const [signalName, signalBindings] of innerGroups) {
-            innerBindingLines.push(`          ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
-          }
-          innerExpr.forEach((binding, idx) => {
-            const updFn = `_upd_${binding.id}_${idx}`;
-            for (const sig of binding.signalNames) {
-              innerBindingLines.push(`          ${ap.signal(sig)}.subscribe(${updFn}, true),`);
-            }
-          });
-          innerBindingLines.push('        ];');
-          innerBindingLines.push('      }');
-          innerNestedCode = innerBindingLines.join('\n');
+        const arrowParsed = parseArrowFunction(handlerExpr);
+        if (arrowParsed) {
+          handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
         }
 
-        const isNestedSimple =
-          nestedCond.signalNames.length === 1 && nestedCond.jsExpression === ap.signalCall(nestedCond.signalName);
-        if (isNestedSimple) {
-          nestedLines.push(
-            `        ${BIND_FN.IF}(r, ${ap.signal(nestedCond.signalName)}, '${nestedCond.id}', \`${nestedCondEscaped}\`, ${innerNestedCode}),`,
+        const bodyParts: string[] = [];
+        if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
+        const keyModifiers = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
+        if (keyModifiers.length > 0) {
+          const guard = compileKeyGuard(keyModifiers);
+          if (guard) bodyParts.push(`if (${guard}) return`);
+        }
+        if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
+        if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
+        bodyParts.push(handlerExpr);
+        const listenerBody = bodyParts.join('; ');
+
+        initLines.push(`          const _evt_${rep.id}_${eventIdx} = _frag.querySelector('#${evt.elementId}');`);
+        initLines.push(`          if (_evt_${rep.id}_${eventIdx}) {`);
+        initLines.push(
+          `            _evt_${rep.id}_${eventIdx}.addEventListener('${evt.eventName}', (e) => { ${listenerBody}; });`,
+        );
+        initLines.push(`            _evt_${rep.id}_${eventIdx}.removeAttribute('id');`);
+        initLines.push('          }');
+      });
+      initLines.push('        };');
+      const hasRepNestedConds = rep.nestedConditionals.length > 0;
+      if (hasRepNestedConds) {
+        initLines.push(`        let _wric_${rep.id} = [];`);
+      }
+      if (rep.emptyTemplate) {
+        initLines.push(`        let ${emptyFlagVar} = false;`);
+      }
+      initLines.push(`        const ${renderVar} = (items) => {`);
+      initLines.push(`          let _n = ${startVar}.nextSibling;`);
+      initLines.push(
+        `          while (_n && _n !== ${anchorVar}) { const _next = _n.nextSibling; _n.remove(); _n = _next; }`,
+      );
+      if (hasRepNestedConds) {
+        initLines.push(`          for (let _ic = 0; _ic < _wric_${rep.id}.length; _ic++) _wric_${rep.id}[_ic]();`);
+        initLines.push(`          _wric_${rep.id} = [];`);
+      }
+      initLines.push(`          if (!items || items.length === 0) {`);
+      if (rep.emptyTemplate) {
+        initLines.push(`            if (!${emptyFlagVar}) {`);
+        initLines.push(`              const _et = _T(\`${emptyTemplate}\`).content;`);
+        initLines.push(
+          `              while (_et.firstChild) ${containerVar}.insertBefore(_et.firstChild, ${anchorVar});`,
+        );
+        initLines.push(`              ${emptyFlagVar} = true;`);
+        initLines.push('            }');
+      }
+      initLines.push('            return;');
+      initLines.push('          }');
+      if (rep.emptyTemplate) {
+        initLines.push(`          ${emptyFlagVar} = false;`);
+      }
+      initLines.push('          for (let i = 0; i < items.length; i++) {');
+      initLines.push('            const item = items[i];');
+      initLines.push("            const _t = document.createElement('template');");
+      initLines.push(`            _t.innerHTML = ${renderItemVar}(item, i);`);
+      initLines.push('            const _f = _t.content;');
+      if (rep.itemEvents.length > 0) {
+        initLines.push(`            ${bindEventsVar}(_f, item, i);`);
+      }
+      // Find conditional anchor elements in item fragment before insertion
+      for (const cond of rep.nestedConditionals) {
+        initLines.push(`            const _ca_${cond.id} = _f.querySelector('#${cond.id}');`);
+      }
+      initLines.push(`            while (_f.firstChild) ${containerVar}.insertBefore(_f.firstChild, ${anchorVar});`);
+      // Set up when directives after items are in the DOM
+      for (const cond of rep.nestedConditionals) {
+        const renamedExpr = renameIdentifierInExpression(cond.jsExpression, rep.itemVar, 'item');
+        const condTemplate = escapeTemplateLiteral(cond.templateContent);
+        const condInitNested = generateRepeatNestedCondInitFn(
+          cond.nestedBindings,
+          cond.nestedItemBindings,
+          cond.nestedEventBindings,
+          rep.itemVar,
+          ap,
+        );
+        const renamedSignalNames = cond.signalNames.map((s) => (s === rep.itemVar ? 'item' : ap.signal(s)));
+        const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
+        if (isSimpleExpr) {
+          const renamedSignal = cond.signalName === rep.itemVar ? 'item' : ap.signal(cond.signalName);
+          initLines.push(
+            `            _wric_${rep.id}.push(${BIND_FN.IF}(r, ${renamedSignal}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _ca_${cond.id}));`,
           );
         } else {
-          const nestedSignalsArray = nestedCond.signalNames.map((s) => ap.signal(s)).join(', ');
-          nestedLines.push(
-            `        ${BIND_FN.IF_EXPR}(r, [${nestedSignalsArray}], () => ${nestedCond.jsExpression}, '${nestedCond.id}', \`${nestedCondEscaped}\`, ${innerNestedCode}),`,
+          const signalsArray = renamedSignalNames.join(', ');
+          initLines.push(
+            `            _wric_${rep.id}.push(${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${renamedExpr}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _ca_${cond.id}));`,
           );
         }
       }
+      initLines.push('          }');
+      initLines.push('        };');
+      initLines.push(`        ${renderVar}(${itemsGetterVar}());`);
+      const repeatSources = buildRepeatSubscriptionSources(rep, ap);
+      if (repeatSources.length > 0) {
+        initLines.push(`        const _wsrc_${rep.id} = ${repeatSources[0]};`);
+        initLines.push(
+          `        const _wsub_${rep.id} = typeof _wsrc_${rep.id}?.subscribe === 'function' ? _wsrc_${rep.id}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
+        );
+      } else {
+        initLines.push(`        const _wsub_${rep.id} = () => {};`);
+      }
 
-      nestedLines.push('      ];');
-      nestedLines.push('    }');
-      nestedCode = nestedLines.join('\n');
+      const extraRepeatSources = repeatSources.slice(1);
+      for (let sourceIdx = 0; sourceIdx < extraRepeatSources.length; sourceIdx++) {
+        const sourceExpr = extraRepeatSources[sourceIdx]!;
+        initLines.push(`        const _wsrc_${rep.id}_${sourceIdx} = ${sourceExpr};`);
+        initLines.push(
+          `        const _wsub_${rep.id}_${sourceIdx} = typeof _wsrc_${rep.id}_${sourceIdx}?.subscribe === 'function' ? _wsrc_${rep.id}_${sourceIdx}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
+        );
+      }
+
+      const fallbackSignals = [
+        ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
+      ];
+      for (const sig of fallbackSignals) {
+        initLines.push(`        const _wsrc_${rep.id}_${sig} = ${ap.signal(sig)};`);
+        initLines.push(
+          `        const _wsub_${rep.id}_${sig} = typeof _wsrc_${rep.id}_${sig}?.subscribe === 'function' ? _wsrc_${rep.id}_${sig}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
+        );
+      }
+
+      const cleanupParts = [`_wsub_${rep.id}`];
+      for (let sourceIdx = 0; sourceIdx < extraRepeatSources.length; sourceIdx++) {
+        cleanupParts.push(`_wsub_${rep.id}_${sourceIdx}`);
+      }
+      for (const sig of fallbackSignals) {
+        cleanupParts.push(`_wsub_${rep.id}_${sig}`);
+      }
+      if (hasRepNestedConds) {
+        initLines.push(
+          `        const _wric_cleanup_${rep.id} = () => { for (let _ic = 0; _ic < _wric_${rep.id}.length; _ic++) _wric_${rep.id}[_ic](); };`,
+        );
+        cleanupParts.push(`_wric_cleanup_${rep.id}`);
+      }
+      initLines.push(`        _wcleanup_${rep.id} = () => { ${cleanupParts.map((c) => `${c}();`).join(' ')} };`);
+      nestedRepeatCleanupVars.push(`_wcleanup_${rep.id}`);
+      initLines.push('      }');
     }
+
+    initLines.push('      return [');
+    const signalGroups = groupBindingsBySignal(simpleNestedBindings);
+    for (const [signalName, signalBindings] of signalGroups) {
+      initLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
+    }
+    for (const ce of weMountInfo.cleanupExprs) {
+      initLines.push(`        ${ce},`);
+    }
+    exprNestedBindings.forEach((binding, idx) => {
+      const updFn = `_upd_${binding.id}_${idx}`;
+      const signals = binding.signalNames;
+      for (const sig of signals) {
+        initLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);
+      }
+    });
+    for (const cond of nestedConds) {
+      const nestedEscapedTemplate = escapeTemplateLiteral(cond.templateContent);
+      const nestedBindingsCode = generateNestedInitializer(
+        cond.nestedBindings,
+        cond.nestedConditionals,
+        cond.nestedWhenElse,
+        cond.nestedRepeats,
+        cond.id,
+        cond.nestedEventBindings,
+      );
+      const isSimple = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
+      if (isSimple) {
+        initLines.push(
+          `        ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`,
+        );
+      } else {
+        const signalsArray = cond.signalNames.map((s) => ap.signal(s)).join(', ');
+        initLines.push(
+          `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`,
+        );
+      }
+    }
+    for (const nestedWe of nestedWE) {
+      const nestedThenWithId = injectIdIntoFirstElement(nestedWe.thenTemplate, nestedWe.thenId);
+      const nestedElseWithId = injectIdIntoFirstElement(nestedWe.elseTemplate, nestedWe.elseId);
+      const nestedThenTemplate = escapeTemplateLiteral(nestedThenWithId);
+      const nestedElseTemplate = escapeTemplateLiteral(nestedElseWithId);
+      const thenInitCode = generateNestedInitializer(
+        nestedWe.thenBindings,
+        nestedWe.thenConditionals,
+        nestedWe.thenWhenElse,
+        nestedWe.thenRepeats,
+        undefined,
+        nestedWe.thenEventBindings ?? [],
+      );
+      const elseInitCode = generateNestedInitializer(
+        nestedWe.elseBindings,
+        nestedWe.elseConditionals,
+        nestedWe.elseWhenElse,
+        nestedWe.elseRepeats,
+        undefined,
+        nestedWe.elseEventBindings ?? [],
+      );
+      const signalsArray = nestedWe.signalNames.map((s) => ap.signal(s)).join(', ');
+      initLines.push(
+        `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${nestedWe.jsExpression}, '${nestedWe.thenId}', \`${nestedThenTemplate}\`, ${thenInitCode}),`,
+      );
+      initLines.push(
+        `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${nestedWe.jsExpression}), '${nestedWe.elseId}', \`${nestedElseTemplate}\`, ${elseInitCode}),`,
+      );
+    }
+
+    for (const cleanupVar of nestedRepeatCleanupVars) {
+      initLines.push(`        ${cleanupVar},`);
+    }
+
+    initLines.push('      ];');
+    initLines.push('    }');
+    return initLines.join('\n');
+  };
+  // when() element content is a full sub-template — same initializer as a whenElse branch
+  for (const cond of conditionals) {
+    const escapedTemplate = escapeTemplateLiteral(cond.templateContent);
+    const nestedCode = generateNestedInitializer(
+      cond.nestedBindings,
+      cond.nestedConditionals,
+      cond.nestedWhenElse,
+      cond.nestedRepeats,
+      cond.id,
+      cond.nestedEventBindings,
+    );
     const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
 
     if (isSimpleExpr) {
@@ -871,317 +1063,6 @@ export const generateInitBindingsFunction = (
     const elseTemplateWithId = injectIdIntoFirstElement(we.elseTemplate, we.elseId);
     const escapedThenTemplate = escapeTemplateLiteral(thenTemplateWithId);
     const escapedElseTemplate = escapeTemplateLiteral(elseTemplateWithId);
-    const generateNestedInitializer = (
-      bindings: BindingInfo[],
-      nestedConds: ConditionalBlock[],
-      nestedWE: WhenElseBlock[],
-      nestedReps: RepeatBlock[],
-      directiveId?: string,
-      nestedEvents: EventBinding[] = [],
-    ): string => {
-      const weMountInfo = directiveId ? generateMountInfo(directiveId, '      ') : { setupLines: [], cleanupExprs: [] };
-      const hasWeMounts = weMountInfo.setupLines.length > 0;
-      if (
-        bindings.length === 0 &&
-        nestedConds.length === 0 &&
-        nestedWE.length === 0 &&
-        nestedReps.length === 0 &&
-        nestedEvents.length === 0 &&
-        !hasWeMounts
-      ) {
-        return '() => []';
-      }
-
-      const initLines: string[] = [];
-      initLines.push('() => {');
-      const weTextIds = new Set(bindings.filter((b) => b.type === 'text').map((b) => b.id));
-      const ids = [...new Set(bindings.map((b) => b.id))];
-      if (weTextIds.size > 0) {
-        initLines.push(`      const _wcm = _fcm(r);`);
-      }
-      for (const id of ids) {
-        initLines.push(`      const ${id} = ${weTextIds.has(id) ? `_wcm['${id}']` : `_gid('${id}')`};`);
-      }
-      const simpleNestedBindings = bindings.filter(isSimpleBinding);
-      const exprNestedBindings = bindings.filter(isExpressionBinding);
-      for (const binding of simpleNestedBindings) {
-        initLines.push(`      ${generateInitialValueCode(binding, ap)};`);
-      }
-      exprNestedBindings.forEach((binding, idx) => {
-        const updFn = `_upd_${binding.id}_${idx}`;
-        const expr = binding.expression;
-        if (binding.type === 'text') {
-          initLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
-        } else if (binding.type === 'attr' && binding.property) {
-          initLines.push(
-            `      const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`,
-          );
-        } else if (binding.type === 'style' && binding.property) {
-          initLines.push(
-            `      const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
-          );
-        }
-        // Expression bindings always need an explicit initial call because
-        // subscribe(..., true) skips the initial notification.
-        initLines.push(`      ${updFn}();`);
-      });
-      for (const sl of weMountInfo.setupLines) {
-        initLines.push(sl);
-      }
-
-      // Generate addEventListener calls for event bindings inside whenElse branches
-      if (nestedEvents.length > 0) {
-        const nestedEventLines = buildEventListenerStatements(nestedEvents, 'r');
-        for (const line of nestedEventLines) {
-          initLines.push(`      ${line}`);
-        }
-      }
-
-      const nestedRepeatCleanupVars: string[] = [];
-      for (const rep of nestedReps) {
-        const indexVarName = rep.indexVar || '_idx';
-        const anchorVar = `_wra_${rep.id}`;
-        const containerVar = `_wrc_${rep.id}`;
-        const startVar = `_wrs_${rep.id}`;
-        const renderItemVar = `_wri_${rep.id}`;
-        const bindEventsVar = `_wbe_${rep.id}`;
-        const renderVar = `_wrr_${rep.id}`;
-        const itemsGetterVar = `_wget_${rep.id}`;
-        const emptyFlagVar = `_wre_${rep.id}`;
-        const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
-        const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
-        const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
-        const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');
-
-        initLines.push(`      let _wcleanup_${rep.id} = () => {};`);
-        initLines.push(`      const ${anchorVar} = _gid('${rep.id}');`);
-        initLines.push(`      if (${anchorVar}) {`);
-        initLines.push(`        const ${containerVar} = ${anchorVar}.parentNode;`);
-        initLines.push(`        const ${startVar} = document.createComment('r:${rep.id}');`);
-        initLines.push(`        ${containerVar}.insertBefore(${startVar}, ${anchorVar});`);
-        initLines.push(`        const ${itemsGetterVar} = () => ${rep.itemsExpression};`);
-        initLines.push(
-          `        const ${renderItemVar} = (item, ${indexVarName}) => {${itemSignalAccessorDecl}${itemAliasDecl} return \`${sourceTemplate}\`; };`,
-        );
-        initLines.push(`        const ${bindEventsVar} = (_frag, item, ${indexVarName}) => {`);
-        rep.itemEvents.forEach((evt, eventIdx) => {
-          let handlerExpr = renameIdentifierInExpression(evt.handlerExpression, rep.itemVar, 'item');
-          if (rep.indexVar && rep.indexVar !== indexVarName) {
-            handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVarName);
-          }
-          const arrowParsed = parseArrowFunction(handlerExpr);
-          if (arrowParsed) {
-            handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
-          }
-
-          const bodyParts: string[] = [];
-          if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
-          const keyModifiers = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
-          if (keyModifiers.length > 0) {
-            const guard = compileKeyGuard(keyModifiers);
-            if (guard) bodyParts.push(`if (${guard}) return`);
-          }
-          if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
-          if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
-          bodyParts.push(handlerExpr);
-          const listenerBody = bodyParts.join('; ');
-
-          initLines.push(`          const _evt_${rep.id}_${eventIdx} = _frag.querySelector('#${evt.elementId}');`);
-          initLines.push(`          if (_evt_${rep.id}_${eventIdx}) {`);
-          initLines.push(
-            `            _evt_${rep.id}_${eventIdx}.addEventListener('${evt.eventName}', (e) => { ${listenerBody}; });`,
-          );
-          initLines.push(`            _evt_${rep.id}_${eventIdx}.removeAttribute('id');`);
-          initLines.push('          }');
-        });
-        initLines.push('        };');
-        const hasRepNestedConds = rep.nestedConditionals.length > 0;
-        if (hasRepNestedConds) {
-          initLines.push(`        let _wric_${rep.id} = [];`);
-        }
-        if (rep.emptyTemplate) {
-          initLines.push(`        let ${emptyFlagVar} = false;`);
-        }
-        initLines.push(`        const ${renderVar} = (items) => {`);
-        initLines.push(`          let _n = ${startVar}.nextSibling;`);
-        initLines.push(
-          `          while (_n && _n !== ${anchorVar}) { const _next = _n.nextSibling; _n.remove(); _n = _next; }`,
-        );
-        if (hasRepNestedConds) {
-          initLines.push(`          for (let _ic = 0; _ic < _wric_${rep.id}.length; _ic++) _wric_${rep.id}[_ic]();`);
-          initLines.push(`          _wric_${rep.id} = [];`);
-        }
-        initLines.push(`          if (!items || items.length === 0) {`);
-        if (rep.emptyTemplate) {
-          initLines.push(`            if (!${emptyFlagVar}) {`);
-          initLines.push(`              const _et = _T(\`${emptyTemplate}\`).content;`);
-          initLines.push(
-            `              while (_et.firstChild) ${containerVar}.insertBefore(_et.firstChild, ${anchorVar});`,
-          );
-          initLines.push(`              ${emptyFlagVar} = true;`);
-          initLines.push('            }');
-        }
-        initLines.push('            return;');
-        initLines.push('          }');
-        if (rep.emptyTemplate) {
-          initLines.push(`          ${emptyFlagVar} = false;`);
-        }
-        initLines.push('          for (let i = 0; i < items.length; i++) {');
-        initLines.push('            const item = items[i];');
-        initLines.push("            const _t = document.createElement('template');");
-        initLines.push(`            _t.innerHTML = ${renderItemVar}(item, i);`);
-        initLines.push('            const _f = _t.content;');
-        if (rep.itemEvents.length > 0) {
-          initLines.push(`            ${bindEventsVar}(_f, item, i);`);
-        }
-        // Find conditional anchor elements in item fragment before insertion
-        for (const cond of rep.nestedConditionals) {
-          initLines.push(`            const _ca_${cond.id} = _f.querySelector('#${cond.id}');`);
-        }
-        initLines.push(`            while (_f.firstChild) ${containerVar}.insertBefore(_f.firstChild, ${anchorVar});`);
-        // Set up when directives after items are in the DOM
-        for (const cond of rep.nestedConditionals) {
-          const renamedExpr = renameIdentifierInExpression(cond.jsExpression, rep.itemVar, 'item');
-          const condTemplate = escapeTemplateLiteral(cond.templateContent);
-          const condInitNested = generateRepeatNestedCondInitFn(
-            cond.nestedBindings,
-            cond.nestedItemBindings,
-            cond.nestedEventBindings,
-            rep.itemVar,
-            ap,
-          );
-          const renamedSignalNames = cond.signalNames.map((s) => (s === rep.itemVar ? 'item' : ap.signal(s)));
-          const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
-          if (isSimpleExpr) {
-            const renamedSignal = cond.signalName === rep.itemVar ? 'item' : ap.signal(cond.signalName);
-            initLines.push(
-              `            _wric_${rep.id}.push(${BIND_FN.IF}(r, ${renamedSignal}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _ca_${cond.id}));`,
-            );
-          } else {
-            const signalsArray = renamedSignalNames.join(', ');
-            initLines.push(
-              `            _wric_${rep.id}.push(${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${renamedExpr}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _ca_${cond.id}));`,
-            );
-          }
-        }
-        initLines.push('          }');
-        initLines.push('        };');
-        initLines.push(`        ${renderVar}(${itemsGetterVar}());`);
-        const repeatSources = buildRepeatSubscriptionSources(rep, ap);
-        if (repeatSources.length > 0) {
-          initLines.push(`        const _wsrc_${rep.id} = ${repeatSources[0]};`);
-          initLines.push(
-            `        const _wsub_${rep.id} = typeof _wsrc_${rep.id}?.subscribe === 'function' ? _wsrc_${rep.id}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
-          );
-        } else {
-          initLines.push(`        const _wsub_${rep.id} = () => {};`);
-        }
-
-        const extraRepeatSources = repeatSources.slice(1);
-        for (let sourceIdx = 0; sourceIdx < extraRepeatSources.length; sourceIdx++) {
-          const sourceExpr = extraRepeatSources[sourceIdx]!;
-          initLines.push(`        const _wsrc_${rep.id}_${sourceIdx} = ${sourceExpr};`);
-          initLines.push(
-            `        const _wsub_${rep.id}_${sourceIdx} = typeof _wsrc_${rep.id}_${sourceIdx}?.subscribe === 'function' ? _wsrc_${rep.id}_${sourceIdx}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
-          );
-        }
-
-        const fallbackSignals = [
-          ...new Set(rep.signalBindings.map((s) => s.signalName).filter((s) => !!s && s !== rep.signalName)),
-        ];
-        for (const sig of fallbackSignals) {
-          initLines.push(`        const _wsrc_${rep.id}_${sig} = ${ap.signal(sig)};`);
-          initLines.push(
-            `        const _wsub_${rep.id}_${sig} = typeof _wsrc_${rep.id}_${sig}?.subscribe === 'function' ? _wsrc_${rep.id}_${sig}.subscribe(() => { ${renderVar}(${itemsGetterVar}()); }, true) : () => {};`,
-          );
-        }
-
-        const cleanupParts = [`_wsub_${rep.id}`];
-        for (let sourceIdx = 0; sourceIdx < extraRepeatSources.length; sourceIdx++) {
-          cleanupParts.push(`_wsub_${rep.id}_${sourceIdx}`);
-        }
-        for (const sig of fallbackSignals) {
-          cleanupParts.push(`_wsub_${rep.id}_${sig}`);
-        }
-        if (hasRepNestedConds) {
-          initLines.push(
-            `        const _wric_cleanup_${rep.id} = () => { for (let _ic = 0; _ic < _wric_${rep.id}.length; _ic++) _wric_${rep.id}[_ic](); };`,
-          );
-          cleanupParts.push(`_wric_cleanup_${rep.id}`);
-        }
-        initLines.push(`        _wcleanup_${rep.id} = () => { ${cleanupParts.map((c) => `${c}();`).join(' ')} };`);
-        nestedRepeatCleanupVars.push(`_wcleanup_${rep.id}`);
-        initLines.push('      }');
-      }
-
-      initLines.push('      return [');
-      const signalGroups = groupBindingsBySignal(simpleNestedBindings);
-      for (const [signalName, signalBindings] of signalGroups) {
-        initLines.push(`        ${generateConsolidatedSubscription(signalName, signalBindings, ap)},`);
-      }
-      for (const ce of weMountInfo.cleanupExprs) {
-        initLines.push(`        ${ce},`);
-      }
-      exprNestedBindings.forEach((binding, idx) => {
-        const updFn = `_upd_${binding.id}_${idx}`;
-        const signals = binding.signalNames;
-        for (const sig of signals) {
-          initLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);
-        }
-      });
-      for (const cond of nestedConds) {
-        const nestedEscapedTemplate = escapeTemplateLiteral(cond.templateContent);
-        const nestedBindingsCode = generateNestedInitializer(cond.nestedBindings, [], [], []);
-        const isSimple = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
-        if (isSimple) {
-          initLines.push(
-            `        ${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`,
-          );
-        } else {
-          const signalsArray = cond.signalNames.map((s) => ap.signal(s)).join(', ');
-          initLines.push(
-            `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${cond.jsExpression}, '${cond.id}', \`${nestedEscapedTemplate}\`, ${nestedBindingsCode}),`,
-          );
-        }
-      }
-      for (const nestedWe of nestedWE) {
-        const nestedThenWithId = injectIdIntoFirstElement(nestedWe.thenTemplate, nestedWe.thenId);
-        const nestedElseWithId = injectIdIntoFirstElement(nestedWe.elseTemplate, nestedWe.elseId);
-        const nestedThenTemplate = escapeTemplateLiteral(nestedThenWithId);
-        const nestedElseTemplate = escapeTemplateLiteral(nestedElseWithId);
-        const thenInitCode = generateNestedInitializer(
-          nestedWe.thenBindings,
-          nestedWe.thenConditionals,
-          nestedWe.thenWhenElse,
-          nestedWe.thenRepeats,
-          undefined,
-          nestedWe.thenEventBindings ?? [],
-        );
-        const elseInitCode = generateNestedInitializer(
-          nestedWe.elseBindings,
-          nestedWe.elseConditionals,
-          nestedWe.elseWhenElse,
-          nestedWe.elseRepeats,
-          undefined,
-          nestedWe.elseEventBindings ?? [],
-        );
-        const signalsArray = nestedWe.signalNames.map((s) => ap.signal(s)).join(', ');
-        initLines.push(
-          `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => ${nestedWe.jsExpression}, '${nestedWe.thenId}', \`${nestedThenTemplate}\`, ${thenInitCode}),`,
-        );
-        initLines.push(
-          `        ${BIND_FN.IF_EXPR}(r, [${signalsArray}], () => !(${nestedWe.jsExpression}), '${nestedWe.elseId}', \`${nestedElseTemplate}\`, ${elseInitCode}),`,
-        );
-      }
-
-      for (const cleanupVar of nestedRepeatCleanupVars) {
-        initLines.push(`        ${cleanupVar},`);
-      }
-
-      initLines.push('      ];');
-      initLines.push('    }');
-      return initLines.join('\n');
-    };
     const thenCode = generateNestedInitializer(
       we.thenBindings,
       we.thenConditionals,

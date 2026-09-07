@@ -585,30 +585,27 @@ export const transformDefineComponentSource = (
       directiveChildMounts.get(key)!.push({ cm, globalIndex: idx });
     };
 
-    // Recursive helper: search nested conditionals (depth-first, innermost match wins)
+    // Recursive helpers: search nested directives first so the innermost match wins.
+    // A child mount inside a directive branch must be set up by that branch's initializer.
     const findInConditionals = (marker: string, conds: ConditionalBlock[]): string | null => {
       for (const c of conds) {
-        if (!c.templateContent.includes(marker)) continue;
-        // Check deeper nesting first
-        const inner = findInConditionals(marker, c.nestedConditionals || []);
+        const inner = findInConditionals(marker, c.nestedConditionals) ?? findInWhenElse(marker, c.nestedWhenElse);
         if (inner) return inner;
-        return c.id;
+        if (c.templateContent.includes(marker)) return c.id;
       }
       return null;
     };
 
     const findInWhenElse = (marker: string, wes: WhenElseBlock[]): string | null => {
       for (const we of wes) {
-        if (we.thenTemplate.includes(marker)) {
-          const inner = findInConditionals(marker, we.nestedConditionals || []);
-          if (inner) return inner;
-          const innerWE = findInWhenElse(marker, we.nestedWhenElse || []);
-          if (innerWE) return innerWE;
-          return we.thenId;
-        }
-        if (we.elseTemplate.includes(marker)) {
-          return we.elseId;
-        }
+        const inner =
+          findInConditionals(marker, we.thenConditionals) ??
+          findInWhenElse(marker, we.thenWhenElse) ??
+          findInConditionals(marker, we.elseConditionals) ??
+          findInWhenElse(marker, we.elseWhenElse);
+        if (inner) return inner;
+        if (we.thenTemplate.includes(marker)) return we.thenId;
+        if (we.elseTemplate.includes(marker)) return we.elseId;
       }
       return null;
     };
@@ -705,36 +702,43 @@ export const transformDefineComponentSource = (
 
     // ── Binding function imports ──
     if (hasAnyBindings) {
-      if (allBindings.some((b) => b.type === 'style')) requiredFunctions.push(BIND_FN.STYLE);
-      if (allBindings.some((b) => b.type === 'attr')) requiredFunctions.push(BIND_FN.ATTR);
-      if (allBindings.some((b) => b.type === 'text')) requiredFunctions.push(BIND_FN.TEXT);
-
-      // Check for conditionals at top level AND nested inside repeat items
-      const allConditionalsIncludingNested = [
-        ...allConditionals,
-        ...allRepeatBlocks.flatMap((r) => r.nestedConditionals),
-      ];
-      const allWhenElseIncludingNested = [...allWhenElseBlocks, ...allRepeatBlocks.flatMap((r) => r.nestedWhenElse)];
-      const hasSimpleConditionals = allConditionalsIncludingNested.some(
-        (c) => c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`,
-      );
-      const hasComplexConditionals = allConditionalsIncludingNested.some(
-        (c) => c.signalNames.length > 1 || c.jsExpression !== `${c.signalName}()`,
-      );
-      if (hasSimpleConditionals) requiredFunctions.push(BIND_FN.IF);
-      if (hasComplexConditionals || allWhenElseIncludingNested.length > 0) requiredFunctions.push(BIND_FN.IF_EXPR);
-
-      const hasWhenElseNestedRepeats = (blocks: WhenElseBlock[]): boolean => {
-        for (const block of blocks) {
-          if (block.nestedRepeats.length > 0) return true;
-          if (hasWhenElseNestedRepeats(block.nestedWhenElse)) return true;
-        }
-        return false;
+      // Directives nest arbitrarily (when → whenElse → repeat → when …); walk every level so a
+      // helper that is only used deep inside a branch is still imported.
+      const everyConditional: ConditionalBlock[] = [];
+      const everyWhenElse: WhenElseBlock[] = [];
+      const everyRepeat: RepeatBlock[] = [];
+      const visitCond = (c: ConditionalBlock): void => {
+        everyConditional.push(c);
+        c.nestedConditionals.forEach(visitCond);
+        c.nestedWhenElse.forEach(visitWE);
+        c.nestedRepeats.forEach(visitRep);
       };
+      const visitWE = (we: WhenElseBlock): void => {
+        everyWhenElse.push(we);
+        we.thenConditionals.forEach(visitCond);
+        we.elseConditionals.forEach(visitCond);
+        we.thenWhenElse.forEach(visitWE);
+        we.elseWhenElse.forEach(visitWE);
+        we.thenRepeats.forEach(visitRep);
+        we.elseRepeats.forEach(visitRep);
+      };
+      const visitRep = (rep: RepeatBlock): void => {
+        everyRepeat.push(rep);
+        rep.nestedConditionals.forEach(visitCond);
+        rep.nestedWhenElse.forEach(visitWE);
+        rep.nestedRepeats.forEach(visitRep);
+      };
+      allConditionals.forEach(visitCond);
+      allWhenElseBlocks.forEach(visitWE);
+      allRepeatBlocks.forEach(visitRep);
 
-      if (allRepeatBlocks.length > 0 || hasWhenElseNestedRepeats(allWhenElseBlocks)) {
-        requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
+      const isSimpleConditional = (c: ConditionalBlock): boolean =>
+        c.signalNames.length === 1 && c.jsExpression === `${c.signalName}()`;
+      if (everyConditional.some(isSimpleConditional)) requiredFunctions.push(BIND_FN.IF);
+      if (everyConditional.some((c) => !isSimpleConditional(c)) || everyWhenElse.length > 0) {
+        requiredFunctions.push(BIND_FN.IF_EXPR);
       }
+      if (everyRepeat.length > 0) requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
       // Events now use direct addEventListener — no runtime import needed
     }
 
