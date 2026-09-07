@@ -20,12 +20,14 @@ Unlike frameworks that use a virtual DOM to diff entire trees, Thane directives 
 
 ## Nesting
 
-Directives can be freely nested:
+Directives can be freely nested. Every directive's content is compiled as its own sub-template, so the same rules apply at any depth:
 
-- `when` inside `repeat` items
-- `repeat` inside `whenElse` branches
-- `whenElse` inside `repeat` items
-- Multiple `when` blocks at the same level
+- `when`, `whenElse` and `repeat` inside `repeat` items
+- `when`, `whenElse` and `repeat` inside `whenElse` branches
+- `when`, `whenElse` and `repeat` inside `when` blocks
+- Event handlers and child components inside any of the above
+
+Bindings inside hidden content are disposed and re-created each time it is shown, so a block that is hidden and shown again always reflects the current signal values.
 
 ## Detail Pages
 

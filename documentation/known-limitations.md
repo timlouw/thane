@@ -41,6 +41,10 @@ The compiler's Compile-Time Function Evaluation (CTFE) runs component setup func
 
 Template variables cannot use ternary or logical operators (THANE405). Use `whenElse()` for conditional rendering instead.
 
+### User IDs on Bound Elements
+
+An element with an attribute, style, or text binding receives a compiler-generated `id` (`b0`, `b1`, …). If you also give such an element your own `id`, the compiler-generated one takes precedence and yours is dropped. Event handlers and `when()` elements reuse your `id` instead. When you need a stable `id` for CSS or `label for=""`, put it on a wrapper element that has no bindings.
+
 ## Runtime Constraints
 
 ### Light DOM Only
