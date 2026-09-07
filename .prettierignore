@@ -1,6 +1,8 @@
 dist
 node_modules
+.thane
+e2e/.build
+e2e/test-results
 README.md
 .prettierignore
-.husky/*
 .gitignore
