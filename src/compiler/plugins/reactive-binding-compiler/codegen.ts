@@ -1192,12 +1192,16 @@ export const generateInitBindingsFunction = (
             const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             if (binding.type === 'text') {
               // Sole-content text bindings: the element is empty in the static template. The
-              // fill creates the Text node (the same allocation textContent makes internally)
-              // and keeps it, so updates are a string store on an existing node instead of
-              // textContent discarding the child and allocating a new one on every write.
+              // fill writes textContent (the cheapest way to create the Text node) and keeps a
+              // reference to that node, so updates are a string store on an existing node
+              // instead of textContent discarding the child and allocating a new one per write.
+              // An empty first value creates no node; the update then writes textContent once
+              // more and picks the node up from there.
               const textVar = `_t${textNodeCount++}`;
-              fillStatements.push(`const ${textVar} = ${varName}.appendChild(document.createTextNode(${expr}))`);
-              updateStatements.push(`${textVar}.nodeValue = ${expr}`);
+              fillStatements.push(`${varName}.textContent = ${expr}; let ${textVar} = ${varName}.firstChild`);
+              updateStatements.push(
+                `${textVar} ? (${textVar}.nodeValue = ${expr}) : ((${varName}.textContent = ${expr}), (${textVar} = ${varName}.firstChild))`,
+              );
             } else if (binding.type === 'attr' && binding.property) {
               fillStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
               updateStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
@@ -1536,10 +1540,9 @@ export const generateInitBindingsFunction = (
               eb.bindings.forEach((binding, bj) => {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
                 if (binding.type === 'text') {
-                  // Text node created on fill and kept; the update path writes its nodeValue
-                  lines.push(
-                    `            const _nrt${bi}_${bj} = ${nv}.appendChild(document.createTextNode(${expr}));`,
-                  );
+                  // First write through textContent; the Text node it creates is kept for updates
+                  lines.push(`            ${nv}.textContent = ${expr};`);
+                  lines.push(`            let _nrt${bi}_${bj} = ${nv}.firstChild;`);
                 } else if (binding.type === 'attr' && binding.property) {
                   lines.push(`            ${nv}.setAttribute('${binding.property}', ${expr});`);
                 }
@@ -1634,7 +1637,10 @@ export const generateInitBindingsFunction = (
               eb.bindings.forEach((binding, bj) => {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
                 if (binding.type === 'text') {
-                  innerUpdateParts.push(`_nrt${bi}_${bj}.nodeValue = ${expr}`);
+                  const textVar = `_nrt${bi}_${bj}`;
+                  innerUpdateParts.push(
+                    `${textVar} ? (${textVar}.nodeValue = ${expr}) : ((${nv}.textContent = ${expr}), (${textVar} = ${nv}.firstChild))`,
+                  );
                 } else if (binding.type === 'attr' && binding.property) {
                   innerUpdateParts.push(`${nv}.setAttribute('${binding.property}', ${expr})`);
                 }
