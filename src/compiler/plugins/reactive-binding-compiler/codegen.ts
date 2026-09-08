@@ -192,15 +192,18 @@ const buildDelegatedListenerStatements = (
   const statements: string[] = [];
 
   for (const [eventName, events] of delegatedByType) {
+    // Walk up to the row once, remembering the row child the target came through (`_cell`).
+    // Each handler first compares that child with its own compiled position, so only the
+    // one handler whose subtree the target is in runs a containment check, and only for
+    // the part of its path below the cell.
     const finalBody = [
-      `let _row = e.target;`,
-      `while (_row && _row.parentNode !== ${containerVar}) _row = _row.parentNode;`,
+      `let _row = e.target, _cell = null;`,
+      `while (_row && _row.parentNode !== ${containerVar}) { _cell = _row; _row = _row.parentNode; }`,
       `if (!_row || !_row.__d) return;`,
       `const item = _row.__d;`,
     ];
 
     for (const evt of events) {
-      const navExpr = evt.path.length === 0 ? '_row' : pathToSiblingNav('_row', evt.path);
       const modParts: string[] = [];
       if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
       if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
@@ -214,7 +217,13 @@ const buildDelegatedListenerStatements = (
       if (evt.path.length === 0) {
         finalBody.push(`${handlerBody};`);
       } else {
-        finalBody.push(`if (${navExpr}?.contains(e.target)) { ${handlerBody}; return; }`);
+        const [cellIndex, ...rest] = evt.path;
+        const cellExpr = pathToSiblingNav('_row', [cellIndex!]);
+        const guard =
+          rest.length === 0
+            ? `_cell !== null && _cell === ${cellExpr}`
+            : `_cell !== null && _cell === ${cellExpr} && ${pathToSiblingNav('_cell', rest)}?.contains(e.target)`;
+        finalBody.push(`if (${guard}) { ${handlerBody}; return; }`);
       }
     }
 
