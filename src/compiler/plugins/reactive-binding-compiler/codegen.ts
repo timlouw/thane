@@ -11,6 +11,7 @@ import type {
   RepeatBlock,
   BindingInfo,
   SimpleBinding,
+  ExpressionBinding,
   EventBinding,
   ItemBinding,
   ItemEventBinding,
@@ -111,6 +112,53 @@ const pathToSiblingNav = (root: string, path: number[]): string => {
     for (let s = 0; s < idx; s++) expr += '.nextElementSibling';
   }
   return expr;
+};
+
+// ============================================================================
+// Redundancy-guarded writes
+// ============================================================================
+
+/** A binding's first write and its guarded re-write, sharing one guard variable. */
+interface GuardedWrite {
+  fill: string;
+  update: string;
+}
+
+/**
+ * Wrap a DOM write in a redundancy guard. The guard variable keeps the last value written
+ * for this binding, so a re-evaluation that produces the same value skips the DOM write —
+ * a skipped `setAttribute`/`textContent` write is several times cheaper than the write.
+ *
+ * `fill` is the first write after cloning. When the static template already ships the
+ * attribute as the empty string, the first write is skipped for an empty result too.
+ *
+ * @example guardedWrite('_p0', (v) => `_e0.textContent = ${v}`, 'item.label')
+ *   fill:   _e0.textContent = _p0 = item.label
+ *   update: if (_p0 !== (_p0 = item.label)) _e0.textContent = _p0
+ */
+const guardedWrite = (
+  guardVar: string,
+  write: (value: string) => string,
+  expr: string,
+  staticValue?: string | undefined,
+): GuardedWrite => ({
+  fill: staticValue === '' ? `if ((${guardVar} = ${expr}) !== '') ${write(guardVar)}` : write(`${guardVar} = ${expr}`),
+  update: `if (${guardVar} !== (${guardVar} = ${expr})) ${write(guardVar)}`,
+});
+
+/** Allocates guard variable names for one row factory. */
+const createGuardAllocator = (prefix: string) => {
+  const vars: string[] = [];
+  return {
+    vars,
+    next: (): string => {
+      const name = `${prefix}${vars.length}`;
+      vars.push(name);
+      return name;
+    },
+    /** `let` declaration for every guard allocated so far, or '' when none. */
+    declaration: (): string => (vars.length > 0 ? `let ${vars.join(', ')};` : ''),
+  };
 };
 
 // ============================================================================
@@ -358,6 +406,23 @@ export const generateBindingUpdateCode = (binding: SimpleBinding): string => {
 };
 
 /**
+ * The DOM write for an expression binding, as a function of the value expression, keyed on
+ * the binding's element/marker variable. Returns undefined for binding kinds with no write.
+ */
+const expressionWrite = (binding: {
+  id: string;
+  type: SimpleBinding['type'];
+  property?: string | undefined;
+}): ((value: string) => string) | undefined => {
+  if (binding.type === 'text') return (v) => `${binding.id}.nextSibling.data = ${v}`;
+  if (binding.type === 'attr' && binding.property)
+    return (v) => `${binding.id}.setAttribute('${binding.property}', ${v})`;
+  if (binding.type === 'style' && binding.property)
+    return (v) => `${binding.id}.style.setProperty('${binding.property}', ${v})`;
+  return undefined;
+};
+
+/**
  * Generate initial value assignment code for a simple binding
  */
 export const generateInitialValueCode = (binding: SimpleBinding, ap: AccessPattern = CLOSURE_ACCESS): string => {
@@ -471,15 +536,15 @@ const generateRepeatNestedCondInitFn = (
       parts.push(`  if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', ${signalCall});`);
     }
   }
+  // Expression bindings: first write here, guarded re-writes in the subscriptions below
+  const exprNestedWrites = new Map<ExpressionBinding, GuardedWrite>();
   for (const eb of exprNested) {
     const renamedExpr = renameIdentifierInExpression(eb.expression, outerItemVar, 'item');
-    if (eb.type === 'text') {
-      parts.push(`  if (_n_${eb.id}) _n_${eb.id}.nextSibling.data = ${renamedExpr};`);
-    } else if (eb.type === 'attr' && eb.property) {
-      parts.push(`  if (_n_${eb.id}) _n_${eb.id}.setAttribute('${eb.property}', ${renamedExpr});`);
-    } else if (eb.type === 'style' && eb.property) {
-      parts.push(`  if (_n_${eb.id}) _n_${eb.id}.style.setProperty('${eb.property}', ${renamedExpr});`);
-    }
+    const write = expressionWrite({ ...eb, id: `_n_${eb.id}` });
+    if (!write) continue;
+    const gw = guardedWrite(`_pv_${eb.id}`, write, renamedExpr);
+    exprNestedWrites.set(eb, gw);
+    parts.push(`  let _pv_${eb.id}; if (_n_${eb.id}) ${gw.fill};`);
   }
   parts.push('  const _nsubs = [];');
   // Subscriptions for signal bindings
@@ -505,16 +570,9 @@ const generateRepeatNestedCondInitFn = (
     }
   }
   for (const eb of exprNested) {
-    const renamedExpr = renameIdentifierInExpression(eb.expression, outerItemVar, 'item');
-    let updFn = '';
-    if (eb.type === 'text') {
-      updFn = `() => { if (_n_${eb.id}) _n_${eb.id}.nextSibling.data = ${renamedExpr}; }`;
-    } else if (eb.type === 'attr' && eb.property) {
-      updFn = `() => { if (_n_${eb.id}) _n_${eb.id}.setAttribute('${eb.property}', ${renamedExpr}); }`;
-    } else if (eb.type === 'style' && eb.property) {
-      updFn = `() => { if (_n_${eb.id}) _n_${eb.id}.style.setProperty('${eb.property}', ${renamedExpr}); }`;
-    }
-    if (!updFn) continue;
+    const gw = exprNestedWrites.get(eb);
+    if (!gw) continue;
+    const updFn = `() => { if (_n_${eb.id}) ${gw.update}; }`;
     for (const sig of eb.signalNames) {
       const renamedSig = sig === outerItemVar ? 'item' : ap.signal(sig);
       parts.push(`  _nsubs.push(${renamedSig}.subscribe(${updFn}, true));`);
@@ -702,15 +760,12 @@ export const generateInitBindingsFunction = (
     const updFn = `_upd_${binding.id}_${idx}`;
     const expr = binding.expression;
     const signals = binding.signalNames;
-    if (binding.type === 'text') {
-      lines.push(`    const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
-    } else if (binding.type === 'attr' && binding.property) {
-      lines.push(`    const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`);
-    } else if (binding.type === 'style' && binding.property) {
-      lines.push(`    const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`);
-    } else {
-      return;
-    }
+    // The expression re-runs whenever any of its signals change; the guard skips the DOM
+    // write when the result is unchanged.
+    const write = expressionWrite(binding);
+    if (!write) return;
+    const guard = `_pv_${binding.id}_${idx}`;
+    lines.push(`    let ${guard}; const ${updFn} = () => { ${guardedWrite(guard, write, expr).update}; };`);
     lines.push(`    ${updFn}();`);
     for (const sig of signals) {
       lines.push(`    _subs.push(${ap.signal(sig)}.subscribe(${updFn}, true));`);
@@ -757,14 +812,10 @@ export const generateInitBindingsFunction = (
     exprNestedBindings.forEach((binding, idx) => {
       const updFn = `_upd_${binding.id}_${idx}`;
       const expr = binding.expression;
-      if (binding.type === 'text') {
-        initLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
-      } else if (binding.type === 'attr' && binding.property) {
-        initLines.push(`      const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`);
-      } else if (binding.type === 'style' && binding.property) {
-        initLines.push(
-          `      const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
-        );
+      const write = expressionWrite(binding);
+      if (write) {
+        const guard = `_pv_${binding.id}_${idx}`;
+        initLines.push(`      let ${guard}; const ${updFn} = () => { ${guardedWrite(guard, write, expr).update}; };`);
       }
       // Expression bindings always need an explicit initial call because
       // subscribe(..., true) skips the initial notification.
@@ -1181,7 +1232,10 @@ export const generateInitBindingsFunction = (
           }
         }
 
-        // Generate fill statements using inlined var names
+        // Generate fill statements using inlined var names. Every write is redundancy-guarded:
+        // the row keeps the last value written per binding and skips writes that would not
+        // change the DOM (see guardedWrite).
+        const guards = createGuardAllocator('_p');
         const fillStatements: string[] = [];
         const updateStatements: string[] = [];
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
@@ -1189,14 +1243,22 @@ export const generateInitBindingsFunction = (
           const varName = navVarNames[i]!;
           for (const binding of eb.bindings) {
             const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
+            let gw: GuardedWrite | undefined;
             if (binding.type === 'text') {
               // Sole-content text bindings: textContent is optimal — works on empty elements,
               // no placeholder text node needed, lets templates be aggressively stripped
-              fillStatements.push(`${varName}.textContent = ${expr}`);
-              updateStatements.push(`${varName}.textContent = ${expr}`);
+              gw = guardedWrite(guards.next(), (v) => `${varName}.textContent = ${v}`, expr);
             } else if (binding.type === 'attr' && binding.property) {
-              fillStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
-              updateStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
+              gw = guardedWrite(
+                guards.next(),
+                (v) => `${varName}.setAttribute('${binding.property}', ${v})`,
+                expr,
+                binding.staticValue,
+              );
+            }
+            if (gw) {
+              fillStatements.push(gw.fill);
+              updateStatements.push(gw.update);
             }
           }
         }
@@ -1213,12 +1275,15 @@ export const generateInitBindingsFunction = (
           commentNavStatements.push(
             `const _icm = {}; { const _tw = document.createTreeWalker(_el, 128); let _cn; while (_cn = _tw.nextNode()) _icm[_cn.data] = _cn; }`,
           );
-          for (const cb of commentBindings) {
+          commentBindings.forEach((cb, i) => {
             const expr = renameIdentifierInExpression(cb.expression, rep.itemVar, 'item');
-            const cmVar = `_icm['${cb.elementId}']`;
-            commentFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${expr}`);
-            commentUpdateStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${expr}`);
-          }
+            // Resolve the text node after the marker once per row; fill and update write to it
+            const textVar = `_c${i}`;
+            commentNavStatements.push(`const ${textVar} = _icm['${cb.elementId}']?.nextSibling`);
+            const gw = guardedWrite(guards.next(), (v) => `${textVar}.data = ${v}`, expr);
+            commentFillStatements.push(`if (${textVar}) ${gw.fill}`);
+            commentUpdateStatements.push(`if (${textVar}) ${gw.update}`);
+          });
         }
 
         // Signal binding navigation and fill (Step 13)
@@ -1296,32 +1361,28 @@ export const generateInitBindingsFunction = (
               mixedNavStatements.push(`const ${varName} = ${pathToSiblingNav('_el', mb.path)}`);
             }
             const expr = renameIdentifierInExpression(mb.expression, rep.itemVar, 'item');
-            // Fill
+            let gw: GuardedWrite | undefined;
             if (mb.type === 'attr' && mb.property) {
-              mixedFillStatements.push(`${varName}.setAttribute('${mb.property}', ${expr})`);
-              mixedUpdateStatements.push(`${varName}.setAttribute('${mb.property}', ${expr})`);
+              gw = guardedWrite(
+                guards.next(),
+                (v) => `${varName}.setAttribute('${mb.property}', ${v})`,
+                expr,
+                mb.staticValue,
+              );
             } else if (mb.type === 'text') {
-              mixedFillStatements.push(`${varName}.textContent = ${expr}`);
-              mixedUpdateStatements.push(`${varName}.textContent = ${expr}`);
+              gw = guardedWrite(guards.next(), (v) => `${varName}.textContent = ${v}`, expr);
             } else if (mb.type === 'style' && mb.property) {
-              mixedFillStatements.push(`${varName}.style.setProperty('${mb.property}', ${expr})`);
-              mixedUpdateStatements.push(`${varName}.style.setProperty('${mb.property}', ${expr})`);
+              gw = guardedWrite(guards.next(), (v) => `${varName}.style.setProperty('${mb.property}', ${v})`, expr);
             }
-            // Per-item subscription: re-evaluate full expression when outer signal changes.
-            // 'item' is captured in the createItem closure — correct per-row value.
-            for (const sigName of mb.outerSignalNames) {
-              const signalRef = ap.signal(sigName);
-              if (mb.type === 'attr' && mb.property) {
+            if (gw) {
+              mixedFillStatements.push(gw.fill);
+              mixedUpdateStatements.push(gw.update);
+              // Per-item subscription: re-evaluate the expression when an outer signal changes.
+              // 'item' is captured in the createItem closure — correct per-row value. The guard
+              // means a signal change that leaves this row's value alone costs no DOM write.
+              for (const sigName of mb.outerSignalNames) {
                 signalSubscriptions.push(
-                  `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${mb.property}', ${expr}); }, true))`,
-                );
-              } else if (mb.type === 'text') {
-                signalSubscriptions.push(
-                  `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.textContent = ${expr}; }, true))`,
-                );
-              } else if (mb.type === 'style' && mb.property) {
-                signalSubscriptions.push(
-                  `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.style.setProperty('${mb.property}', ${expr}); }, true))`,
+                  `_cleanups.push(${ap.signal(sigName)}.subscribe(() => { ${gw.update}; }, true))`,
                 );
               }
             }
@@ -1399,6 +1460,9 @@ export const generateInitBindingsFunction = (
         }
         for (const navStmt of mixedNavStatements) {
           lines.push(`        ${navStmt};`);
+        }
+        if (guards.vars.length > 0) {
+          lines.push(`        ${guards.declaration()}`);
         }
         lines.push(`        ${fillStatements.join('; ')};`);
         if (commentFillStatements.length > 0) {
@@ -1519,25 +1583,43 @@ export const generateInitBindingsFunction = (
           lines.push(`        const _nrRc_${nr.id} = ${BIND_FN.KEYED_RECONCILER}(_nrC_${nr.id}, _nrA_${nr.id},`);
           lines.push(`          (_nrItem, ${innerIndexVar}, _nrRef) => {`);
           lines.push(`            const _nrEl = ${ap.staticPrefix}_cloneNode.call(_nrTc_${nr.id}, true);`);
-          // Inner item bindings fill & navigation (element-based)
+          // Inner item bindings fill & navigation (element-based), redundancy-guarded like the
+          // outer rows. Guards are allocated here in binding order and reused by the update path.
+          const innerGuards = createGuardAllocator('_nrp');
+          const innerWrites: GuardedWrite[] = [];
           if (innerStaticInfo.canUseOptimized && innerStaticInfo.elementBindings.length > 0) {
+            const innerNavLines: string[] = [];
+            const innerFillLines: string[] = [];
             for (let bi = 0; bi < innerStaticInfo.elementBindings.length; bi++) {
               const eb = innerStaticInfo.elementBindings[bi]!;
               const nv = `_nre${bi}`;
               if (eb.path.length === 0) {
-                lines.push(`            const ${nv} = _nrEl;`);
+                innerNavLines.push(`            const ${nv} = _nrEl;`);
               } else {
-                lines.push(`            const ${nv} = ${pathToSiblingNav('_nrEl', eb.path)};`);
+                innerNavLines.push(`            const ${nv} = ${pathToSiblingNav('_nrEl', eb.path)};`);
               }
               for (const binding of eb.bindings) {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
+                let gw: GuardedWrite | undefined;
                 if (binding.type === 'text') {
-                  lines.push(`            ${nv}.firstChild.nodeValue = ${expr};`);
+                  gw = guardedWrite(innerGuards.next(), (v) => `${nv}.firstChild.nodeValue = ${v}`, expr);
                 } else if (binding.type === 'attr' && binding.property) {
-                  lines.push(`            ${nv}.setAttribute('${binding.property}', ${expr});`);
+                  gw = guardedWrite(
+                    innerGuards.next(),
+                    (v) => `${nv}.setAttribute('${binding.property}', ${v})`,
+                    expr,
+                    binding.staticValue,
+                  );
+                }
+                if (gw) {
+                  innerWrites.push(gw);
+                  innerFillLines.push(`            ${gw.fill};`);
                 }
               }
             }
+            lines.push(...innerNavLines);
+            if (innerGuards.vars.length > 0) lines.push(`            ${innerGuards.declaration()}`);
+            lines.push(...innerFillLines);
           }
           // Inner comment-marker item bindings (mixed-content text bindings)
           const innerCommentBindings = nr.itemBindings.filter(
@@ -1619,21 +1701,7 @@ export const generateInitBindingsFunction = (
             lines.push(`            ${innerSignalFillStatements.join('; ')};`);
           }
           // Inner update statements
-          const innerUpdateParts: string[] = [];
-          if (innerStaticInfo.canUseOptimized && innerStaticInfo.elementBindings.length > 0) {
-            for (let bi = 0; bi < innerStaticInfo.elementBindings.length; bi++) {
-              const eb = innerStaticInfo.elementBindings[bi]!;
-              const nv = `_nre${bi}`;
-              for (const binding of eb.bindings) {
-                const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
-                if (binding.type === 'text') {
-                  innerUpdateParts.push(`${nv}.firstChild.nodeValue = ${expr}`);
-                } else if (binding.type === 'attr' && binding.property) {
-                  innerUpdateParts.push(`${nv}.setAttribute('${binding.property}', ${expr})`);
-                }
-              }
-            }
-          }
+          const innerUpdateParts: string[] = innerWrites.map((gw) => gw.update);
           // Add comment-marker update statements
           innerUpdateParts.push(...innerCommentUpdateStatements);
           if (hasInnerSignalSubs) {

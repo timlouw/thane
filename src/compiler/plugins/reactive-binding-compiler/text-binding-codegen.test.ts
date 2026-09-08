@@ -160,8 +160,9 @@ mount(App);
     const js = await buildAndReadJs(source);
     // Mixed-content should use TreeWalker for comment markers
     expect(js).toContain('createTreeWalker');
-    // Should have nextSibling.data for updating the text node next to the comment marker
-    expect(js).toContain('nextSibling.data');
+    // The text node after the marker is resolved once per row and written through `.data`
+    expect(js).toMatch(/\?\.nextSibling/);
+    expect(js).toMatch(/\.data\s*=/);
   });
 
   test('two bindings in one element use separate comment markers', async () => {
@@ -181,11 +182,12 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Two comment markers means two nextSibling.data assignments in fill and update
-    const nextSiblingMatches = js.match(/nextSibling\.data/g);
-    expect(nextSiblingMatches).toBeTruthy();
+    // Two comment markers means two resolved text nodes, each written in fill and update
+    expect(js.match(/\?\.nextSibling/g)!.length).toBe(2);
+    const dataWrites = js.match(/\.data\s*=/g);
+    expect(dataWrites).toBeTruthy();
     // At minimum: 2 fill + 2 update = 4
-    expect(nextSiblingMatches!.length).toBeGreaterThan(3);
+    expect(dataWrites!.length).toBeGreaterThan(3);
   });
 
   test('adjacent bindings with no space use comment markers and both update independently', async () => {
@@ -207,9 +209,43 @@ mount(App);
     const js = await buildAndReadJs(source);
     // Both bindings need comment markers since they share an element with multiple bindings
     expect(js).toContain('createTreeWalker');
-    const nextSiblingMatches = js.match(/nextSibling\.data/g);
-    expect(nextSiblingMatches).toBeTruthy();
-    expect(nextSiblingMatches!.length).toBeGreaterThan(3);
+    expect(js.match(/\?\.nextSibling/g)!.length).toBe(2);
+    const dataWrites = js.match(/\.data\s*=/g);
+    expect(dataWrites).toBeTruthy();
+    expect(dataWrites!.length).toBeGreaterThan(3);
+  });
+});
+
+// ============================================================================
+// Tests — Redundancy guards on repeat item writes
+// ============================================================================
+
+describe('Redundancy guards in repeat items', () => {
+  test('row updates compare against the last written value before touching the DOM', async () => {
+    const source = `
+import { defineComponent, signal, mount } from 'thane';
+
+export const App = defineComponent('test-app', () => {
+  const items = signal([{ id: 1, label: 'A' }]);
+  const selected = signal(0);
+  return {
+    template: html\`
+      <table><tbody>
+        \${repeat(items(), (item) => html\`<tr class=\${selected() === item.id ? 'danger' : ''}><td>\${item.label}</td></tr>\`, null, (item) => item.id)}
+      </tbody></table>
+    \`,
+  };
+});
+mount(App);
+`;
+    const js = await buildAndReadJs(source);
+    // Update path: `if (_p !== (_p = expr)) write(_p)` — the guard variable is compared with
+    // its own reassignment, so an unchanged value never reaches textContent/setAttribute
+    expect(js).toMatch(/(\w+)\s*!==\s*\(\1\s*=\s*\w+\.label\)/);
+    expect(js).toMatch(/(\w+)\s*!==\s*\(\1\s*=\s*\w+\(\)\s*===\s*\w+\.id\s*\?\s*"danger"/);
+    // Create path: the template already ships class="", so an empty result skips the write
+    // (esbuild shortens the strict comparison against a string literal to `!=`)
+    expect(js).toMatch(/!==?\s*""\)\s*&&\s*\w+\.setAttribute\("class"/);
   });
 });
 

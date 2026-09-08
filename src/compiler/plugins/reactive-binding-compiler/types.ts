@@ -115,6 +115,12 @@ export interface ItemBinding {
   textBindingMode?: TextBindingMode;
   /** Outer component signals referenced in this expression (for mixed signal + item bindings) */
   outerSignalNames?: string[];
+  /**
+   * For attr bindings: the attribute value the static template ships with (the source value
+   * with every `${…}` removed). When it is the empty string the first write can be skipped
+   * whenever the expression also evaluates to the empty string.
+   */
+  staticValue?: string | undefined;
 }
 
 export interface ItemEventBinding {
@@ -190,6 +196,7 @@ export interface StaticTemplateInfo {
       type: Exclude<ReactiveBindingKind, 'style'>;
       property?: string | undefined;
       expression: string;
+      staticValue?: string | undefined;
     }>;
   }>;
   /** Navigation paths for event-bound elements (elementId -> path) */
@@ -215,6 +222,7 @@ export interface StaticTemplateInfo {
     type: ReactiveBindingKind;
     property?: string | undefined;
     expression: string;
+    staticValue?: string | undefined;
   }>;
   /** Whether this template can use the optimized path */
   canUseOptimized: boolean;

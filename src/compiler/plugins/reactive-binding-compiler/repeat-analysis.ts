@@ -213,6 +213,7 @@ export const generateStaticRepeatTemplate = (
         type: b.type as 'text' | 'attr',
         property: b.property,
         expression: b.expression,
+        staticValue: b.staticValue,
       })),
     });
   }
@@ -336,6 +337,7 @@ export const generateStaticRepeatTemplate = (
           type: mb.type,
           property: mb.property,
           expression: mb.expression,
+          staticValue: mb.staticValue,
         });
       }
     }
@@ -779,6 +781,8 @@ const collectItemAttrBindings = (
           property: attrName,
           expression: innerExpr,
           ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
+          // What the static template ships for this attribute once every expression is stripped
+          staticValue: attr.value.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, ''),
         });
 
         itemAttrMatches.push({
