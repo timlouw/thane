@@ -40,6 +40,12 @@ import {
 } from './template-utils.js';
 
 /**
+ * Placeholder content for elements whose only content is a text binding. The compiled row
+ * writes the Text node's nodeValue before the row is inserted, so it is never displayed.
+ */
+export const TEXT_NODE_PLACEHOLDER = '-';
+
+/**
  * Get a human-readable explanation for why optimization was skipped
  */
 export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason): string => {
@@ -173,6 +179,19 @@ export const generateStaticRepeatTemplate = (
   // all be removed from the static template.
   staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
 
+  // Sole-content text bindings write Text.nodeValue at runtime, so the cloned row must already
+  // contain a Text node. Leave a one-character placeholder inside each such element: it is
+  // overwritten before the row is inserted, and being non-whitespace it survives the
+  // whitespace stripping below and the production template minifier.
+  for (const binding of itemBindings) {
+    if (binding.type !== 'text' || binding.textBindingMode !== 'textNode') continue;
+    const idPattern = binding.elementId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    staticHtml = staticHtml.replace(
+      new RegExp(`(<[^>]*\\sid="${idPattern}"[^>]*>)\\s*(</)`),
+      `$1${TEXT_NODE_PLACEHOLDER}$2`,
+    );
+  }
+
   // Remove inline id attributes that were only added for bindings
   // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
   staticHtml = staticHtml.replace(/\s*id="[ib]\d+"/g, '');
@@ -181,7 +200,6 @@ export const generateStaticRepeatTemplate = (
   // - Collapse runs to single space
   // - Remove all inter-element whitespace (><)
   // - Strip trailing whitespace before > in opening tags (<a > → <a>)
-  // Sole-content elements become empty (<td></td>) — textContent handles this at runtime.
   staticHtml = staticHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
 
   // Insert comment marker placeholders AFTER stripping (so they survive intact).
@@ -709,8 +727,8 @@ const collectItemTextBindings = (
         elementId: id,
         type: 'text',
         expression: expression,
-        // sole-content → textContent on parent; mixed-content → comment marker
-        textBindingMode: context.isSoleContent ? 'textContent' : 'commentMarker',
+        // sole-content → the element's placeholder Text node; mixed-content → comment marker
+        textBindingMode: context.isSoleContent ? 'textNode' : 'commentMarker',
         ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
       });
 

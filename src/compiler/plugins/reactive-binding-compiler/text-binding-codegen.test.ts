@@ -57,7 +57,7 @@ export const ProductGrid = defineComponent<{ products: { (): Product[]; subscrib
     expect(js).toContain('.products');
   });
 
-  test('sole-content text binding uses textContent, not firstChild.nodeValue', async () => {
+  test('sole-content text binding writes the placeholder text node, not textContent', async () => {
     const source = `
 import { defineComponent, signal, mount } from 'thane';
 
@@ -74,12 +74,13 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Sole-content should use textContent (not firstChild.nodeValue)
-    expect(js).toContain('.textContent');
-    expect(js).not.toContain('firstChild.nodeValue');
+    // The row resolves the Text node once (el.firstChild) and writes nodeValue on fill and update
+    expect(js).toMatch(/\.firstChild[,;)]/);
+    expect(js).toMatch(/\.nodeValue\s*=/);
+    expect(js).not.toMatch(/\.textContent\s*=\s*\w+\.label/);
   });
 
-  test('sole-content generates empty element in template (no placeholder text node)', async () => {
+  test('sole-content keeps a placeholder text node in the template', async () => {
     const source = `
 import { defineComponent, signal, mount } from 'thane';
 
@@ -96,11 +97,12 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Template should have empty <li></li>, not <li> </li> with a placeholder text node
-    expect(js).toMatch(/<li><\/li>/);
+    // The static template ships <li>-</li>: the placeholder is what nodeValue overwrites,
+    // and being non-whitespace it survives whitespace stripping and the prod minifier
+    expect(js).toMatch(/<li>-<\/li>/);
   });
 
-  test('multiple sole-content bindings in different elements use textContent', async () => {
+  test('multiple sole-content bindings in different elements each get their own text node', async () => {
     const source = `
 import { defineComponent, signal, mount } from 'thane';
 
@@ -124,15 +126,12 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Both td cells should use textContent
-    const textContentMatches = js.match(/\.textContent\s*=/g);
-    expect(textContentMatches).toBeTruthy();
-    // At minimum: 2 fill + 2 update = 4 textContent assignments
-    expect(textContentMatches!.length).toBeGreaterThan(3);
-    // No placeholder text nodes
-    expect(js).not.toContain('firstChild.nodeValue');
-    // Template should have empty td elements
-    expect(js).toMatch(/<td><\/td>/);
+    // Both td cells write nodeValue: 2 fill + 2 update = 4 assignments at minimum
+    const nodeValueWrites = js.match(/\.nodeValue\s*=/g);
+    expect(nodeValueWrites).toBeTruthy();
+    expect(nodeValueWrites!.length).toBeGreaterThan(3);
+    // Each cell carries its placeholder text node in the template
+    expect(js).toMatch(/<td>-<\/td><td>-<\/td>/);
   });
 });
 
@@ -268,8 +267,8 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Row template should be compact: <tr><td></td><td></td></tr>
-    expect(js).toMatch(/<tr><td><\/td><td><\/td><\/tr>/);
+    // Row template should be compact, with only the text-node placeholders inside the cells
+    expect(js).toMatch(/<tr><td>-<\/td><td>-<\/td><\/tr>/);
   });
 
   test('trailing attribute whitespace from removed event handlers is stripped', async () => {
@@ -396,9 +395,10 @@ mount(App);
     const js = await buildAndReadJs(source);
     // Should compile without errors
     expect(js.length).toBeGreaterThan(0);
-    // The strong element should use textContent (sole-content inside <strong>)
+    // The strong element's binding is sole-content: it writes its placeholder text node
     // The #${item.id} is mixed-content in the <li>, should use comment markers
-    expect(js).toContain('.textContent');
+    expect(js).toMatch(/\.nodeValue\s*=/);
+    expect(js).toMatch(/<strong>-<\/strong>/);
     expect(js).toContain('createTreeWalker');
   });
 });
