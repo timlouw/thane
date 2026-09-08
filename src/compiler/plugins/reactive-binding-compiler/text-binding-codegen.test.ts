@@ -240,7 +240,8 @@ mount(App);
     // Update path: `if (_p !== (_p = expr)) write(_p)` — the guard variable is compared with
     // its own reassignment, so an unchanged value never reaches textContent/setAttribute
     expect(js).toMatch(/(\w+)\s*!==\s*\(\1\s*=\s*\w+\.label\)/);
-    expect(js).toMatch(/(\w+)\s*!==\s*\(\1\s*=\s*\w+\(\)\s*===\s*\w+\.id\s*\?\s*"danger"/);
+    // (the selection class binding is owned by the list-level subscription, so the row update
+    // path no longer recomputes it; its guarded fill is asserted below)
     // Create path: the template already ships class="", so an empty result skips the write
     // (esbuild shortens the strict comparison against a string literal to `!=`; the class
     // write itself goes through className on HTML elements)
