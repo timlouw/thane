@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `bench/`: a self-contained benchmark harness that builds the js-framework-benchmark app from the working tree, drives it in Chrome, and records the same trace-derived total, script, paint and memory metrics as the official runner. `bun run bench --label <name>` measures a build and `bun run bench:compare <a> <b>` compares saved labels with a significance test; `--interleave` measures two builds in alternating iterations for a fair A/B.
 
+### Performance
+
+Measured with the in-repo harness against the previous release on the js-framework-benchmark operations, both builds interleaved in one session (script time, medians): select row 0.26x, partial update 0.59x, append rows 0.83x, replace rows 0.91x, create rows 0.93x, clear rows 0.93x, create 10,000 rows 1.02x; geometric mean 0.77x. Heap after creating 1,000 rows 0.95x.
+
+- Every write compiled into a `repeat()` row (and expression bindings at component level and inside conditionals) keeps the last value it wrote and skips the DOM write when a re-evaluation produces the same value. Creating rows no longer issues `setAttribute('class', '')` per row when the class starts empty.
+- A row attribute of the form `signal() === item.<key> ? 'on' : 'off'` (also `!==`, or the operands swapped), where `<key>` is the repeat's trackBy property, is driven by one subscription on the list that rewrites only the two affected rows, instead of one subscription per row. Rows still compute the value when created.
+- Sole-content text bindings in rows write `Text.nodeValue` on update, resolving the text node lazily on the row's first update; creation still uses `textContent`.
+- Dynamic `class` attributes on HTML elements are written through `className`; inside `<svg>` they stay on `setAttribute`.
+- Appending items to a non-empty `repeat()` list takes a fast path that creates only the new rows, and the container is no longer detached and re-attached for appends.
+- Unsubscribing from a signal is constant time; tearing down a list of subscribed rows no longer moves O(n²) array elements.
+- Delegated row event listeners dispatch by the row child the event came through instead of running a containment probe per handler.
+
 ### Fixed
 
 - The build no longer fails with `ENOENT` when emptying an existing output directory given as a `./`-prefixed path under Bun 1.4 on Windows.
