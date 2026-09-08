@@ -1325,17 +1325,18 @@ export const generateInitBindingsFunction = (
             const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             let gw: GuardedWrite | undefined;
             if (binding.type === 'text') {
-              // Sole-content text bindings: the element is empty in the static template. The
-              // fill writes textContent (the cheapest way to create the Text node) and keeps a
-              // reference to that node, so updates are a string store on an existing node
-              // instead of textContent discarding the child and allocating a new one per write.
-              // An empty first value creates no node; the update then writes textContent once
-              // more and picks the node up from there. The guard skips unchanged values.
+              // Sole-content text bindings: the element is empty in the static template and the
+              // fill writes textContent, the cheapest way to create the Text node. The first
+              // guarded update resolves that node lazily (`??=`) and every update writes its
+              // nodeValue: a string store on an existing node instead of textContent discarding
+              // the child and allocating a new one per write. Rows that never update never pay
+              // the read; an empty value leaves no node, so the update falls back to textContent
+              // and resolves again next time.
               const textVar = `_t${textNodeCount++}`;
               const guard = guards.next();
               gw = {
-                fill: `${varName}.textContent = ${guard} = ${expr}; let ${textVar} = ${varName}.firstChild`,
-                update: `if (${guard} !== (${guard} = ${expr})) ${textVar} ? (${textVar}.nodeValue = ${guard}) : ((${varName}.textContent = ${guard}), (${textVar} = ${varName}.firstChild))`,
+                fill: `${varName}.textContent = ${guard} = ${expr}; let ${textVar}`,
+                update: `if (${guard} !== (${guard} = ${expr})) (${textVar} ??= ${varName}.firstChild) ? (${textVar}.nodeValue = ${guard}) : (${varName}.textContent = ${guard})`,
               };
             } else if (binding.type === 'attr' && binding.property) {
               gw = guardedWrite(guards.next(), (v) => attributeWrite(varName, binding, v), expr, binding.staticValue);
@@ -1709,8 +1710,8 @@ export const generateInitBindingsFunction = (
                   const textVar = `_nrt${innerWrites.length}`;
                   const guard = innerGuards.next();
                   gw = {
-                    fill: `${nv}.textContent = ${guard} = ${expr}; let ${textVar} = ${nv}.firstChild`,
-                    update: `if (${guard} !== (${guard} = ${expr})) ${textVar} ? (${textVar}.nodeValue = ${guard}) : ((${nv}.textContent = ${guard}), (${textVar} = ${nv}.firstChild))`,
+                    fill: `${nv}.textContent = ${guard} = ${expr}; let ${textVar}`,
+                    update: `if (${guard} !== (${guard} = ${expr})) (${textVar} ??= ${nv}.firstChild) ? (${textVar}.nodeValue = ${guard}) : (${nv}.textContent = ${guard})`,
                   };
                 } else if (binding.type === 'attr' && binding.property) {
                   gw = guardedWrite(
