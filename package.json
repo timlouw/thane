@@ -80,6 +80,8 @@
     "types:apps": "bun scripts/apps.ts types",
     "test:apps": "bun scripts/apps.ts typecheck",
     "test:benchmark": "bun pm pack --filename example-apps/benchmark/thane.tgz && cd example-apps/benchmark && rm -rf bun.lock node_modules/thane && bun install && bun run build",
+    "bench": "bun bench/run.ts",
+    "bench:compare": "bun bench/compare.ts",
     "verify": "bun run format:check && bun run build && bun run test:apps && bun run test:benchmark && bun run test && bun run e2e:test"
   },
   "dependencies": {

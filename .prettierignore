@@ -3,6 +3,9 @@ node_modules
 .thane
 e2e/.build
 e2e/test-results
+bench/.build
+bench/results
+bench/traces
 README.md
 .prettierignore
 .gitignore
