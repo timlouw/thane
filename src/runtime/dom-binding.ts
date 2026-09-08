@@ -201,25 +201,31 @@ export function createKeyedReconciler<T>(
     keyMap.clear();
   };
 
-  const bulkCreate = (items: T[], startIndex: number = 0) => {
-    const count = items.length;
-    if (count === 0) return;
-
-    if (containerParent) container.remove();
+  /**
+   * Create rows for `items[from..]` and insert them before the anchor. When the list starts
+   * empty the container is detached while the rows go in, so the browser does no style work
+   * per insertion; when rows already exist it stays attached, because removing and re-adding
+   * a large subtree costs more than the incremental inserts it would save.
+   */
+  const bulkCreate = (items: T[], from = 0) => {
+    const count = items.length - from;
+    if (count <= 0) return;
 
     const base = managedItems.length;
+    const parent = base === 0 ? containerParent : null;
+    if (parent) container.remove();
+
     managedItems.length = base + count;
-    for (let i = 0; i < count; i++) {
+    for (let i = from; i < items.length; i++) {
       const item = items[i]!;
-      const idx = startIndex + i;
-      const managed = createItemFn(item, idx, anchor);
-      const key = keyFn(item, idx);
+      const managed = createItemFn(item, i, anchor);
+      const key = keyFn(item, i);
       managed.key = key;
-      managedItems[base + i] = managed;
+      managedItems[base + i - from] = managed;
       keyMap.set(key, managed);
     }
 
-    if (containerParent) containerParent.insertBefore(container, containerNextSibling);
+    if (parent) parent.insertBefore(container, containerNextSibling);
   };
 
   const reconcile = (newItems: T[]) => {
@@ -233,6 +239,31 @@ export function createKeyedReconciler<T>(
     if (oldLength === 0) {
       bulkCreate(newItems);
       return;
+    }
+
+    // Fast path: pure append — every existing row keeps its key and position and the new
+    // items follow. Without this, appending walks the general path below: a Set of every
+    // key, a Map lookup per item and a full reorder pass, to do a run of inserts at the end.
+    if (newLength > oldLength) {
+      let isAppend = true;
+      for (let i = 0; i < oldLength; i++) {
+        if (keyFn(newItems[i]!, i) !== managedItems[i]!.key) {
+          isAppend = false;
+          break;
+        }
+      }
+      if (isAppend) {
+        for (let i = 0; i < oldLength; i++) {
+          const managed = managedItems[i]!;
+          const newItem = newItems[i]!;
+          if (managed.value !== newItem) {
+            managed.value = newItem;
+            managed.update!(newItem);
+          }
+        }
+        bulkCreate(newItems, oldLength);
+        return;
+      }
     }
 
     // Fast path: single item removed — find missing old key by linear scan
