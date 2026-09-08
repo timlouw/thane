@@ -174,7 +174,8 @@ export const PostBuildPlugin = (options: PostBuildOptions): Plugin => {
         sourceCache.clear();
 
         if (config.emptyOutDir !== false && fs.existsSync(distDir)) {
-          await fs.promises.rm(distDir, { recursive: true });
+          // Resolve to an absolute path: Bun 1.4.x on Windows fails recursive rm on "./"-prefixed paths.
+          await fs.promises.rm(path.resolve(distDir), { recursive: true });
         }
         await fs.promises.mkdir(distDir, { recursive: true });
       });
