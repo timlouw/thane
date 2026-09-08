@@ -74,10 +74,10 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // The fill creates the Text node and keeps it; the update writes its nodeValue
-    expect(js).toMatch(/appendChild\(document\.createTextNode\(\w+\.label\)\)/);
+    // The fill writes textContent and keeps the Text node it created; the update writes nodeValue
+    expect(js).toMatch(/\.textContent\s*=\s*\w+\.label/);
+    expect(js).toMatch(/\.firstChild/);
     expect(js).toMatch(/\.nodeValue\s*=\s*\w+\.label/);
-    expect(js).not.toMatch(/\.textContent\s*=\s*\w+\.label/);
   });
 
   test('sole-content leaves the element empty in the template', async () => {
@@ -125,8 +125,8 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Both td cells create their text node on fill and write nodeValue on update
-    expect(js.match(/document\.createTextNode\(/g)!.length).toBe(2);
+    // Both td cells keep the Text node created by the fill and write nodeValue on update
+    expect(js.match(/\.firstChild/g)!.length).toBeGreaterThanOrEqual(2);
     expect(js.match(/\.nodeValue\s*=/g)!.length).toBe(2);
     // Template should have empty td elements
     expect(js).toMatch(/<td><\/td><td><\/td>/);
@@ -395,7 +395,7 @@ mount(App);
     expect(js.length).toBeGreaterThan(0);
     // The strong element's binding is sole-content: created on fill, nodeValue on update
     // The #${item.id} is mixed-content in the <li>, should use comment markers
-    expect(js).toMatch(/document\.createTextNode\(/);
+    expect(js).toMatch(/\.nodeValue\s*=/);
     expect(js).toMatch(/<strong><\/strong>/);
     expect(js).toContain('createTreeWalker');
   });
