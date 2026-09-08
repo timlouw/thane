@@ -245,7 +245,7 @@ mount(App);
     expect(js).toMatch(/(\w+)\s*!==\s*\(\1\s*=\s*\w+\(\)\s*===\s*\w+\.id\s*\?\s*"danger"/);
     // Create path: the template already ships class="", so an empty result skips the write
     // (esbuild shortens the strict comparison against a string literal to `!=`)
-    expect(js).toMatch(/!==?\s*""\)\s*&&\s*\w+\.setAttribute\("class"/);
+    expect(js).toMatch(/\)\s*!==?\s*""\s*&&\s*\w+\.setAttribute\("class"/);
   });
 });
 
