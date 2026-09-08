@@ -34,7 +34,9 @@ export const REACTIVE_BINDING_KIND = {
 export type ReactiveBindingKind = (typeof REACTIVE_BINDING_KIND)[keyof typeof REACTIVE_BINDING_KIND];
 
 export const TEXT_BINDING_MODE = {
-  TEXT_CONTENT: 'textContent',
+  /** Sole content of its element: the row keeps the placeholder Text node and writes its nodeValue */
+  TEXT_NODE: 'textNode',
+  /** Mixed content: located through a `<!--id-->` comment marker, writes the following Text node */
   COMMENT_MARKER: 'commentMarker',
 } as const;
 

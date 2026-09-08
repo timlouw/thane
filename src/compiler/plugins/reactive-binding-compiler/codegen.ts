@@ -1184,16 +1184,20 @@ export const generateInitBindingsFunction = (
         // Generate fill statements using inlined var names
         const fillStatements: string[] = [];
         const updateStatements: string[] = [];
+        let textNodeCount = 0;
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
           const varName = navVarNames[i]!;
           for (const binding of eb.bindings) {
             const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             if (binding.type === 'text') {
-              // Sole-content text bindings: textContent is optimal — works on empty elements,
-              // no placeholder text node needed, lets templates be aggressively stripped
-              fillStatements.push(`${varName}.textContent = ${expr}`);
-              updateStatements.push(`${varName}.textContent = ${expr}`);
+              // Sole-content text bindings: the static template carries a placeholder Text node,
+              // so the row resolves it once and writes nodeValue — a string store on an existing
+              // node, where textContent would discard the child and allocate a new one per write.
+              const textVar = `_t${textNodeCount++}`;
+              navStatements.push(`const ${textVar} = ${varName}.firstChild`);
+              fillStatements.push(`${textVar}.nodeValue = ${expr}`);
+              updateStatements.push(`${textVar}.nodeValue = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
               fillStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
               updateStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
@@ -1529,14 +1533,16 @@ export const generateInitBindingsFunction = (
               } else {
                 lines.push(`            const ${nv} = ${pathToSiblingNav('_nrEl', eb.path)};`);
               }
-              for (const binding of eb.bindings) {
+              eb.bindings.forEach((binding, bj) => {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
                 if (binding.type === 'text') {
-                  lines.push(`            ${nv}.firstChild.nodeValue = ${expr};`);
+                  // Placeholder Text node resolved once per row; the update path reuses it
+                  lines.push(`            const _nrt${bi}_${bj} = ${nv}.firstChild;`);
+                  lines.push(`            _nrt${bi}_${bj}.nodeValue = ${expr};`);
                 } else if (binding.type === 'attr' && binding.property) {
                   lines.push(`            ${nv}.setAttribute('${binding.property}', ${expr});`);
                 }
-              }
+              });
             }
           }
           // Inner comment-marker item bindings (mixed-content text bindings)
@@ -1624,14 +1630,14 @@ export const generateInitBindingsFunction = (
             for (let bi = 0; bi < innerStaticInfo.elementBindings.length; bi++) {
               const eb = innerStaticInfo.elementBindings[bi]!;
               const nv = `_nre${bi}`;
-              for (const binding of eb.bindings) {
+              eb.bindings.forEach((binding, bj) => {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
                 if (binding.type === 'text') {
-                  innerUpdateParts.push(`${nv}.firstChild.nodeValue = ${expr}`);
+                  innerUpdateParts.push(`_nrt${bi}_${bj}.nodeValue = ${expr}`);
                 } else if (binding.type === 'attr' && binding.property) {
                   innerUpdateParts.push(`${nv}.setAttribute('${binding.property}', ${expr})`);
                 }
-              }
+              });
             }
           }
           // Add comment-marker update statements

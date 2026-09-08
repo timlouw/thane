@@ -109,7 +109,8 @@ export interface ItemBinding {
   expression: string; // The JS expression (e.g., 'item.label', 'item.count > 0')
   /**
    * For text bindings: how the binding is rendered in the DOM
-   * - 'textContent': Uses parent element's textContent (when binding is only child)
+   * - 'textNode': the binding is the element's only content; the static template keeps a
+   *   placeholder Text node and the row writes its nodeValue
    * - 'commentMarker': Uses <!--id--> comment marker to locate text node (for mixed content)
    */
   textBindingMode?: TextBindingMode;
