@@ -114,6 +114,19 @@ const pathToSiblingNav = (root: string, path: number[]): string => {
   return expr;
 };
 
+/**
+ * The write for a dynamic attribute: through a DOM property when the analysis found one with
+ * identical semantics (`class` → `className` on HTML elements), otherwise `setAttribute`.
+ */
+const attributeWrite = (
+  target: string,
+  binding: { property?: string | undefined; domProperty?: string | undefined },
+  value: string,
+): string =>
+  binding.domProperty
+    ? `${target}.${binding.domProperty} = ${value}`
+    : `${target}.setAttribute('${binding.property}', ${value})`;
+
 // ============================================================================
 // Redundancy-guarded writes
 // ============================================================================
@@ -398,7 +411,7 @@ export const generateBindingUpdateCode = (binding: SimpleBinding): string => {
     const prop = toCamelCase(binding.property!);
     return `${elRef}.style.${prop} = v`;
   } else if (binding.type === 'attr') {
-    return `${elRef}.setAttribute('${binding.property}', v)`;
+    return attributeWrite(elRef, binding, 'v');
   } else {
     // Comment marker → next sibling text node
     return `${elRef}.nextSibling.data = v`;
@@ -413,10 +426,10 @@ const expressionWrite = (binding: {
   id: string;
   type: SimpleBinding['type'];
   property?: string | undefined;
+  domProperty?: string | undefined;
 }): ((value: string) => string) | undefined => {
   if (binding.type === 'text') return (v) => `${binding.id}.nextSibling.data = ${v}`;
-  if (binding.type === 'attr' && binding.property)
-    return (v) => `${binding.id}.setAttribute('${binding.property}', ${v})`;
+  if (binding.type === 'attr' && binding.property) return (v) => attributeWrite(binding.id, binding, v);
   if (binding.type === 'style' && binding.property)
     return (v) => `${binding.id}.style.setProperty('${binding.property}', ${v})`;
   return undefined;
@@ -433,7 +446,7 @@ export const generateInitialValueCode = (binding: SimpleBinding, ap: AccessPatte
     const prop = toCamelCase(binding.property!);
     return `${elRef}.style.${prop} = ${signalCall}`;
   } else if (binding.type === 'attr') {
-    return `${elRef}.setAttribute('${binding.property}', ${signalCall})`;
+    return attributeWrite(elRef, binding, signalCall);
   } else {
     // Comment marker → next sibling text node
     return `${elRef}.nextSibling.data = ${signalCall}`;
@@ -512,7 +525,7 @@ const generateRepeatNestedCondInitFn = (
       // Comment marker: nextSibling.data targets the text node after <!--id-->
       parts.push(`  if (_n_${ib.elementId}) _n_${ib.elementId}.nextSibling.data = ${expr};`);
     } else if (ib.type === 'attr' && ib.property) {
-      parts.push(`  if (_n_${ib.elementId}) _n_${ib.elementId}.setAttribute('${ib.property}', ${expr});`);
+      parts.push(`  if (_n_${ib.elementId}) ${attributeWrite(`_n_${ib.elementId}`, ib, expr)};`);
     }
   }
   // Signal bindings
@@ -531,7 +544,7 @@ const generateRepeatNestedCondInitFn = (
     if (sb.type === 'text') {
       parts.push(`  if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = ${signalCall};`);
     } else if (sb.type === 'attr' && sb.property) {
-      parts.push(`  if (_n_${sb.id}) _n_${sb.id}.setAttribute('${sb.property}', ${signalCall});`);
+      parts.push(`  if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, signalCall)};`);
     } else if (sb.type === 'style' && sb.property) {
       parts.push(`  if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', ${signalCall});`);
     }
@@ -557,7 +570,7 @@ const generateRepeatNestedCondInitFn = (
     const updates = sbs
       .map((sb) => {
         if (sb.type === 'text') return `if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = v`;
-        if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) _n_${sb.id}.setAttribute('${sb.property}', v)`;
+        if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, 'v')}`;
         if (sb.type === 'style' && sb.property)
           return `if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', v)`;
         return '';
@@ -1249,12 +1262,7 @@ export const generateInitBindingsFunction = (
               // no placeholder text node needed, lets templates be aggressively stripped
               gw = guardedWrite(guards.next(), (v) => `${varName}.textContent = ${v}`, expr);
             } else if (binding.type === 'attr' && binding.property) {
-              gw = guardedWrite(
-                guards.next(),
-                (v) => `${varName}.setAttribute('${binding.property}', ${v})`,
-                expr,
-                binding.staticValue,
-              );
+              gw = guardedWrite(guards.next(), (v) => attributeWrite(varName, binding, v), expr, binding.staticValue);
             }
             if (gw) {
               fillStatements.push(gw.fill);
@@ -1304,9 +1312,9 @@ export const generateInitBindingsFunction = (
             const signalRef = ap.signal(sb.signalName);
             const signalCall = ap.signalCall(sb.signalName);
             if (sb.type === 'attr' && sb.property) {
-              signalFillStatements.push(`${varName}.setAttribute('${sb.property}', ${signalCall})`);
+              signalFillStatements.push(attributeWrite(varName, sb, signalCall));
               signalSubscriptions.push(
-                `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`,
+                `_cleanups.push(${signalRef}.subscribe(() => { ${attributeWrite(varName, sb, signalCall)}; }, true))`,
               );
             } else if (sb.type === 'style' && sb.property) {
               signalFillStatements.push(`${varName}.style.setProperty('${sb.property}', ${signalCall})`);
@@ -1363,12 +1371,7 @@ export const generateInitBindingsFunction = (
             const expr = renameIdentifierInExpression(mb.expression, rep.itemVar, 'item');
             let gw: GuardedWrite | undefined;
             if (mb.type === 'attr' && mb.property) {
-              gw = guardedWrite(
-                guards.next(),
-                (v) => `${varName}.setAttribute('${mb.property}', ${v})`,
-                expr,
-                mb.staticValue,
-              );
+              gw = guardedWrite(guards.next(), (v) => attributeWrite(varName, mb, v), expr, mb.staticValue);
             } else if (mb.type === 'text') {
               gw = guardedWrite(guards.next(), (v) => `${varName}.textContent = ${v}`, expr);
             } else if (mb.type === 'style' && mb.property) {
@@ -1606,7 +1609,7 @@ export const generateInitBindingsFunction = (
                 } else if (binding.type === 'attr' && binding.property) {
                   gw = guardedWrite(
                     innerGuards.next(),
-                    (v) => `${nv}.setAttribute('${binding.property}', ${v})`,
+                    (v) => attributeWrite(nv, binding, v),
                     expr,
                     binding.staticValue,
                   );
@@ -1663,9 +1666,9 @@ export const generateInitBindingsFunction = (
               const signalCall = ap.signalCall(sb.signalName);
               // Only attr/style — text bindings use signalCommentBindings
               if (sb.type === 'attr' && sb.property) {
-                innerSignalFillStatements.push(`${varName}.setAttribute('${sb.property}', ${signalCall})`);
+                innerSignalFillStatements.push(attributeWrite(varName, sb, signalCall));
                 innerSignalSubscriptions.push(
-                  `_nrCleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`,
+                  `_nrCleanups.push(${signalRef}.subscribe(() => { ${attributeWrite(varName, sb, signalCall)}; }, true))`,
                 );
               } else if (sb.type === 'style' && sb.property) {
                 innerSignalFillStatements.push(`${varName}.style.setProperty('${sb.property}', ${signalCall})`);

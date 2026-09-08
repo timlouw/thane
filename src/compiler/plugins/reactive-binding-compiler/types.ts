@@ -121,6 +121,8 @@ export interface ItemBinding {
    * whenever the expression also evaluates to the empty string.
    */
   staticValue?: string | undefined;
+  /** For attr bindings: DOM property to write instead of setAttribute (e.g. `className`), when one applies */
+  domProperty?: string | undefined;
 }
 
 export interface ItemEventBinding {
@@ -155,6 +157,8 @@ export interface SimpleBinding extends BindingBase {
   signalName: string;
   type: ReactiveBindingKind;
   property?: string;
+  /** For attr bindings: DOM property to write instead of setAttribute (e.g. `className`), when one applies */
+  domProperty?: string | undefined;
 }
 
 /**
@@ -168,6 +172,8 @@ export interface ExpressionBinding extends BindingBase {
   expression: string;
   type: ReactiveBindingKind;
   property?: string;
+  /** For attr bindings: DOM property to write instead of setAttribute (e.g. `className`), when one applies */
+  domProperty?: string | undefined;
 }
 
 /**
@@ -195,6 +201,7 @@ export interface StaticTemplateInfo {
     bindings: Array<{
       type: Exclude<ReactiveBindingKind, 'style'>;
       property?: string | undefined;
+      domProperty?: string | undefined;
       expression: string;
       staticValue?: string | undefined;
     }>;
@@ -207,6 +214,7 @@ export interface StaticTemplateInfo {
     signalName: string;
     type: ReactiveBindingKind;
     property?: string | undefined;
+    domProperty?: string | undefined;
   }>;
   /** Signal text bindings that use comment markers (cannot be navigated by element path) */
   signalCommentBindings?: Array<{
@@ -221,6 +229,7 @@ export interface StaticTemplateInfo {
     outerSignalNames: string[];
     type: ReactiveBindingKind;
     property?: string | undefined;
+    domProperty?: string | undefined;
     expression: string;
     staticValue?: string | undefined;
   }>;

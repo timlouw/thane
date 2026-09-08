@@ -59,6 +59,25 @@ export function getBindingsForElement(element: HtmlElement, bindings: BindingInf
   return bindings.filter((b) => elementIds.has(b.element));
 }
 
+/** Whether the element sits inside an `<svg>` subtree (including the `<svg>` element itself). */
+export function isInsideSvg(element: HtmlElement | null): boolean {
+  for (let el = element; el; el = el.parent) {
+    if (el.tagName.toLowerCase() === 'svg') return true;
+  }
+  return false;
+}
+
+/**
+ * The DOM property a dynamic attribute is written through instead of `setAttribute`, when a
+ * property with identical semantics and a cheaper write exists. Only `class` → `className`
+ * qualifies: on SVG elements `className` is a read-only SVGAnimatedString, and attributes such
+ * as `value`, `checked` and `disabled` mean different things as attribute and as property, so
+ * they stay on `setAttribute`.
+ */
+export function attributeDomProperty(attrName: string, element: HtmlElement | null): string | undefined {
+  return attrName === 'class' && !isInsideSvg(element) ? 'className' : undefined;
+}
+
 export function isElementInside(element: HtmlElement, container: HtmlElement): boolean {
   let current = element.parent;
   while (current) {
