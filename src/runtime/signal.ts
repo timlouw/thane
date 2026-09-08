@@ -23,31 +23,52 @@ import type { Signal, ReadonlySignal } from './types.js';
 /** @internal */
 type SignalInternal<T> = Signal<T> & {
   _v: T; // current value
-  _s: ((val: T) => void)[]; // subscribers (may contain nulls mid-notification)
+  _s: (((val: T) => void) | null)[]; // subscribers; null slots are unsubscribed entries awaiting compaction
   _nc: number; // notification depth counter (0 = idle)
+  _nn: number; // number of null slots in _s
 };
 
-/** Shared subscribe — uses `this` to access the signal's _v, _s, _nc state. */
+/** Drop the null slots left by unsubscribes. Only called while the signal is not notifying. */
+function _compact<T>(fn: SignalInternal<T>): void {
+  const subs = fn._s;
+  const len = subs.length;
+  let w = 0;
+  for (let r = 0; r < len; r++) {
+    const cb = subs[r];
+    if (cb !== null && cb !== undefined) subs[w++] = cb;
+  }
+  subs.length = w;
+  fn._nn = 0;
+}
+
+/**
+ * Shared subscribe — uses `this` to access the signal's _v, _s, _nc, _nn state.
+ *
+ * Unsubscribing nulls the entry's slot in place, which is constant time and keeps the
+ * notification loop's indices valid, instead of splicing it out (which moved every later
+ * entry and made tearing down N subscribers O(N²)). The closure remembers the slot it was
+ * pushed into; it only scans when a compaction has moved the entry since.
+ */
 function sharedSubscribe<T>(this: SignalInternal<T>, callback: (val: T) => void, skipInitial?: boolean): () => void {
-  this._s.push(callback);
+  const self = this;
+  const subs = self._s;
+  // An idle signal whose array is mostly dead slots (a list cleared and rebuilt with no
+  // notification in between) is compacted before the new entry goes in, so the array
+  // cannot grow without bound.
+  if (self._nn > 0 && self._nc === 0 && self._nn > subs.length >> 1) _compact(self);
+  const slot = subs.length;
+  subs.push(callback);
 
   if (!skipInitial) {
-    callback(this._v);
+    callback(self._v);
   }
 
-  const self = this;
   return () => {
-    const subs = self._s;
-    const idx = subs.indexOf(callback);
+    const s = self._s;
+    const idx = s[slot] === callback ? slot : s.indexOf(callback);
     if (idx !== -1) {
-      if (self._nc > 0) {
-        // Mid-notification: null the slot so the iteration index stays valid.
-        // The notification loop skips null entries and the outermost level
-        // compacts the array when it finishes.
-        (subs as (((val: T) => void) | null)[])[idx] = null;
-      } else {
-        subs.splice(idx, 1);
-      }
+      s[idx] = null;
+      self._nn++;
     }
   };
 }
@@ -77,6 +98,7 @@ export const signal = <T>(initialValue: T): Signal<T> => {
   fn._v = initialValue;
   fn._s = [];
   fn._nc = 0;
+  fn._nn = 0;
 
   fn.subscribe = sharedSubscribe;
 
@@ -117,19 +139,8 @@ function _notifySubscribers<T>(fn: SignalInternal<T>): void {
         }
       }
     }
-    if (--fn._nc === 0) {
-      // Compact null slots from mid-notification unsubscribes
-      const curLen = subs.length;
-      let r = 0;
-      while (r < curLen && subs[r] !== null) r++;
-      if (r < curLen) {
-        let w = r;
-        for (++r; r < curLen; r++) {
-          if (subs[r] !== null) (subs as any[])[w++] = subs[r];
-        }
-        subs.length = w;
-      }
-    }
+    // Compact the slots nulled by unsubscribes once the outermost notification is done
+    if (--fn._nc === 0 && fn._nn > 0) _compact(fn);
     if (--_notificationDepth === 0) {
       // Flush deferred cascade signals (cap iterations to catch circular deps)
       let flushIterations = 0;
