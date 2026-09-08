@@ -24,6 +24,7 @@ import {
   walkElements,
   findElementsWithWhenDirective,
   injectIdIntoFirstElement,
+  attributeDomProperty,
   type HtmlElement,
 } from '../../utils/html-parser/index.js';
 import { renameIdentifierInExpression, expressionReferencesIdentifier } from '../../utils/index.js';
@@ -212,6 +213,7 @@ export const generateStaticRepeatTemplate = (
       bindings: bindings.map((b) => ({
         type: b.type as 'text' | 'attr',
         property: b.property,
+        domProperty: b.domProperty,
         expression: b.expression,
       })),
     });
@@ -265,6 +267,7 @@ export const generateStaticRepeatTemplate = (
           signalName: sb.signalName,
           type: sb.type,
           property: sb.property,
+          domProperty: sb.domProperty,
         });
       }
     }
@@ -335,6 +338,7 @@ export const generateStaticRepeatTemplate = (
           outerSignalNames: mb.outerSignalNames!,
           type: mb.type,
           property: mb.property,
+          domProperty: mb.domProperty,
           expression: mb.expression,
         });
       }
@@ -777,6 +781,7 @@ const collectItemAttrBindings = (
           elementId: id,
           type: 'attr',
           property: attrName,
+          domProperty: attributeDomProperty(attrName, el),
           expression: innerExpr,
           ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
         });

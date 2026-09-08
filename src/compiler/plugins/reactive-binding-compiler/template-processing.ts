@@ -17,8 +17,10 @@ import {
   findElementsWithWhenDirective,
   getElementHtml,
   injectIdIntoFirstElement,
+  attributeDomProperty,
   type HtmlElement,
   type ParsedTemplate,
+  type BindingInfo as ParsedBindingInfo,
 } from '../../utils/html-parser/index.js';
 import {
   collectConditionalBlocks,
@@ -35,6 +37,13 @@ import {
   type SubTemplateProcessor,
   type TemplateEdit,
 } from './template-utils.js';
+
+/** `domProperty` for an attribute binding when a cheaper DOM property write applies (see attributeDomProperty). */
+const domPropertyFor = (binding: ParsedBindingInfo): { domProperty?: string | undefined } => {
+  const domProperty =
+    binding.type === 'attr' && binding.property ? attributeDomProperty(binding.property, binding.element) : undefined;
+  return domProperty ? { domProperty } : {};
+};
 
 const NAME = PLUGIN_NAME.REACTIVE;
 
@@ -471,6 +480,7 @@ export const processHtmlTemplateWithConditionals = (
         expression: binding.jsExpression!,
         type: binding.type as 'style' | 'attr',
         ...(binding.property ? { property: binding.property } : {}),
+        ...domPropertyFor(binding),
         isInsideConditional: false,
       });
     } else {
@@ -485,6 +495,7 @@ export const processHtmlTemplateWithConditionals = (
         signalName: binding.signalName,
         type: binding.type as 'style' | 'attr',
         property: binding.property!,
+        ...domPropertyFor(binding),
         isInsideConditional: false,
       });
     }
@@ -750,6 +761,7 @@ export const processSubTemplateWithNesting = (
             expression: binding.jsExpression!,
             type: binding.type,
             ...(binding.property ? { property: binding.property } : {}),
+            ...domPropertyFor(binding),
             isInsideConditional: true,
             conditionalId: parentId,
           }
@@ -758,6 +770,7 @@ export const processSubTemplateWithNesting = (
             signalName: binding.signalName,
             type: binding.type,
             ...(binding.property ? { property: binding.property } : {}),
+            ...domPropertyFor(binding),
             isInsideConditional: true,
             conditionalId: parentId,
           },
