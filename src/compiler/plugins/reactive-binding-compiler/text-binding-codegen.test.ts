@@ -74,13 +74,13 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // The row resolves the Text node once (el.firstChild) and writes nodeValue on fill and update
-    expect(js).toMatch(/\.firstChild[,;)]/);
-    expect(js).toMatch(/\.nodeValue\s*=/);
+    // The fill creates the Text node and keeps it; the update writes its nodeValue
+    expect(js).toMatch(/appendChild\(document\.createTextNode\(\w+\.label\)\)/);
+    expect(js).toMatch(/\.nodeValue\s*=\s*\w+\.label/);
     expect(js).not.toMatch(/\.textContent\s*=\s*\w+\.label/);
   });
 
-  test('sole-content keeps a placeholder text node in the template', async () => {
+  test('sole-content leaves the element empty in the template', async () => {
     const source = `
 import { defineComponent, signal, mount } from 'thane';
 
@@ -97,9 +97,8 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // The static template ships <li>-</li>: the placeholder is what nodeValue overwrites,
-    // and being non-whitespace it survives whitespace stripping and the prod minifier
-    expect(js).toMatch(/<li>-<\/li>/);
+    // Template should have empty <li></li>; the text node is created when the row is filled
+    expect(js).toMatch(/<li><\/li>/);
   });
 
   test('multiple sole-content bindings in different elements each get their own text node', async () => {
@@ -126,12 +125,11 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Both td cells write nodeValue: 2 fill + 2 update = 4 assignments at minimum
-    const nodeValueWrites = js.match(/\.nodeValue\s*=/g);
-    expect(nodeValueWrites).toBeTruthy();
-    expect(nodeValueWrites!.length).toBeGreaterThan(3);
-    // Each cell carries its placeholder text node in the template
-    expect(js).toMatch(/<td>-<\/td><td>-<\/td>/);
+    // Both td cells create their text node on fill and write nodeValue on update
+    expect(js.match(/document\.createTextNode\(/g)!.length).toBe(2);
+    expect(js.match(/\.nodeValue\s*=/g)!.length).toBe(2);
+    // Template should have empty td elements
+    expect(js).toMatch(/<td><\/td><td><\/td>/);
   });
 });
 
@@ -267,8 +265,8 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Row template should be compact, with only the text-node placeholders inside the cells
-    expect(js).toMatch(/<tr><td>-<\/td><td>-<\/td><\/tr>/);
+    // Row template should be compact: <tr><td></td><td></td></tr>
+    expect(js).toMatch(/<tr><td><\/td><td><\/td><\/tr>/);
   });
 
   test('trailing attribute whitespace from removed event handlers is stripped', async () => {
@@ -395,10 +393,10 @@ mount(App);
     const js = await buildAndReadJs(source);
     // Should compile without errors
     expect(js.length).toBeGreaterThan(0);
-    // The strong element's binding is sole-content: it writes its placeholder text node
+    // The strong element's binding is sole-content: created on fill, nodeValue on update
     // The #${item.id} is mixed-content in the <li>, should use comment markers
-    expect(js).toMatch(/\.nodeValue\s*=/);
-    expect(js).toMatch(/<strong>-<\/strong>/);
+    expect(js).toMatch(/document\.createTextNode\(/);
+    expect(js).toMatch(/<strong><\/strong>/);
     expect(js).toContain('createTreeWalker');
   });
 });
