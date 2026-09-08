@@ -113,6 +113,19 @@ const pathToSiblingNav = (root: string, path: number[]): string => {
   return expr;
 };
 
+/**
+ * The write for a dynamic attribute: through a DOM property when the analysis found one with
+ * identical semantics (`class` → `className` on HTML elements), otherwise `setAttribute`.
+ */
+const attributeWrite = (
+  target: string,
+  binding: { property?: string | undefined; domProperty?: string | undefined },
+  value: string,
+): string =>
+  binding.domProperty
+    ? `${target}.${binding.domProperty} = ${value}`
+    : `${target}.setAttribute('${binding.property}', ${value})`;
+
 // ============================================================================
 // Event Delegation Types & Helpers
 // ============================================================================
@@ -350,7 +363,7 @@ export const generateBindingUpdateCode = (binding: SimpleBinding): string => {
     const prop = toCamelCase(binding.property!);
     return `${elRef}.style.${prop} = v`;
   } else if (binding.type === 'attr') {
-    return `${elRef}.setAttribute('${binding.property}', v)`;
+    return attributeWrite(elRef, binding, 'v');
   } else {
     // Comment marker → next sibling text node
     return `${elRef}.nextSibling.data = v`;
@@ -368,7 +381,7 @@ export const generateInitialValueCode = (binding: SimpleBinding, ap: AccessPatte
     const prop = toCamelCase(binding.property!);
     return `${elRef}.style.${prop} = ${signalCall}`;
   } else if (binding.type === 'attr') {
-    return `${elRef}.setAttribute('${binding.property}', ${signalCall})`;
+    return attributeWrite(elRef, binding, signalCall);
   } else {
     // Comment marker → next sibling text node
     return `${elRef}.nextSibling.data = ${signalCall}`;
@@ -447,7 +460,7 @@ const generateRepeatNestedCondInitFn = (
       // Comment marker: nextSibling.data targets the text node after <!--id-->
       parts.push(`  if (_n_${ib.elementId}) _n_${ib.elementId}.nextSibling.data = ${expr};`);
     } else if (ib.type === 'attr' && ib.property) {
-      parts.push(`  if (_n_${ib.elementId}) _n_${ib.elementId}.setAttribute('${ib.property}', ${expr});`);
+      parts.push(`  if (_n_${ib.elementId}) ${attributeWrite(`_n_${ib.elementId}`, ib, expr)};`);
     }
   }
   // Signal bindings
@@ -466,7 +479,7 @@ const generateRepeatNestedCondInitFn = (
     if (sb.type === 'text') {
       parts.push(`  if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = ${signalCall};`);
     } else if (sb.type === 'attr' && sb.property) {
-      parts.push(`  if (_n_${sb.id}) _n_${sb.id}.setAttribute('${sb.property}', ${signalCall});`);
+      parts.push(`  if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, signalCall)};`);
     } else if (sb.type === 'style' && sb.property) {
       parts.push(`  if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', ${signalCall});`);
     }
@@ -476,7 +489,7 @@ const generateRepeatNestedCondInitFn = (
     if (eb.type === 'text') {
       parts.push(`  if (_n_${eb.id}) _n_${eb.id}.nextSibling.data = ${renamedExpr};`);
     } else if (eb.type === 'attr' && eb.property) {
-      parts.push(`  if (_n_${eb.id}) _n_${eb.id}.setAttribute('${eb.property}', ${renamedExpr});`);
+      parts.push(`  if (_n_${eb.id}) ${attributeWrite(`_n_${eb.id}`, eb, renamedExpr)};`);
     } else if (eb.type === 'style' && eb.property) {
       parts.push(`  if (_n_${eb.id}) _n_${eb.id}.style.setProperty('${eb.property}', ${renamedExpr});`);
     }
@@ -492,7 +505,7 @@ const generateRepeatNestedCondInitFn = (
     const updates = sbs
       .map((sb) => {
         if (sb.type === 'text') return `if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = v`;
-        if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) _n_${sb.id}.setAttribute('${sb.property}', v)`;
+        if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, 'v')}`;
         if (sb.type === 'style' && sb.property)
           return `if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', v)`;
         return '';
@@ -510,7 +523,7 @@ const generateRepeatNestedCondInitFn = (
     if (eb.type === 'text') {
       updFn = `() => { if (_n_${eb.id}) _n_${eb.id}.nextSibling.data = ${renamedExpr}; }`;
     } else if (eb.type === 'attr' && eb.property) {
-      updFn = `() => { if (_n_${eb.id}) _n_${eb.id}.setAttribute('${eb.property}', ${renamedExpr}); }`;
+      updFn = `() => { if (_n_${eb.id}) ${attributeWrite(`_n_${eb.id}`, eb, renamedExpr)}; }`;
     } else if (eb.type === 'style' && eb.property) {
       updFn = `() => { if (_n_${eb.id}) _n_${eb.id}.style.setProperty('${eb.property}', ${renamedExpr}); }`;
     }
@@ -705,7 +718,7 @@ export const generateInitBindingsFunction = (
     if (binding.type === 'text') {
       lines.push(`    const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
     } else if (binding.type === 'attr' && binding.property) {
-      lines.push(`    const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`);
+      lines.push(`    const ${updFn} = () => { ${attributeWrite(binding.id, binding, expr)}; };`);
     } else if (binding.type === 'style' && binding.property) {
       lines.push(`    const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`);
     } else {
@@ -760,7 +773,7 @@ export const generateInitBindingsFunction = (
       if (binding.type === 'text') {
         initLines.push(`      const ${updFn} = () => { ${binding.id}.nextSibling.data = ${expr}; };`);
       } else if (binding.type === 'attr' && binding.property) {
-        initLines.push(`      const ${updFn} = () => { ${binding.id}.setAttribute('${binding.property}', ${expr}); };`);
+        initLines.push(`      const ${updFn} = () => { ${attributeWrite(binding.id, binding, expr)}; };`);
       } else if (binding.type === 'style' && binding.property) {
         initLines.push(
           `      const ${updFn} = () => { ${binding.id}.style.setProperty('${binding.property}', ${expr}); };`,
@@ -1195,8 +1208,8 @@ export const generateInitBindingsFunction = (
               fillStatements.push(`${varName}.textContent = ${expr}`);
               updateStatements.push(`${varName}.textContent = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
-              fillStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
-              updateStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
+              fillStatements.push(attributeWrite(varName, binding, expr));
+              updateStatements.push(attributeWrite(varName, binding, expr));
             }
           }
         }
@@ -1239,9 +1252,9 @@ export const generateInitBindingsFunction = (
             const signalRef = ap.signal(sb.signalName);
             const signalCall = ap.signalCall(sb.signalName);
             if (sb.type === 'attr' && sb.property) {
-              signalFillStatements.push(`${varName}.setAttribute('${sb.property}', ${signalCall})`);
+              signalFillStatements.push(attributeWrite(varName, sb, signalCall));
               signalSubscriptions.push(
-                `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`,
+                `_cleanups.push(${signalRef}.subscribe(() => { ${attributeWrite(varName, sb, signalCall)}; }, true))`,
               );
             } else if (sb.type === 'style' && sb.property) {
               signalFillStatements.push(`${varName}.style.setProperty('${sb.property}', ${signalCall})`);
@@ -1298,8 +1311,8 @@ export const generateInitBindingsFunction = (
             const expr = renameIdentifierInExpression(mb.expression, rep.itemVar, 'item');
             // Fill
             if (mb.type === 'attr' && mb.property) {
-              mixedFillStatements.push(`${varName}.setAttribute('${mb.property}', ${expr})`);
-              mixedUpdateStatements.push(`${varName}.setAttribute('${mb.property}', ${expr})`);
+              mixedFillStatements.push(attributeWrite(varName, mb, expr));
+              mixedUpdateStatements.push(attributeWrite(varName, mb, expr));
             } else if (mb.type === 'text') {
               mixedFillStatements.push(`${varName}.textContent = ${expr}`);
               mixedUpdateStatements.push(`${varName}.textContent = ${expr}`);
@@ -1313,7 +1326,7 @@ export const generateInitBindingsFunction = (
               const signalRef = ap.signal(sigName);
               if (mb.type === 'attr' && mb.property) {
                 signalSubscriptions.push(
-                  `_cleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${mb.property}', ${expr}); }, true))`,
+                  `_cleanups.push(${signalRef}.subscribe(() => { ${attributeWrite(varName, mb, expr)}; }, true))`,
                 );
               } else if (mb.type === 'text') {
                 signalSubscriptions.push(
@@ -1534,7 +1547,7 @@ export const generateInitBindingsFunction = (
                 if (binding.type === 'text') {
                   lines.push(`            ${nv}.firstChild.nodeValue = ${expr};`);
                 } else if (binding.type === 'attr' && binding.property) {
-                  lines.push(`            ${nv}.setAttribute('${binding.property}', ${expr});`);
+                  lines.push(`            ${attributeWrite(nv, binding, expr)};`);
                 }
               }
             }
@@ -1581,9 +1594,9 @@ export const generateInitBindingsFunction = (
               const signalCall = ap.signalCall(sb.signalName);
               // Only attr/style — text bindings use signalCommentBindings
               if (sb.type === 'attr' && sb.property) {
-                innerSignalFillStatements.push(`${varName}.setAttribute('${sb.property}', ${signalCall})`);
+                innerSignalFillStatements.push(attributeWrite(varName, sb, signalCall));
                 innerSignalSubscriptions.push(
-                  `_nrCleanups.push(${signalRef}.subscribe(() => { ${varName}.setAttribute('${sb.property}', ${signalCall}); }, true))`,
+                  `_nrCleanups.push(${signalRef}.subscribe(() => { ${attributeWrite(varName, sb, signalCall)}; }, true))`,
                 );
               } else if (sb.type === 'style' && sb.property) {
                 innerSignalFillStatements.push(`${varName}.style.setProperty('${sb.property}', ${signalCall})`);
@@ -1629,7 +1642,7 @@ export const generateInitBindingsFunction = (
                 if (binding.type === 'text') {
                   innerUpdateParts.push(`${nv}.firstChild.nodeValue = ${expr}`);
                 } else if (binding.type === 'attr' && binding.property) {
-                  innerUpdateParts.push(`${nv}.setAttribute('${binding.property}', ${expr})`);
+                  innerUpdateParts.push(attributeWrite(nv, binding, expr));
                 }
               }
             }

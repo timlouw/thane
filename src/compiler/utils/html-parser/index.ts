@@ -41,6 +41,8 @@ export {
   getElementHtml,
   getElementInnerHtml,
   getBindingsForElement,
+  isInsideSvg,
+  attributeDomProperty,
   isElementInside,
   applyHtmlEdits,
   createIdInjectionEdit,
