@@ -1191,12 +1191,12 @@ export const generateInitBindingsFunction = (
           for (const binding of eb.bindings) {
             const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             if (binding.type === 'text') {
-              // Sole-content text bindings: the static template carries a placeholder Text node,
-              // so the row resolves it once and writes nodeValue — a string store on an existing
-              // node, where textContent would discard the child and allocate a new one per write.
+              // Sole-content text bindings: the element is empty in the static template. The
+              // fill creates the Text node (the same allocation textContent makes internally)
+              // and keeps it, so updates are a string store on an existing node instead of
+              // textContent discarding the child and allocating a new one on every write.
               const textVar = `_t${textNodeCount++}`;
-              navStatements.push(`const ${textVar} = ${varName}.firstChild`);
-              fillStatements.push(`${textVar}.nodeValue = ${expr}`);
+              fillStatements.push(`const ${textVar} = ${varName}.appendChild(document.createTextNode(${expr}))`);
               updateStatements.push(`${textVar}.nodeValue = ${expr}`);
             } else if (binding.type === 'attr' && binding.property) {
               fillStatements.push(`${varName}.setAttribute('${binding.property}', ${expr})`);
@@ -1536,9 +1536,10 @@ export const generateInitBindingsFunction = (
               eb.bindings.forEach((binding, bj) => {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
                 if (binding.type === 'text') {
-                  // Placeholder Text node resolved once per row; the update path reuses it
-                  lines.push(`            const _nrt${bi}_${bj} = ${nv}.firstChild;`);
-                  lines.push(`            _nrt${bi}_${bj}.nodeValue = ${expr};`);
+                  // Text node created on fill and kept; the update path writes its nodeValue
+                  lines.push(
+                    `            const _nrt${bi}_${bj} = ${nv}.appendChild(document.createTextNode(${expr}));`,
+                  );
                 } else if (binding.type === 'attr' && binding.property) {
                   lines.push(`            ${nv}.setAttribute('${binding.property}', ${expr});`);
                 }
