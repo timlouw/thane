@@ -182,7 +182,7 @@ export const generateStaticRepeatTemplate = (
   // - Collapse runs to single space
   // - Remove all inter-element whitespace (><)
   // - Strip trailing whitespace before > in opening tags (<a > → <a>)
-  // Sole-content elements become empty (<td></td>) — textContent handles this at runtime.
+  // Sole-content elements become empty (<td></td>) — the row creates their text node on fill.
   staticHtml = staticHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
 
   // Insert comment marker placeholders AFTER stripping (so they survive intact).
@@ -715,8 +715,8 @@ const collectItemTextBindings = (
         elementId: id,
         type: 'text',
         expression: expression,
-        // sole-content → textContent on parent; mixed-content → comment marker
-        textBindingMode: context.isSoleContent ? 'textContent' : 'commentMarker',
+        // sole-content → the element's placeholder Text node; mixed-content → comment marker
+        textBindingMode: context.isSoleContent ? 'textNode' : 'commentMarker',
         ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
       });
 

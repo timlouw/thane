@@ -1251,6 +1251,7 @@ export const generateInitBindingsFunction = (
         const guards = createGuardAllocator('_p');
         const fillStatements: string[] = [];
         const updateStatements: string[] = [];
+        let textNodeCount = 0;
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
           const varName = navVarNames[i]!;
@@ -1258,9 +1259,18 @@ export const generateInitBindingsFunction = (
             const expr = renameIdentifierInExpression(binding.expression, rep.itemVar, 'item');
             let gw: GuardedWrite | undefined;
             if (binding.type === 'text') {
-              // Sole-content text bindings: textContent is optimal — works on empty elements,
-              // no placeholder text node needed, lets templates be aggressively stripped
-              gw = guardedWrite(guards.next(), (v) => `${varName}.textContent = ${v}`, expr);
+              // Sole-content text bindings: the element is empty in the static template. The
+              // fill writes textContent (the cheapest way to create the Text node) and keeps a
+              // reference to that node, so updates are a string store on an existing node
+              // instead of textContent discarding the child and allocating a new one per write.
+              // An empty first value creates no node; the update then writes textContent once
+              // more and picks the node up from there. The guard skips unchanged values.
+              const textVar = `_t${textNodeCount++}`;
+              const guard = guards.next();
+              gw = {
+                fill: `${varName}.textContent = ${guard} = ${expr}; let ${textVar} = ${varName}.firstChild`,
+                update: `if (${guard} !== (${guard} = ${expr})) ${textVar} ? (${textVar}.nodeValue = ${guard}) : ((${varName}.textContent = ${guard}), (${textVar} = ${varName}.firstChild))`,
+              };
             } else if (binding.type === 'attr' && binding.property) {
               gw = guardedWrite(guards.next(), (v) => attributeWrite(varName, binding, v), expr, binding.staticValue);
             }
@@ -1601,11 +1611,16 @@ export const generateInitBindingsFunction = (
               } else {
                 innerNavLines.push(`            const ${nv} = ${pathToSiblingNav('_nrEl', eb.path)};`);
               }
-              for (const binding of eb.bindings) {
+              eb.bindings.forEach((binding) => {
                 const expr = renameIdentifierInExpression(binding.expression, nr.itemVar, '_nrItem');
                 let gw: GuardedWrite | undefined;
                 if (binding.type === 'text') {
-                  gw = guardedWrite(innerGuards.next(), (v) => `${nv}.firstChild.nodeValue = ${v}`, expr);
+                  const textVar = `_nrt${innerWrites.length}`;
+                  const guard = innerGuards.next();
+                  gw = {
+                    fill: `${nv}.textContent = ${guard} = ${expr}; let ${textVar} = ${nv}.firstChild`,
+                    update: `if (${guard} !== (${guard} = ${expr})) ${textVar} ? (${textVar}.nodeValue = ${guard}) : ((${nv}.textContent = ${guard}), (${textVar} = ${nv}.firstChild))`,
+                  };
                 } else if (binding.type === 'attr' && binding.property) {
                   gw = guardedWrite(
                     innerGuards.next(),
@@ -1618,7 +1633,7 @@ export const generateInitBindingsFunction = (
                   innerWrites.push(gw);
                   innerFillLines.push(`            ${gw.fill};`);
                 }
-              }
+              });
             }
             lines.push(...innerNavLines);
             if (innerGuards.vars.length > 0) lines.push(`            ${innerGuards.declaration()}`);
