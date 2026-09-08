@@ -28,6 +28,20 @@ bun run e2e:ui
 
 E2E tests live in `e2e/tests/` and cover rendering, directives, routing, component lifecycle, and the cart example app.
 
+## Performance Benchmarks
+
+The `bench/` folder holds a self-contained version of the js-framework-benchmark CPU and memory
+benchmarks for comparing one Thane change against another. It needs Google Chrome installed.
+
+```bash
+# Capture a baseline, make a change, then compare
+bun run bench --label baseline
+bun run bench --label my-change --interleave baseline
+bun run bench:compare baseline my-change
+```
+
+See [bench/README.md](../../bench/README.md) for the workflow and how to read the results.
+
 ## Formatting
 
 ```bash

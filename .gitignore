@@ -10,6 +10,11 @@ e2e/.build
 example-apps/benchmark/bun.lock
 example-apps/store/thane/bun.lock
 
+# Benchmark harness output (bench/README.md)
+bench/.build
+bench/results
+bench/traces
+
 # Generated Thane types (thane types / typecheck / build)
 .thane/
 

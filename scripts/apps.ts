@@ -1,6 +1,6 @@
 /**
  * Runs a Thane CLI command in every app folder that owns a tsconfig.json:
- * the e2e apps, the benchmark and the Thane store example.
+ * the e2e apps, the benchmark harness, the benchmark example and the Thane store example.
  *
  * Usage: bun scripts/apps.ts <types|typecheck>
  */
@@ -15,7 +15,7 @@ if (command !== 'types' && command !== 'typecheck') {
 
 const repoRoot = resolve(import.meta.dir, '..');
 const cli = resolve(repoRoot, 'src/compiler/cli/thane.ts');
-const apps = ['e2e', 'example-apps/benchmark', 'example-apps/store/thane'];
+const apps = ['e2e', 'bench', 'example-apps/benchmark', 'example-apps/store/thane'];
 
 for (const app of apps) {
   console.log(`\n[${command}] ${app}`);
