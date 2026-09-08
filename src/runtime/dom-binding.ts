@@ -391,5 +391,12 @@ export function createKeyedReconciler<T>(
     for (let i = 0; i < newLength; i++) managedItems[i] = newManagedItems[i]!;
   };
 
-  return { reconcile, clearAll };
+  /**
+   * The managed row for a key, or undefined when no row has that key. Lets compiled code
+   * that knows which keys changed (for example a selection driven by one signal) update
+   * those rows directly instead of fanning a subscription out to every row.
+   */
+  const get = (key: string | number): ManagedItem<T> | undefined => keyMap.get(key);
+
+  return { reconcile, clearAll, get };
 }

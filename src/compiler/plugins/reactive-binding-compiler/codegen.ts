@@ -114,6 +114,72 @@ const pathToSiblingNav = (root: string, path: number[]): string => {
 };
 
 // ============================================================================
+// Selection bindings: one subscription per list instead of one per row
+// ============================================================================
+
+/** A row attribute of the form `signal() === item.<key> ? on : off`, resolved to its two values. */
+interface SelectionBinding {
+  signalName: string;
+  onValue: string;
+  offValue: string;
+}
+
+const _selectionRe =
+  /^\s*(?:(\w+)\(\)\s*(===|!==)\s*item\.(\w+)|item\.(\w+)\s*(===|!==)\s*(\w+)\(\))\s*\?\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*:\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')\s*$/;
+
+/**
+ * Recognise a selection binding: `signal() === item.<key> ? 'on' : 'off'` (or `!==`, or the
+ * operands swapped) where `<key>` is the repeat's trackBy property. Such a value depends only
+ * on the row's key and the signal, so the compiler can replace N per-row subscriptions with
+ * one subscription on the list that rewrites the two rows whose value changed, found through
+ * the reconciler's key map. Anything else keeps the general per-row path.
+ */
+const matchSelectionBinding = (
+  expr: string,
+  outerSignalNames: string[],
+  keyProp: string | null,
+): SelectionBinding | null => {
+  if (!keyProp || outerSignalNames.length !== 1) return null;
+  const m = _selectionRe.exec(expr);
+  if (!m) return null;
+  const signalName = m[1] ?? m[6]!;
+  const op = m[2] ?? m[5]!;
+  const prop = m[3] ?? m[4]!;
+  if (signalName !== outerSignalNames[0] || prop !== keyProp) return null;
+  const first = m[7]!;
+  const second = m[8]!;
+  return op === '==='
+    ? { signalName, onValue: first, offValue: second }
+    : { signalName, onValue: second, offValue: first };
+};
+
+/**
+ * Emit the list-level subscription for a selection binding. It remembers the previously
+ * selected key, and on change clears the old row and marks the new one; rows that no longer
+ * exist (or keys with no row) are skipped. Rows still compute the value on creation, so a row
+ * created while selected starts in the right state.
+ */
+const buildSelectionSubscription = (
+  repId: string,
+  index: number,
+  sel: SelectionBinding,
+  path: number[],
+  write: (target: string, value: string) => string,
+  ap: AccessPattern,
+): string => {
+  const nav = (managed: string) => (path.length === 0 ? `${managed}.el` : pathToSiblingNav(`${managed}.el`, path));
+  const prev = `_sel_${repId}_${index}`;
+  const rc = `_rc_${repId}`;
+  return (
+    `let ${prev} = ${ap.signalCall(sel.signalName)}; ` +
+    `_subs.push(${ap.signal(sel.signalName)}.subscribe((_v) => { ` +
+    `const _o = ${rc}.get(${prev}); if (_o) ${write(nav('_o'), sel.offValue)}; ` +
+    `const _n = ${rc}.get(_v); if (_n) ${write(nav('_n'), sel.onValue)}; ` +
+    `${prev} = _v; }, true));`
+  );
+};
+
+// ============================================================================
 // Event Delegation Types & Helpers
 // ============================================================================
 
@@ -1275,6 +1341,10 @@ export const generateInitBindingsFunction = (
         const mixedNavStatements: string[] = [];
         const mixedFillStatements: string[] = [];
         const mixedUpdateStatements: string[] = [];
+        // Selection bindings are lifted out of the row: one subscription per list (emitted after
+        // the reconciler exists) instead of one per row
+        const selectionSubscriptions: string[] = [];
+        const mixedKeyProp = rep.trackByFn ? extractKeyProperty(rep.trackByFn) : null;
         if (staticInfo.mixedSignalItemBindings && staticInfo.mixedSignalItemBindings.length > 0) {
           for (let i = 0; i < staticInfo.mixedSignalItemBindings.length; i++) {
             const mb = staticInfo.mixedSignalItemBindings[i]!;
@@ -1296,6 +1366,25 @@ export const generateInitBindingsFunction = (
               mixedNavStatements.push(`const ${varName} = ${pathToSiblingNav('_el', mb.path)}`);
             }
             const expr = renameIdentifierInExpression(mb.expression, rep.itemVar, 'item');
+            const selection =
+              mb.type === 'attr' && mb.property ? matchSelectionBinding(expr, mb.outerSignalNames, mixedKeyProp) : null;
+            if (selection && mb.property) {
+              // Fill on creation only; the list-level subscription owns every later change, and a
+              // data update cannot change the value because the row's key is constant
+              const property = mb.property;
+              mixedFillStatements.push(`${varName}.setAttribute('${property}', ${expr})`);
+              selectionSubscriptions.push(
+                buildSelectionSubscription(
+                  rep.id,
+                  i,
+                  selection,
+                  mb.path,
+                  (target, value) => `${target}.setAttribute('${property}', ${value})`,
+                  ap,
+                ),
+              );
+              continue;
+            }
             // Fill
             if (mb.type === 'attr' && mb.property) {
               mixedFillStatements.push(`${varName}.setAttribute('${mb.property}', ${expr})`);
@@ -1667,6 +1756,9 @@ export const generateInitBindingsFunction = (
         lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
         lines.push(`      },`);
         lines.push(`    ${keyFnExpr});`);
+        for (const sub of selectionSubscriptions) {
+          lines.push(`    ${sub}`);
+        }
 
         // Empty template handling (inlined by compiler — not in reconciler)
         const repeatSources = buildRepeatSubscriptionSources(rep, ap);
