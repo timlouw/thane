@@ -160,10 +160,17 @@ const guardedWrite = (
   write: (value: string) => string,
   expr: string,
   staticValue?: string | undefined,
+  updateGuardVar: string = guardVar,
 ): GuardedWrite => ({
   fill: staticValue === '' ? `if ((${guardVar} = ${expr}) !== '') ${write(guardVar)}` : write(`${guardVar} = ${expr}`),
-  update: `if (${guardVar} !== (${guardVar} = ${expr})) ${write(guardVar)}`,
+  update: `if (${updateGuardVar} !== (${updateGuardVar} = ${expr})) ${write(updateGuardVar)}`,
 });
+
+/**
+ * Where a row-local variable lives once it is kept on the managed record instead of in a
+ * per-row closure: `_p0` → `_m.p0`. Used by the shared update function of lean rows.
+ */
+const recordField = (local: string): string => `_m.${local.slice(1)}`;
 
 /** Allocates guard variable names for one row factory. */
 const createGuardAllocator = (prefix: string) => {
@@ -1237,6 +1244,8 @@ export const generateInitBindingsFunction = (
   if (repeatBlocks.length > 0) {
     staticTemplates.push(`  const _cloneNode = Node.prototype.cloneNode;`);
     staticTemplates.push(`  const _insertBefore = Node.prototype.insertBefore;`);
+    // Rows without cleanups share one empty array instead of allocating one each
+    staticTemplates.push(`  const _nc = [];`);
   }
 
   for (const rep of repeatBlocks) {
@@ -1332,6 +1341,12 @@ export const generateInitBindingsFunction = (
         const guards = createGuardAllocator('_p');
         const fillStatements: string[] = [];
         const updateStatements: string[] = [];
+        // Lean rows keep guard state on the managed record and share one update function;
+        // these are the same updates written against the record, plus the record's fields.
+        const leanUpdateStatements: string[] = [];
+        const leanCommentUpdateStatements: string[] = [];
+        const textVars: string[] = [];
+        const commentVars: string[] = [];
         let textNodeCount = 0;
         for (let i = 0; i < staticInfo.elementBindings.length; i++) {
           const eb = staticInfo.elementBindings[i]!;
@@ -1348,13 +1363,22 @@ export const generateInitBindingsFunction = (
               // the read; an empty value leaves no node, so the update falls back to textContent
               // and resolves again next time.
               const textVar = `_t${textNodeCount++}`;
+              textVars.push(textVar);
               const guard = guards.next();
+              const textUpdate = (g: string, t: string): string =>
+                `if (${g} !== (${g} = ${expr})) (${t} ??= ${varName}.firstChild) ? (${t}.nodeValue = ${g}) : (${varName}.textContent = ${g})`;
               gw = {
                 fill: `${varName}.textContent = ${guard} = ${expr}; let ${textVar}`,
-                update: `if (${guard} !== (${guard} = ${expr})) (${textVar} ??= ${varName}.firstChild) ? (${textVar}.nodeValue = ${guard}) : (${varName}.textContent = ${guard})`,
+                update: textUpdate(guard, textVar),
               };
+              leanUpdateStatements.push(textUpdate(recordField(guard), recordField(textVar)));
             } else if (binding.type === 'attr' && binding.property) {
-              gw = guardedWrite(guards.next(), (v) => attributeWrite(varName, binding, v), expr, binding.staticValue);
+              const guard = guards.next();
+              const write = (v: string) => attributeWrite(varName, binding, v);
+              gw = guardedWrite(guard, write, expr, binding.staticValue);
+              leanUpdateStatements.push(
+                guardedWrite(guard, write, expr, binding.staticValue, recordField(guard)).update,
+              );
             }
             if (gw) {
               fillStatements.push(gw.fill);
@@ -1379,10 +1403,16 @@ export const generateInitBindingsFunction = (
             const expr = renameIdentifierInExpression(cb.expression, rep.itemVar, 'item');
             // Resolve the text node after the marker once per row; fill and update write to it
             const textVar = `_c${i}`;
+            commentVars.push(textVar);
             commentNavStatements.push(`const ${textVar} = _icm['${cb.elementId}']?.nextSibling`);
-            const gw = guardedWrite(guards.next(), (v) => `${textVar}.data = ${v}`, expr);
+            const guard = guards.next();
+            const gw = guardedWrite(guard, (v) => `${textVar}.data = ${v}`, expr);
             commentFillStatements.push(`if (${textVar}) ${gw.fill}`);
             commentUpdateStatements.push(`if (${textVar}) ${gw.update}`);
+            const rec = recordField(textVar);
+            leanCommentUpdateStatements.push(
+              `if (${rec}) ${guardedWrite(guard, (v) => `${rec}.data = ${v}`, expr, undefined, recordField(guard)).update}`,
+            );
           });
         }
 
@@ -1866,15 +1896,43 @@ export const generateInitBindingsFunction = (
           }
           lines.push(`        _cleanups.push(() => { _nrRc_${nr.id}.clearAll(); });`);
         }
-        lines.push(`        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`);
-        lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
-        if (batchRows) {
+        // Lean rows: no per-row update closure. Guard state and lazily resolved text nodes live
+        // on the managed record, and one update function per list re-navigates from the row
+        // element. Rows with a mixed signal+item binding that is not lifted keep their closure.
+        const leanRows = batchRows && mixedUpdateStatements.length === 0;
+        if (leanRows) {
+          const leanParts = [...leanUpdateStatements, ...leanCommentUpdateStatements];
+          const usedByUpdate = (v: string): boolean => leanParts.some((s) => s.includes(recordField(v)));
+          const fields = [
+            ...guards.vars.filter(usedByUpdate).map((v) => `${v.slice(1)}: ${v}`),
+            ...textVars.map((v) => `${v.slice(1)}: undefined`),
+            ...commentVars.map((v) => `${v.slice(1)}: ${v}`),
+          ];
+          lines.push(
+            `        return { el: _el, cleanups: _nc, value: item, key: undefined${fields.length > 0 ? ', ' + fields.join(', ') : ''} };`,
+          );
           lines.push(`    };`);
+          if (useDelegation) leanParts.push('_el.__d = item');
+          lines.push(`    const _update_${rep.id} = (_m, item, ${indexVar}) => {`);
+          lines.push(`      const _el = _m.el;`);
+          for (const navStmt of navStatements) {
+            lines.push(`      ${navStmt};`);
+          }
+          lines.push(`      ${leanParts.join('; ')};`);
+          lines.push(`    };`);
+        } else {
+          lines.push(`        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '_nc'}, value: item,`);
+          lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
+        }
+        if (batchRows) {
+          if (!leanRows) lines.push(`    };`);
           lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
           lines.push(
             `      (item, ${indexVar}, _ref) => { const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true); const _m = _bind_${rep.id}(_el, item, ${indexVar}); ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref); return _m; },`,
           );
-          lines.push(`    ${keyFnExpr}, { size: ${ROW_BATCH_SIZE}, row: ${tplContentVar}, bind: _bind_${rep.id} });`);
+          lines.push(
+            `    ${keyFnExpr}, { size: ${ROW_BATCH_SIZE}, row: ${tplContentVar}, bind: _bind_${rep.id}${leanRows ? `, update: _update_${rep.id}` : ''} });`,
+          );
         } else {
           lines.push(`      },`);
           lines.push(`    ${keyFnExpr});`);
