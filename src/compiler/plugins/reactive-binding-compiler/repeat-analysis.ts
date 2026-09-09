@@ -67,6 +67,21 @@ export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason)
 };
 
 /**
+ * The id used to locate a bound element inside a row template. A developer-supplied id is
+ * reused as-is (so it survives in the row and nothing else has to be injected); otherwise a
+ * generated one is assigned. Either way the element is registered in elementIdMap, which is
+ * what gets the id attribute injected and lets generateStaticRepeatTemplate compute its path.
+ */
+const ensureRowElementId = (el: HtmlElement, state: IdState, prefix: 'b' | 'i'): string => {
+  let id = state.elementIdMap.get(el);
+  if (!id) {
+    id = el.attributes.get('id')?.value || `${prefix}${state.idCounter++}`;
+    state.elementIdMap.set(el, id);
+  }
+  return id;
+};
+
+/**
  * Generate a static template and element paths for optimized repeat rendering
  *
  * This transforms a dynamic template like:
@@ -296,44 +311,20 @@ export const generateStaticRepeatTemplate = (
   if (mixedItemBindings.length > 0) {
     mixedSignalItemBindings = [];
     for (const mb of mixedItemBindings) {
-      // Mixed bindings don't have IDs injected into the HTML (they were excluded
-      // from elementIdMap). Use path-by-position: find the element that owns this
-      // binding. For root-level attributes (e.g., class on <tr>), the root element
-      // itself is the target — path [].
-      // Since the element wasn't assigned an ID, we navigate by position using the
-      // element index assigned during collectItemAttrBindings. For the common case
-      // (attribute on root element), path is [].
+      // The bound element carries an injected id like any other bound element, so its
+      // path resolves the same way. If it cannot be found, use the fallback renderer
+      // rather than guessing an element.
       const rootId = rootEl.attributes.get('id')?.value;
-      let path: number[] | null = null;
-      if (rootId === mb.elementId) {
-        path = [];
-      } else {
-        path = findElementPath(rootEl, mb.elementId, []);
-      }
-      // If no ID-based path found, try to find the element by checking if it's
-      // the root (mixed attr bindings on root won't have an injected ID)
-      if (path === null && !rootId) {
-        // No ID on root — this mixed binding is likely targeting the root element.
-        // Check if any other element has this ID; if not, assume root.
-        let foundElsewhere = false;
-        const searchNonRoot = (el: HtmlElement, p: number[]) => {
-          for (let i = 0; i < el.children.length; i++) {
-            const child = el.children[i]!;
-            if (child.attributes.get('id')?.value === mb.elementId) {
-              foundElsewhere = true;
-              path = [...p, i];
-              return;
-            }
-            searchNonRoot(child, [...p, i]);
-          }
+      const path = rootId === mb.elementId ? [] : findElementPath(rootEl, mb.elementId, []);
+      if (path === null) {
+        return {
+          staticHtml: '',
+          elementBindings: [],
+          canUseOptimized: false,
+          skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND,
         };
-        searchNonRoot(rootEl, []);
-        if (!foundElsewhere) {
-          // The binding targets the root element — path is []
-          path = [];
-        }
       }
-      if (path !== null) {
+      {
         mixedSignalItemBindings.push({
           path,
           outerSignalNames: mb.outerSignalNames!,
@@ -576,10 +567,7 @@ const classifyParsedBindings = (
 
       if (refsItem || refsIndex) {
         const eventId = `ie${itemEventIdCounter++}`;
-        if (!elementIdMap.has(binding.element)) {
-          elementIdMap.set(binding.element, `b${state.idCounter++}`);
-        }
-        const eventElementId = elementIdMap.get(binding.element)!;
+        const eventElementId = ensureRowElementId(binding.element, state, 'b');
         itemEvents.push({
           eventId,
           elementId: eventElementId,
@@ -589,10 +577,7 @@ const classifyParsedBindings = (
         });
       } else {
         const eventId = `e${state.eventIdCounter.value++}`;
-        if (!elementIdMap.has(binding.element)) {
-          elementIdMap.set(binding.element, `b${state.idCounter++}`);
-        }
-        const elementId = elementIdMap.get(binding.element)!;
+        const elementId = ensureRowElementId(binding.element, state, 'b');
         eventBindings.push({
           id: eventId,
           eventName: binding.eventName,
@@ -766,7 +751,11 @@ const collectItemAttrBindings = (
         const refsIndex = indexVar ? expressionReferencesIdentifier(innerExpr, indexVar) : false;
         if (!refsItem && !refsIndex) continue;
 
-        const id = `i${state.idCounter++}`;
+        // One id per element, shared by every item attribute on it and by any event handler
+        // or sole-content text binding already assigned to it. Registering the element in
+        // elementIdMap is what gets `id="…"` injected into the template, which is how
+        // generateStaticRepeatTemplate finds the element's navigation path.
+        const id = ensureRowElementId(el, state, 'i');
 
         // Detect outer signal references in the expression (mixed binding)
         const signalCallRegex = /(?<!\.)\b(\w+)\(\)/g;
@@ -1033,73 +1022,25 @@ export const processItemTemplateRecursively = (
     }
   }
 
-  // Add IDs to parent elements for sole-content text bindings
-  // First, build a map of tagStart -> existing elementId from the element ID map
-  const tagStartToExistingId = new Map<number, string>();
-  for (const [element, existingId] of elementIdMap) {
-    tagStartToExistingId.set(element.tagStart, existingId);
-  }
-
+  // The parent of a sole-content text binding is a bound element like any other: register it
+  // so it shares one id with any attribute or event binding on it, and so buildElementIdEdits
+  // injects the id attribute (or leaves a developer-supplied id in place).
+  const elementByTagStart = new Map<number, HtmlElement>();
+  walkElements(parsed.roots, (el) => elementByTagStart.set(el.tagStart, el));
   for (const [tagStart, id] of parentElementIds) {
-    // Check if this element already has an ID assigned (e.g., from event processing)
-    const existingId = tagStartToExistingId.get(tagStart);
-    if (existingId) {
-      // Reuse the existing ID — update the binding to reference it
-      for (const binding of itemBindings) {
-        if (binding.elementId === id) {
-          binding.elementId = existingId;
-        }
-      }
-      // No need to inject an ID — buildElementIdEdits will handle it
-      continue;
-    }
-
-    // Find the end of the tag name to inject the ID attribute
-    let tagNameEnd = tagStart + 1;
-    while (tagNameEnd < templateContent.length && /[\w-]/.test(templateContent[tagNameEnd]!)) {
-      tagNameEnd++;
-    }
-
-    // Check if element already has an id attribute
-    const openTagEnd = templateContent.indexOf('>', tagStart);
-    const tagContent = templateContent.substring(tagStart, openTagEnd + 1);
-    const hasExistingId = /\sid=["']/.test(tagContent);
-
-    if (!hasExistingId) {
-      edits.push({
-        start: tagNameEnd,
-        end: tagNameEnd,
-        replacement: ` id="${id}"`,
-      });
-    }
-    // If element already has a user-defined id, no attribute injection needed —
-    // the optimized codegen uses path-based navigation (children[N] etc.),
-    // and THANE406 linter rule bans user id attributes in templates anyway.
-  }
-  const elementIdByTagStart = new Map<number, string>();
-
-  for (const itemAttr of itemAttrMatches) {
-    let tagStart = itemAttr.start;
-    while (tagStart > 0 && templateContent[tagStart] !== '<') {
-      tagStart--;
-    }
-    if (!elementIdByTagStart.has(tagStart)) {
-      elementIdByTagStart.set(tagStart, itemAttr.id);
+    const parentEl = elementByTagStart.get(tagStart);
+    if (!parentEl) continue;
+    const elementId = elementIdMap.get(parentEl) ?? (parentEl.attributes.get('id')?.value || id);
+    elementIdMap.set(parentEl, elementId);
+    if (elementId === id) continue;
+    for (const binding of itemBindings) {
+      if (binding.elementId === id) binding.elementId = elementId;
     }
   }
-  for (const { start, end, attrName, expr, id } of itemAttrMatches) {
-    let tagStart = start;
-    while (tagStart > 0 && templateContent[tagStart] !== '<') {
-      tagStart--;
-    }
-    const elementId = elementIdByTagStart.get(tagStart) || id;
+  for (const { start, end, attrName, expr } of itemAttrMatches) {
     let transformedExpr = renameIdentifierInExpression(expr, itemVar, `${itemVar}$()`);
     if (indexVar) {
       transformedExpr = renameIdentifierInExpression(transformedExpr, indexVar, indexVar);
-    }
-    const binding = itemBindings.find((b) => b.elementId === id);
-    if (binding) {
-      binding.elementId = elementId;
     }
 
     edits.push({
