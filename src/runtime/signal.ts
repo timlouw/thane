@@ -165,43 +165,6 @@ function _notifySubscribers<T>(fn: SignalInternal<T>): void {
  * Notify computed subscribers with local depth tracking.
  * @internal
  */
-function _notifyComputedSubs<T>(
-  subscribers: ((val: T) => void)[],
-  value: T,
-  notifyCount: number,
-  setNotifyCount: (nc: number) => void,
-): void {
-  const len = subscribers.length;
-  const depth = notifyCount + 1;
-  setNotifyCount(depth);
-  for (let i = 0; i < len; i++) {
-    const cb = subscribers[i];
-    if (cb != null) {
-      try {
-        cb(value);
-      } catch (err) {
-        queueMicrotask(() => {
-          throw err;
-        });
-      }
-    }
-  }
-  setNotifyCount(depth - 1);
-  if (depth - 1 === 0) {
-    // Compact null slots left by mid-notification unsubscribes
-    const curLen = subscribers.length;
-    let r = 0;
-    while (r < curLen && subscribers[r] !== null) r++;
-    if (r < curLen) {
-      let w = r;
-      for (++r; r < curLen; r++) {
-        if (subscribers[r] !== null) (subscribers as any[])[w++] = subscribers[r];
-      }
-      subscribers.length = w;
-    }
-  }
-}
-
 // ─────────────────────────────────────────────────────────────
 //  Batching
 // ─────────────────────────────────────────────────────────────
@@ -287,8 +250,38 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
   let hasError = false;
   // Dep map: signal → unsubscribe fn (supports O(1) differential updates)
   const depUnsubs = new Map<Signal<unknown>, () => void>();
-  const subscribers: ((val: T) => void)[] = [];
+  // Subscriber slots. Unsubscribing nulls a slot in constant time (the slot index is
+  // remembered at subscribe time); dead slots are compacted after a notification, or before
+  // a subscribe when the signal is idle and they outnumber the live entries.
+  const subscribers: (((val: T) => void) | null)[] = [];
   let notifyCount = 0;
+  let deadSlots = 0;
+  const compactSubs = () => {
+    let w = 0;
+    for (let r = 0; r < subscribers.length; r++) {
+      const cb = subscribers[r]!;
+      if (cb !== null) subscribers[w++] = cb;
+    }
+    subscribers.length = w;
+    deadSlots = 0;
+  };
+  const notifySubs = () => {
+    const len = subscribers.length;
+    notifyCount++;
+    for (let i = 0; i < len; i++) {
+      const cb = subscribers[i]!;
+      if (cb !== null) {
+        try {
+          cb(value);
+        } catch (err) {
+          queueMicrotask(() => {
+            throw err;
+          });
+        }
+      }
+    }
+    if (--notifyCount === 0 && deadSlots > 0) compactSubs();
+  };
 
   // Deps set populated during evaluation (null outside evaluate)
   let _evalDeps: Set<Signal<unknown>> | null = null;
@@ -308,7 +301,7 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
   const markDirty = () => {
     if (disposed) return;
     dirty = true;
-    if (subscribers.length === 0) return;
+    if (subscribers.length === deadSlots) return;
     // During a cascade, defer notification
     if (_notificationDepth > 0) {
       if (!pendingNotify) {
@@ -327,13 +320,9 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
     const oldVal = hasPendingOldValue ? pendingOldValue : value;
     pendingNotify = false;
     hasPendingOldValue = false;
-    if (disposed || subscribers.length === 0) return;
+    if (disposed || subscribers.length === deadSlots) return;
     evaluate();
-    if (hasError || !Object.is(oldVal, value)) {
-      _notifyComputedSubs(subscribers, value, notifyCount, (nc) => {
-        notifyCount = nc;
-      });
-    }
+    if (hasError || !Object.is(oldVal, value)) notifySubs();
   };
 
   /** Unsubscribe from all tracked dependencies and clear the map */
@@ -409,15 +398,14 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
 
   // Subscribe method — mimics signal.subscribe interface
   fn.subscribe = (cb: (val: T) => void, skipInitial?: boolean): (() => void) => {
+    if (deadSlots > 0 && notifyCount === 0 && deadSlots > subscribers.length >> 1) compactSubs();
+    const slot = subscribers.length;
     subscribers.push(cb);
     const unsubscribe = () => {
-      const idx = subscribers.indexOf(cb);
+      const idx = subscribers[slot] === cb ? slot : subscribers.indexOf(cb);
       if (idx !== -1) {
-        if (notifyCount > 0) {
-          (subscribers as any[])[idx] = null;
-        } else {
-          subscribers.splice(idx, 1);
-        }
+        subscribers[idx] = null;
+        deadSlots++;
       }
     };
     if (!skipInitial) {
@@ -440,6 +428,7 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
     disposed = true;
     unsubscribeAll();
     subscribers.length = 0;
+    deadSlots = 0;
   };
 
   return fn;
