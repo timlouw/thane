@@ -1365,19 +1365,22 @@ export const generateInitBindingsFunction = (
               const textVar = `_t${textNodeCount++}`;
               textVars.push(textVar);
               const guard = guards.next();
-              const textUpdate = (g: string, t: string): string =>
-                `if (${g} !== (${g} = ${expr})) (${t} ??= ${varName}.firstChild) ? (${t}.nodeValue = ${g}) : (${varName}.textContent = ${g})`;
+              const textUpdate = (g: string, t: string, target: string): string =>
+                `if (${g} !== (${g} = ${expr})) (${t} ??= ${target}.firstChild) ? (${t}.nodeValue = ${g}) : (${target}.textContent = ${g})`;
               gw = {
                 fill: `${varName}.textContent = ${guard} = ${expr}; let ${textVar}`,
-                update: textUpdate(guard, textVar),
+                update: textUpdate(guard, textVar, varName),
               };
-              leanUpdateStatements.push(textUpdate(recordField(guard), recordField(textVar)));
+              // The shared update navigates only when a binding actually changes, and the text
+              // node cache on the record makes that a one-time cost per row
+              leanUpdateStatements.push(textUpdate(recordField(guard), recordField(textVar), navExprs[i]!));
             } else if (binding.type === 'attr' && binding.property) {
               const guard = guards.next();
               const write = (v: string) => attributeWrite(varName, binding, v);
               gw = guardedWrite(guard, write, expr, binding.staticValue);
+              const leanWrite = (v: string) => attributeWrite(navExprs[i]!, binding, v);
               leanUpdateStatements.push(
-                guardedWrite(guard, write, expr, binding.staticValue, recordField(guard)).update,
+                guardedWrite(guard, leanWrite, expr, binding.staticValue, recordField(guard)).update,
               );
             }
             if (gw) {
@@ -1915,9 +1918,6 @@ export const generateInitBindingsFunction = (
           if (useDelegation) leanParts.push('_el.__d = item');
           lines.push(`    const _update_${rep.id} = (_m, item, ${indexVar}) => {`);
           lines.push(`      const _el = _m.el;`);
-          for (const navStmt of navStatements) {
-            lines.push(`      ${navStmt};`);
-          }
           lines.push(`      ${leanParts.join('; ')};`);
           lines.push(`    };`);
         } else {
