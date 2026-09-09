@@ -88,6 +88,30 @@ const setup = () => {
   return { table, tbody, anchor, reconciler, created, updated, order };
 };
 
+/** Like setup(), but with a counting key function so tests can see how often keys are derived. */
+const setupCountingKeys = () => {
+  const tbody = new FakeNode('tbody');
+  const anchor = new FakeNode('anchor');
+  tbody.appendChild(anchor);
+  let keyCalls = 0;
+  const updated: Row[] = [];
+  const reconciler = createKeyedReconciler<Row>(
+    tbody as unknown as ParentNode & Element,
+    anchor as unknown as Element,
+    (item, _index, refNode) => {
+      const el = new FakeNode(`row:${item.id}`);
+      tbody.insertBefore(el, refNode as unknown as FakeNode);
+      return { el: el as unknown as Element, cleanups: [], value: item, update: (next: Row) => updated.push(next) };
+    },
+    (item) => {
+      keyCalls++;
+      return item.id;
+    },
+  );
+  const order = () => tbody.childNodes.map((n) => n.name);
+  return { reconciler, updated, order, keyCalls: () => keyCalls, resetKeyCalls: () => (keyCalls = 0) };
+};
+
 const rows = (...ids: number[]): Row[] => ids.map((id) => ({ id, label: `row ${id}` }));
 
 describe('createKeyedReconciler — append fast path', () => {
@@ -143,5 +167,58 @@ describe('createKeyedReconciler — append fast path', () => {
     expect(reconciler.get(2)).toBeUndefined();
     reconciler.clearAll();
     expect(reconciler.get(1)).toBeUndefined();
+  });
+});
+
+describe('in-place updates with unchanged keys and order', () => {
+  test('updates only the rows whose item changed and derives keys only for those', () => {
+    const { reconciler, updated, order, keyCalls, resetKeyCalls } = setupCountingKeys();
+    const rows = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(rows);
+    resetKeyCalls();
+
+    const next = rows.map((row, i) => (i % 10 === 0 ? { ...row, label: row.label + '!' } : row));
+    reconciler.reconcile(next);
+
+    expect(updated.map((r) => r.id)).toEqual([1, 11, 21, 31, 41, 51, 61, 71, 81, 91]);
+    expect(keyCalls()).toBe(10);
+    expect(order()).toEqual([...rows.map((r) => `row:${r.id}`), 'anchor']);
+  });
+
+  test('an identical array is a no-op without deriving any key', () => {
+    const { reconciler, updated, keyCalls, resetKeyCalls } = setupCountingKeys();
+    const rows = [
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+    ];
+    reconciler.reconcile(rows);
+    resetKeyCalls();
+    reconciler.reconcile([...rows]);
+    expect(updated).toEqual([]);
+    expect(keyCalls()).toBe(0);
+  });
+
+  test('a moved row hands over to the keyed path and the DOM order follows', () => {
+    const { reconciler, updated, order } = setupCountingKeys();
+    const a = { id: 1, label: 'a' },
+      b = { id: 2, label: 'b' },
+      c = { id: 3, label: 'c' };
+    reconciler.reconcile([a, b, c]);
+    const c2 = { ...c, label: 'c2' };
+    reconciler.reconcile([a, c2, b]);
+    expect(order()).toEqual(['row:1', 'row:3', 'row:2', 'anchor']);
+    expect(updated).toEqual([c2]);
+  });
+
+  test('an updated row followed by a swap updates each changed row exactly once', () => {
+    const { reconciler, updated, order } = setupCountingKeys();
+    const rows = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(rows);
+    const next = [...rows];
+    next[0] = { ...rows[0]!, label: 'first!' };
+    [next[2], next[4]] = [next[4]!, next[2]!];
+    reconciler.reconcile(next);
+    expect(updated).toEqual([next[0]!]);
+    expect(order()).toEqual(['row:1', 'row:2', 'row:5', 'row:4', 'row:3', 'row:6', 'anchor']);
   });
 });
