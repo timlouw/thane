@@ -145,7 +145,8 @@ export const __bindIfExpr = (
 /** Managed item in a repeat directive. */
 interface ManagedItem<T> {
   el: Element;
-  cleanups: (() => void)[];
+  /** Absent on rows that have nothing to tear down */
+  cleanups?: (() => void)[] | undefined;
   /** Direct update function used when available */
   update?: ((newValue: T) => void) | undefined;
   /** Cached value for direct update path (no signal) */
@@ -172,6 +173,8 @@ export interface BatchRows<T> {
    * row's guard state) and the new item; rows bound this way have no per-row update closure.
    */
   update?: (managed: ManagedItem<T>, item: T, index: number) => void;
+  /** `bind` sets `key` on the record itself (the compiler knows the key property). */
+  keyed?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -194,6 +197,7 @@ export function createKeyedReconciler<T>(
 
   // Rows either carry their own update closure or share the one in `batch.update`.
   const sharedUpdate = batch?.update;
+  const keyed = batch?.keyed === true;
   const updateRow = (managed: ManagedItem<T>, item: T, index: number) => {
     managed.value = item;
     if (sharedUpdate !== undefined) sharedUpdate(managed, item, index);
@@ -205,7 +209,7 @@ export function createKeyedReconciler<T>(
 
   const removeItem = (managed: ManagedItem<T>) => {
     const cleanups = managed.cleanups;
-    for (let i = 0, len = cleanups.length; i < len; i++) cleanups[i]!();
+    if (cleanups !== undefined) for (let i = 0, len = cleanups.length; i < len; i++) cleanups[i]!();
     managed.el.remove();
   };
 
@@ -215,7 +219,7 @@ export function createKeyedReconciler<T>(
     // Run cleanups (subscriptions, nested reconcilers) before clearing DOM
     for (let i = 0; i < len; i++) {
       const cleanups = managedItems[i]!.cleanups;
-      for (let j = 0, clen = cleanups.length; j < clen; j++) cleanups[j]!();
+      if (cleanups !== undefined) for (let j = 0, clen = cleanups.length; j < clen; j++) cleanups[j]!();
     }
     const anchorParent = anchor.parentNode;
     if (anchorParent) {
@@ -262,8 +266,9 @@ export function createKeyedReconciler<T>(
         for (let k = 0; k < size; k++, i++) {
           const item = items[i]!;
           const managed = bind(el, item, i);
-          const key = keyFn(item, i);
-          managed.key = key;
+          let key: string | number;
+          if (keyed) key = managed.key!;
+          else managed.key = key = keyFn(item, i);
           managedItems[write++] = managed;
           keyMap.set(key, managed);
           el = el.nextElementSibling!;
@@ -275,8 +280,9 @@ export function createKeyedReconciler<T>(
     for (; i < end; i++) {
       const item = items[i]!;
       const managed = createItemFn(item, i, anchor);
-      const key = keyFn(item, i);
-      managed.key = key;
+      let key: string | number;
+      if (keyed) key = managed.key!;
+      else managed.key = key = keyFn(item, i);
       managedItems[write++] = managed;
       keyMap.set(key, managed);
     }
