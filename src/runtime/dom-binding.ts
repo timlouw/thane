@@ -167,6 +167,11 @@ export interface BatchRows<T> {
   size: number;
   row: Node;
   bind: (el: Element, item: T, index: number) => ManagedItem<T>;
+  /**
+   * One update function shared by every row, given the managed record (which carries the
+   * row's guard state) and the new item; rows bound this way have no per-row update closure.
+   */
+  update?: (managed: ManagedItem<T>, item: T, index: number) => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -186,6 +191,14 @@ export function createKeyedReconciler<T>(
 
   const containerParent = container.parentNode;
   const containerNextSibling = container.nextSibling;
+
+  // Rows either carry their own update closure or share the one in `batch.update`.
+  const sharedUpdate = batch?.update;
+  const updateRow = (managed: ManagedItem<T>, item: T, index: number) => {
+    managed.value = item;
+    if (sharedUpdate !== undefined) sharedUpdate(managed, item, index);
+    else managed.update!(item);
+  };
 
   const managedItems: ManagedItem<T>[] = [];
   const keyMap = new Map<string | number, ManagedItem<T>>();
@@ -299,10 +312,7 @@ export function createKeyedReconciler<T>(
         for (let i = 0; i < oldLength; i++) {
           const managed = managedItems[i]!;
           const newItem = newItems[i]!;
-          if (managed.value !== newItem) {
-            managed.value = newItem;
-            managed.update!(newItem);
-          }
+          if (managed.value !== newItem) updateRow(managed, newItem, i);
         }
         bulkCreate(newItems, oldLength);
         return;
@@ -353,10 +363,7 @@ export function createKeyedReconciler<T>(
           allKeysExist = false;
           break;
         }
-        if (existing.value !== newItem) {
-          existing.value = newItem;
-          existing.update!(newItem);
-        }
+        if (existing.value !== newItem) updateRow(existing, newItem, i);
         if (managedItems[i] !== existing) {
           mismatchCount++;
           if (mismatchCount === 1) mismatch1 = i;
@@ -440,10 +447,7 @@ export function createKeyedReconciler<T>(
       const key = keyFn(newItem, i);
       const existing = keyMap.get(key);
       if (existing) {
-        if (existing.value !== newItem) {
-          existing.value = newItem;
-          existing.update!(newItem);
-        }
+        if (existing.value !== newItem) updateRow(existing, newItem, i);
         newManagedItems.push(existing);
       } else {
         const refNode = i < managedItems.length ? managedItems[i]!.el : anchor;
