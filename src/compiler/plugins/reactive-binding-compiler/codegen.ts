@@ -38,6 +38,12 @@ import type { ChildMountInfo } from '../component-precompiler/component-precompi
 import type { GeneratedInitBindingsArtifact } from '../../../contracts/index.js';
 import { INTERNAL_RUNTIME_SPECIFIER, PUBLIC_RUNTIME_SPECIFIER } from '../../../contracts/index.js';
 
+/**
+ * Rows per batch clone for repeat() rows without cleanups: the reconciler clones a fragment of
+ * this many rows at once and binds each, instead of one cloneNode and insertBefore per row.
+ */
+const ROW_BATCH_SIZE = 16;
+
 const NAME = PLUGIN_NAME.REACTIVE;
 
 // ============================================================================
@@ -1554,9 +1560,17 @@ export const generateInitBindingsFunction = (
           updateParts.push('_el.__d = item');
         }
 
-        lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
-        lines.push(`      (item, ${indexVar}, _ref) => {`);
-        lines.push(`        const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true);`);
+        // Rows that need no cleanups (no per-row subscriptions, nested directives or child mounts)
+        // are bound by a standalone function, so the reconciler can clone them in batches of
+        // ROW_BATCH_SIZE and bind each cloned row; the single-row factory clones, binds and inserts.
+        const batchRows = !needsCleanups;
+        if (batchRows) {
+          lines.push(`    const _bind_${rep.id} = (_el, item, ${indexVar}) => {`);
+        } else {
+          lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
+          lines.push(`      (item, ${indexVar}, _ref) => {`);
+          lines.push(`        const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true);`);
+        }
         if (useDelegation) {
           lines.push(`        _el.__d = item;`);
         }
@@ -1591,7 +1605,9 @@ export const generateInitBindingsFunction = (
         if (eventAddStatements.length > 0) {
           lines.push(`        ${eventAddStatements.join('; ')};`);
         }
-        lines.push(`        ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref);`);
+        if (!batchRows) {
+          lines.push(`        ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref);`);
+        }
         for (const sl of repMountInfo.setupLines) {
           lines.push(sl);
         }
@@ -1852,8 +1868,17 @@ export const generateInitBindingsFunction = (
         }
         lines.push(`        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '[]'}, value: item,`);
         lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
-        lines.push(`      },`);
-        lines.push(`    ${keyFnExpr});`);
+        if (batchRows) {
+          lines.push(`    };`);
+          lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
+          lines.push(
+            `      (item, ${indexVar}, _ref) => { const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true); const _m = _bind_${rep.id}(_el, item, ${indexVar}); ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref); return _m; },`,
+          );
+          lines.push(`    ${keyFnExpr}, { size: ${ROW_BATCH_SIZE}, row: ${tplContentVar}, bind: _bind_${rep.id} });`);
+        } else {
+          lines.push(`      },`);
+          lines.push(`    ${keyFnExpr});`);
+        }
         for (const sub of selectionSubscriptions) {
           lines.push(`    ${sub}`);
         }
