@@ -157,6 +157,18 @@ interface ManagedItem<T> {
 /** Key function for tracking items in repeat. */
 type KeyFn<T> = (item: T, index: number) => string | number;
 
+/**
+ * How to create rows in batches: `size` rows are cloned from one fragment (built once from
+ * `row`) and bound one by one with `bind`, then inserted together. Only rows that need no
+ * per-row cleanups use it; the reconciler falls back to the single-row factory for the
+ * remainder of a batch and for lists shorter than one batch.
+ */
+export interface BatchRows<T> {
+  size: number;
+  row: Node;
+  bind: (el: Element, item: T, index: number) => ManagedItem<T>;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  createKeyedReconciler — keyed-only, direct-update mode
 // ─────────────────────────────────────────────────────────────
@@ -166,6 +178,7 @@ export function createKeyedReconciler<T>(
   anchor: Element,
   createItemFn: (item: T, index: number, refNode: Node) => ManagedItem<T>,
   keyFnOrProp: KeyFn<T> | string,
+  batch?: BatchRows<T>,
 ) {
   // Resolve key accessor once: string prop → direct access, function → use as-is
   const keyFn: KeyFn<T> =
@@ -207,8 +220,11 @@ export function createKeyedReconciler<T>(
    * per insertion; when rows already exist it stays attached, because removing and re-adding
    * a large subtree costs more than the incremental inserts it would save.
    */
+  let batchFragment: Node | null = null;
+
   const bulkCreate = (items: T[], from = 0) => {
-    const count = items.length - from;
+    const end = items.length;
+    const count = end - from;
     if (count <= 0) return;
 
     const base = managedItems.length;
@@ -216,12 +232,39 @@ export function createKeyedReconciler<T>(
     if (parent) container.remove();
 
     managedItems.length = base + count;
-    for (let i = from; i < items.length; i++) {
+    let write = base;
+    let i = from;
+
+    // Whole batches: one clone and one insert per `size` rows instead of one of each per row.
+    if (batch !== undefined && count >= batch.size) {
+      const size = batch.size;
+      const bind = batch.bind;
+      if (batchFragment === null) {
+        batchFragment = batch.row.ownerDocument!.createDocumentFragment();
+        for (let k = 0; k < size; k++) batchFragment.appendChild(batch.row.cloneNode(true));
+      }
+      while (end - i >= size) {
+        const rows = batchFragment.cloneNode(true) as ParentNode & Node;
+        let el = rows.firstElementChild!;
+        for (let k = 0; k < size; k++, i++) {
+          const item = items[i]!;
+          const managed = bind(el, item, i);
+          const key = keyFn(item, i);
+          managed.key = key;
+          managedItems[write++] = managed;
+          keyMap.set(key, managed);
+          el = el.nextElementSibling!;
+        }
+        container.insertBefore(rows, anchor);
+      }
+    }
+
+    for (; i < end; i++) {
       const item = items[i]!;
       const managed = createItemFn(item, i, anchor);
       const key = keyFn(item, i);
       managed.key = key;
-      managedItems[base + i - from] = managed;
+      managedItems[write++] = managed;
       keyMap.set(key, managed);
     }
 
