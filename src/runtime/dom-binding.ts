@@ -377,13 +377,17 @@ export function createKeyedReconciler<T>(
 
       for (let i = 0; i < newLength; i++) {
         const newItem = newItems[i]!;
+        const managed = managedItems[i]!;
+        // An identical item at the same index is the same row in the same place: no key to
+        // derive and no lookup. A swap of two rows in a long list then costs two lookups.
+        if (managed.value === newItem) continue;
         const existing = keyMap.get(keyFn(newItem, i));
         if (!existing) {
           allKeysExist = false;
           break;
         }
         if (existing.value !== newItem) updateRow(existing, newItem, i);
-        if (managedItems[i] !== existing) {
+        if (managed !== existing) {
           mismatchCount++;
           if (mismatchCount === 1) mismatch1 = i;
           else if (mismatchCount === 2) mismatch2 = i;
