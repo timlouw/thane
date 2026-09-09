@@ -51,12 +51,14 @@ describe('Rows without cleanups are bound by a standalone function and created i
     expect(js).toMatch(
       /return \{ el: _el, cleanups: _nc, value: item, key: void 0, p0: _p0, p1: _p1, p2: _p2, p3: _p3, t0: void 0, c0: _c0, c1: _c1 \}/,
     );
-    // One update per list, re-navigating from the row element and given the current index
+    // One update per list, given the current index; it navigates from the row element only
+    // inside the guard of a binding that changed, and the text node cache makes that one-time
+    expect(js).toMatch(/const _update_b\d+ = \(_m, item, idx\) => \{\s*const _el = _m\.el;\s*if \(/);
+    expect(js).not.toMatch(/const _update_b\d+ = [^]*?const _e0 = _el;[^]*?\};\s*const _rc_/);
+    expect(js).toMatch(/if \(_m\.p0 !== \(_m\.p0 = item\.id\)\) _el\.setAttribute\("data-id", _m\.p0\)/);
     expect(js).toMatch(
-      /const _update_b\d+ = \(_m, item, idx\) => \{\s*const _el = _m\.el;\s*const _e0 = _el;\s*const _e1 = _e0\.firstElementChild;/,
+      /\(_m\.t0 \?\?= _el\.firstElementChild\.firstChild\) \? _m\.t0\.nodeValue = _m\.p1 : _el\.firstElementChild\.textContent = _m\.p1/,
     );
-    expect(js).toMatch(/if \(_m\.p0 !== \(_m\.p0 = item\.id\)\) _e0\.setAttribute\("data-id", _m\.p0\)/);
-    expect(js).toMatch(/\(_m\.t0 \?\?= _e1\.firstChild\) \? _m\.t0\.nodeValue = _m\.p1 : _e1\.textContent = _m\.p1/);
     expect(js).toMatch(/if \(_m\.p3 !== \(_m\.p3 = idx\)\) _m\.c1\.data = _m\.p3/);
     expect(js).toMatch(/bind: _bind_b\d+, update: _update_b\d+ \}/);
   });
