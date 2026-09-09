@@ -94,6 +94,10 @@ export const ContractApp = defineComponent('contract-app', () => {
     { id: 1, name: 'O-1' },
     { id: 2, name: 'O-2' },
   ]);
+  const linkRows = signal([
+    { id: 1, name: 'L-1', url: '/links/1' },
+    { id: 2, name: 'L-2', url: '/links/2' },
+  ]);
 
   const clickCount = () => count(count() + 1);
   const toggleWhen = () => showWhen(!showWhen());
@@ -136,6 +140,8 @@ export const ContractApp = defineComponent('contract-app', () => {
       { id: 1, name: 'O-1' },
       { id: 2, name: 'O-2' },
     ]);
+  const relinkRows = () =>
+    linkRows(linkRows().map((row) => ({ ...row, name: `${row.name} v2`, url: `${row.url}?v=2` })));
   const addItem = () => {
     const next = items().length + 1;
     items([...items(), { id: next, name: `New-${next}`, active: next % 2 === 0, children: [`N${next}`] }]);
@@ -543,6 +549,22 @@ export const ContractApp = defineComponent('contract-app', () => {
               html`<p data-testid="order-c-else">order-c-else</p>`,
             )}
           </div>
+        </section>
+
+        <section data-testid="row-attribute-section">
+          <button data-testid="relink-rows" @click=${relinkRows}>relink rows</button>
+          <ul data-testid="link-list">
+            ${repeat(
+              linkRows(),
+              (item) => html`
+                <li data-testid="link-row" data-row-id=${item.id}>
+                  <a data-testid="link-anchor" href=${item.url} title=${item.name}>${item.name}</a>
+                </li>
+              `,
+              html`<li data-testid="link-empty">link-empty</li>`,
+              (item) => item.id,
+            )}
+          </ul>
         </section>
 
         <section data-testid="reactivity-section">

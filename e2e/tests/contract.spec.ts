@@ -195,6 +195,38 @@ test('directive order permutations remain stable across remounts and depth toggl
   await expect(page.getByTestId('order-c-row')).toHaveCount(2);
 });
 
+test('row attribute bindings on and below the row root update the same elements in place', async ({ page }) => {
+  await gotoApp({ page });
+
+  const rows = page.getByTestId('link-row');
+  const anchors = page.getByTestId('link-anchor');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toHaveAttribute('data-row-id', '1');
+  await expect(rows.nth(1)).toHaveAttribute('data-row-id', '2');
+  await expect(anchors.nth(0)).toHaveAttribute('href', '/links/1');
+  await expect(anchors.nth(0)).toHaveAttribute('title', 'L-1');
+  await expect(anchors.nth(0)).toHaveText('L-1');
+  await expect(anchors.nth(1)).toHaveAttribute('href', '/links/2');
+
+  // Tag the live anchors so an in-place update can be told apart from a re-render
+  await page.evaluate(() => {
+    document.querySelectorAll('[data-testid="link-anchor"]').forEach((a, i) => ((a as any).__tag = i + 1));
+  });
+
+  await page.getByTestId('relink-rows').click();
+  await expect(anchors.nth(0)).toHaveAttribute('href', '/links/1?v=2');
+  await expect(anchors.nth(0)).toHaveAttribute('title', 'L-1 v2');
+  await expect(anchors.nth(0)).toHaveText('L-1 v2');
+  await expect(anchors.nth(1)).toHaveAttribute('href', '/links/2?v=2');
+  await expect(rows.nth(1)).toHaveAttribute('data-row-id', '2');
+  await expect(rows).toHaveCount(2);
+
+  const tags = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-testid="link-anchor"]')).map((a) => (a as any).__tag ?? null),
+  );
+  expect(tags).toEqual([1, 2]);
+});
+
 test('nested repeat/when/whenElse keep structure and deep bindings correct', async ({ page }) => {
   await gotoApp({ page });
 
