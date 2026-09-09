@@ -195,6 +195,40 @@ test('directive order permutations remain stable across remounts and depth toggl
   await expect(page.getByTestId('order-c-row')).toHaveCount(2);
 });
 
+test('rows created in batches carry their own item, index and delegated handler', async ({ page }) => {
+  await gotoApp({ page });
+
+  const rowsLocator = page.getByTestId('batch-row');
+  const buttons = page.getByTestId('batch-pick');
+  await expect(rowsLocator).toHaveCount(40);
+  await expect(buttons.nth(0)).toHaveText('B-1 #0');
+  await expect(buttons.nth(17)).toHaveText('B-18 #17');
+  await expect(buttons.nth(39)).toHaveText('B-40 #39');
+  await expect(rowsLocator.nth(17)).toHaveAttribute('data-index', '17');
+  await expect(rowsLocator.nth(39)).toHaveAttribute('data-index', '39');
+
+  await buttons.nth(24).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('25');
+  await buttons.nth(39).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('40');
+
+  await page.getByTestId('append-batch-rows').click();
+  await expect(rowsLocator).toHaveCount(60);
+  await expect(buttons.nth(59)).toHaveText('B-60 #59');
+  await expect(rowsLocator.nth(59)).toHaveAttribute('data-index', '59');
+  await buttons.nth(50).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('51');
+
+  // Renaming replaces every item: rows created in batches and singly update in place
+  await page.getByTestId('rename-batch-rows').click();
+  await expect(buttons.nth(0)).toHaveText('B-1! #0');
+  await expect(buttons.nth(17)).toHaveText('B-18! #17');
+  await expect(buttons.nth(59)).toHaveText('B-60! #59');
+  await expect(rowsLocator).toHaveCount(60);
+  await buttons.nth(17).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('18');
+});
+
 test('row attribute bindings on and below the row root update the same elements in place', async ({ page }) => {
   await gotoApp({ page });
 

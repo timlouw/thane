@@ -237,9 +237,10 @@ export const App = defineComponent('test-app', () => {
 mount(App);
 `;
     const js = await buildAndReadJs(source);
-    // Update path: `if (_p !== (_p = expr)) write(_p)` — the guard variable is compared with
-    // its own reassignment, so an unchanged value never reaches textContent/setAttribute
-    expect(js).toMatch(/(\w+)\s*!==\s*\(\1\s*=\s*\w+\.label\)/);
+    // Update path: `if (_m.p !== (_m.p = expr)) write(_m.p)` — the guard (a field on the row's
+    // record for lean rows, a closure variable otherwise) is compared with its own
+    // reassignment, so an unchanged value never reaches textContent/setAttribute
+    expect(js).toMatch(/([\w.]+)\s*!==\s*\(\1\s*=\s*\w+\.label\)/);
     // (the selection class binding is owned by the list-level subscription, so the row update
     // path no longer recomputes it; its guarded fill is asserted below)
     // Create path: the template already ships class="", so an empty result skips the write

@@ -9,7 +9,19 @@ class FakeNode {
   parentNode: FakeNode | null = null;
   childNodes: FakeNode[] = [];
   removals = 0;
+  /** Set on clones so a test can tell them from the template */
+  clonedFrom: FakeNode | null = null;
   constructor(public readonly name: string) {}
+
+  get ownerDocument(): { createDocumentFragment: () => FakeNode } {
+    return { createDocumentFragment: () => new FakeNode('#fragment') };
+  }
+  cloneNode(deep: boolean): FakeNode {
+    const copy = new FakeNode(this.name);
+    copy.clonedFrom = this;
+    if (deep) for (const child of this.childNodes) copy.appendChild(child.cloneNode(true));
+    return copy;
+  }
 
   get nextSibling(): FakeNode | null {
     if (!this.parentNode) return null;
@@ -35,6 +47,11 @@ class FakeNode {
     return this.insertBefore(child, null);
   }
   insertBefore(child: FakeNode, ref: FakeNode | null): FakeNode {
+    if (child.name === '#fragment') {
+      // A fragment's children move into the parent, as in the DOM
+      for (const node of [...child.childNodes]) this.insertBefore(node, ref);
+      return child;
+    }
     child.remove();
     child.parentNode = this;
     const at = ref ? this.childNodes.indexOf(ref) : -1;
@@ -86,6 +103,30 @@ const setup = () => {
 
   const order = () => tbody.childNodes.map((n) => n.name);
   return { table, tbody, anchor, reconciler, created, updated, order };
+};
+
+/** Like setup(), but with a counting key function so tests can see how often keys are derived. */
+const setupCountingKeys = () => {
+  const tbody = new FakeNode('tbody');
+  const anchor = new FakeNode('anchor');
+  tbody.appendChild(anchor);
+  let keyCalls = 0;
+  const updated: Row[] = [];
+  const reconciler = createKeyedReconciler<Row>(
+    tbody as unknown as ParentNode & Element,
+    anchor as unknown as Element,
+    (item, _index, refNode) => {
+      const el = new FakeNode(`row:${item.id}`);
+      tbody.insertBefore(el, refNode as unknown as FakeNode);
+      return { el: el as unknown as Element, cleanups: [], value: item, update: (next: Row) => updated.push(next) };
+    },
+    (item) => {
+      keyCalls++;
+      return item.id;
+    },
+  );
+  const order = () => tbody.childNodes.map((n) => n.name);
+  return { reconciler, updated, order, keyCalls: () => keyCalls, resetKeyCalls: () => (keyCalls = 0) };
 };
 
 const rows = (...ids: number[]): Row[] => ids.map((id) => ({ id, label: `row ${id}` }));
@@ -143,5 +184,187 @@ describe('createKeyedReconciler — append fast path', () => {
     expect(reconciler.get(2)).toBeUndefined();
     reconciler.clearAll();
     expect(reconciler.get(1)).toBeUndefined();
+  });
+});
+
+describe('in-place updates with unchanged keys and order', () => {
+  test('updates only the rows whose item changed and derives keys only for those', () => {
+    const { reconciler, updated, order, keyCalls, resetKeyCalls } = setupCountingKeys();
+    const rows = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(rows);
+    resetKeyCalls();
+
+    const next = rows.map((row, i) => (i % 10 === 0 ? { ...row, label: row.label + '!' } : row));
+    reconciler.reconcile(next);
+
+    expect(updated.map((r) => r.id)).toEqual([1, 11, 21, 31, 41, 51, 61, 71, 81, 91]);
+    expect(keyCalls()).toBe(10);
+    expect(order()).toEqual([...rows.map((r) => `row:${r.id}`), 'anchor']);
+  });
+
+  test('an identical array is a no-op without deriving any key', () => {
+    const { reconciler, updated, keyCalls, resetKeyCalls } = setupCountingKeys();
+    const rows = [
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+    ];
+    reconciler.reconcile(rows);
+    resetKeyCalls();
+    reconciler.reconcile([...rows]);
+    expect(updated).toEqual([]);
+    expect(keyCalls()).toBe(0);
+  });
+
+  test('a moved row hands over to the keyed path and the DOM order follows', () => {
+    const { reconciler, updated, order } = setupCountingKeys();
+    const a = { id: 1, label: 'a' },
+      b = { id: 2, label: 'b' },
+      c = { id: 3, label: 'c' };
+    reconciler.reconcile([a, b, c]);
+    const c2 = { ...c, label: 'c2' };
+    reconciler.reconcile([a, c2, b]);
+    expect(order()).toEqual(['row:1', 'row:3', 'row:2', 'anchor']);
+    expect(updated).toEqual([c2]);
+  });
+
+  test('an updated row followed by a swap updates each changed row exactly once', () => {
+    const { reconciler, updated, order } = setupCountingKeys();
+    const rows = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(rows);
+    const next = [...rows];
+    next[0] = { ...rows[0]!, label: 'first!' };
+    [next[2], next[4]] = [next[4]!, next[2]!];
+    reconciler.reconcile(next);
+    expect(updated).toEqual([next[0]!]);
+    expect(order()).toEqual(['row:1', 'row:2', 'row:5', 'row:4', 'row:3', 'row:6', 'anchor']);
+  });
+});
+
+describe('batch row creation', () => {
+  const setupBatch = (size: number) => {
+    const tbody = new FakeNode('tbody');
+    const anchor = new FakeNode('anchor');
+    tbody.appendChild(anchor);
+    const template = new FakeNode('tr');
+    template.appendChild(new FakeNode('td'));
+    const bound: Array<{ el: FakeNode; item: Row; index: number }> = [];
+    const singles: Row[] = [];
+    const reconciler = createKeyedReconciler<Row>(
+      tbody as unknown as ParentNode & Element,
+      anchor as unknown as Element,
+      (item, _index, refNode) => {
+        singles.push(item);
+        const el = template.cloneNode(true);
+        tbody.insertBefore(el, refNode as unknown as FakeNode);
+        return { el: el as unknown as Element, cleanups: [], value: item, update: () => {} };
+      },
+      'id',
+      {
+        size,
+        row: template as unknown as Node,
+        bind: (el, item, index) => {
+          bound.push({ el: el as unknown as FakeNode, item, index });
+          return { el, cleanups: [], value: item, update: () => {} };
+        },
+      },
+    );
+    const order = () => tbody.childNodes.map((n) => n.name);
+    return { tbody, anchor, template, reconciler, bound, singles, order };
+  };
+  const rows = (from: number, to: number): Row[] =>
+    Array.from({ length: to - from + 1 }, (_, i) => ({ id: from + i, label: `r${from + i}` }));
+
+  test('creates whole batches through bind and the remainder through the single-row factory', () => {
+    const { reconciler, bound, singles, order, anchor, tbody } = setupBatch(4);
+    reconciler.reconcile(rows(1, 10));
+    // Two batches of four, then two single rows, all before the anchor
+    expect(bound.map((b) => b.item.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(bound.map((b) => b.index)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(singles.map((r) => r.id)).toEqual([9, 10]);
+    expect(order()).toEqual([...Array(10).fill('tr'), 'anchor']);
+    expect(tbody.childNodes[tbody.childNodes.length - 1]).toBe(anchor);
+    // Every bound row is its own clone carrying the template's children
+    expect(new Set(bound.map((b) => b.el)).size).toBe(8);
+    for (const b of bound) expect(b.el.childNodes.map((n) => n.name)).toEqual(['td']);
+    // Rows are registered by key in creation order
+    expect(reconciler.get(6)!.el).toBe(bound[5]!.el as unknown as Element);
+  });
+
+  test('a list shorter than one batch uses only the single-row factory', () => {
+    const { reconciler, bound, singles } = setupBatch(4);
+    reconciler.reconcile(rows(1, 3));
+    expect(bound).toEqual([]);
+    expect(singles.map((r) => r.id)).toEqual([1, 2, 3]);
+  });
+
+  test('appending reuses the batch path for the new rows and keeps existing rows', () => {
+    const { reconciler, bound, singles, order } = setupBatch(4);
+    reconciler.reconcile(rows(1, 5));
+    bound.length = 0;
+    singles.length = 0;
+    reconciler.reconcile(rows(1, 14));
+    // Nine new rows: two batches, one single
+    expect(bound.map((b) => b.item.id)).toEqual([6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(bound.map((b) => b.index)).toEqual([5, 6, 7, 8, 9, 10, 11, 12]);
+    expect(singles.map((r) => r.id)).toEqual([14]);
+    expect(order()).toEqual([...Array(14).fill('tr'), 'anchor']);
+    expect(reconciler.get(1)).toBeDefined();
+    expect(reconciler.get(14)).toBeDefined();
+  });
+
+  test('clearing and recreating clones from the cached batch fragment', () => {
+    const { reconciler, bound, order, template } = setupBatch(4);
+    reconciler.reconcile(rows(1, 8));
+    reconciler.reconcile([]);
+    expect(order()).toEqual(['anchor']);
+    bound.length = 0;
+    reconciler.reconcile(rows(20, 27));
+    expect(bound.map((b) => b.item.id)).toEqual([20, 21, 22, 23, 24, 25, 26, 27]);
+    // Clones of clones: the batch fragment was built from the template once
+    expect(bound.every((b) => b.el.clonedFrom !== template)).toBe(true);
+    expect(order()).toEqual([...Array(8).fill('tr'), 'anchor']);
+  });
+});
+
+describe('shared update function for lean rows', () => {
+  test('is called with the record, the new item and the current index, after value is updated', () => {
+    const tbody = new FakeNode('tbody');
+    const anchor = new FakeNode('anchor');
+    tbody.appendChild(anchor);
+    const template = new FakeNode('tr');
+    const calls: Array<{ id: number; index: number; valueId: number; p0: string }> = [];
+    const reconciler = createKeyedReconciler<Row>(
+      tbody as unknown as ParentNode & Element,
+      anchor as unknown as Element,
+      (item, _index, refNode) => {
+        const el = template.cloneNode(true);
+        tbody.insertBefore(el, refNode as unknown as FakeNode);
+        return { el: el as unknown as Element, cleanups: [], value: item, p0: item.label } as never;
+      },
+      'id',
+      {
+        size: 100,
+        row: template as unknown as Node,
+        bind: (el, item) => ({ el, cleanups: [], value: item, p0: item.label }) as never,
+        update: (managed, item, index) => {
+          const record = managed as unknown as { value: Row; p0: string };
+          calls.push({ id: item.id, index, valueId: record.value.id, p0: record.p0 });
+          record.p0 = item.label;
+        },
+      },
+    );
+    const rows = [
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+    ];
+    reconciler.reconcile(rows);
+    reconciler.reconcile([rows[0]!, { id: 2, label: 'b2' }, rows[2]!]);
+    expect(calls).toEqual([{ id: 2, index: 1, valueId: 2, p0: 'b' }]);
+    // Records have no per-row update closure
+    expect((reconciler.get(2) as unknown as { update?: unknown }).update).toBeUndefined();
+    // Append path also updates changed existing rows through the shared function
+    reconciler.reconcile([rows[0]!, { id: 2, label: 'b3' }, rows[2]!, { id: 4, label: 'd' }]);
+    expect(calls[1]).toEqual({ id: 2, index: 1, valueId: 2, p0: 'b2' });
   });
 });
