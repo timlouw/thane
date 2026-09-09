@@ -368,3 +368,33 @@ describe('shared update function for lean rows', () => {
     expect(calls[1]).toEqual({ id: 2, index: 1, valueId: 2, p0: 'b2' });
   });
 });
+
+describe('reorders skip identical rows', () => {
+  test('swapping two rows in a long list derives keys only for the rows involved', () => {
+    const { reconciler, order, keyCalls, resetKeyCalls, updated } = setupCountingKeys();
+    const rows = Array.from({ length: 1000 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(rows);
+    resetKeyCalls();
+
+    const next = [...rows];
+    [next[1], next[998]] = [next[998]!, next[1]!];
+    reconciler.reconcile(next);
+
+    expect(order()[1]).toBe('row:999');
+    expect(order()[998]).toBe('row:2');
+    expect(order().length).toBe(1001);
+    expect(updated).toEqual([]);
+    // Two lookups in the scan plus the two-mismatch swap check; nothing per row
+    expect(keyCalls()).toBeLessThanOrEqual(6);
+  });
+
+  test('a rotation of unchanged items still reorders correctly', () => {
+    const { reconciler, order } = setupCountingKeys();
+    const rows = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(rows);
+    reconciler.reconcile([rows[5]!, ...rows.slice(0, 5)]);
+    expect(order()).toEqual(['row:6', 'row:1', 'row:2', 'row:3', 'row:4', 'row:5', 'anchor']);
+    reconciler.reconcile([rows[2]!, rows[0]!, rows[1]!, rows[5]!, rows[3]!, rows[4]!]);
+    expect(order()).toEqual(['row:3', 'row:1', 'row:2', 'row:6', 'row:4', 'row:5', 'anchor']);
+  });
+});
