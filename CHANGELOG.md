@@ -30,6 +30,11 @@ A second round, measured the same way against the build above: create 10,000 row
 - Reconciling a list against an array of the same length matches rows by position before deriving keys: an identical item needs nothing, an item whose key matches the row at that index is updated in place, and only a moved row falls through to the keyed paths.
 - Unsubscribing from a `computed()` is constant time, like plain signals.
 
+A third round, measured the same way: swap rows 0.70x (0.60 to 0.41 ms), partial update 0.83x, everything else the same; geometric mean 0.94x. Across the three rounds, script time is about 0.70x of the previous release.
+
+- Reordering a list of the same length compares each row with the item at its index before deriving a key, so a swap of two rows in a list of 1,000 costs two lookups instead of a key derivation and a lookup per row.
+- The shared update function of lean rows navigates to a bound element only inside the guard of a binding that changed; an unchanged binding costs one compare.
+
 ### Fixed
 
 - `repeat()` rows with an attribute binding on an item element, such as `<tr data-id=${item.id}>` or `<a href=${item.url}>`, compiled to the fallback renderer, which re-renders every row's HTML on each change. They now use the optimised row path, and an attribute that mixes a signal with item data on an element below the row root is written to that element instead of the row element.
