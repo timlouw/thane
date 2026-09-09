@@ -14,11 +14,11 @@ Only one `defineComponent()` call is allowed per file (THANE407). The compiler p
 
 ```typescript
 // ❌ Not allowed
-template: html`<div>${html`<span>nested</span>`}</div>`
+template: html`<div>${html`<span>nested</span>`}</div>`;
 
 // ✅ Allowed
 const inner = html`<span>nested</span>`;
-template: html`<div>${inner}</div>`
+template: html`<div>${inner}</div>`;
 ```
 
 Templates inside directive callbacks (`repeat`, `whenElse`) are the exception — these are processed independently.
@@ -43,7 +43,7 @@ Template variables cannot use ternary or logical operators (THANE405). Use `when
 
 ### User IDs on Bound Elements
 
-An element with an attribute, style, or text binding receives a compiler-generated `id` (`b0`, `b1`, …). If you also give such an element your own `id`, the compiler-generated one takes precedence and yours is dropped. Event handlers and `when()` elements reuse your `id` instead. When you need a stable `id` for CSS or `label for=""`, put it on a wrapper element that has no bindings.
+At component level, an element with an attribute, style, or text binding receives a compiler-generated `id` (`b0`, `b1`, …). If you also give such an element your own `id`, the compiler-generated one takes precedence and yours is dropped. Event handlers and `when()` elements reuse your `id` instead. Inside `repeat()` rows, bound elements are located by position rather than by `id`, so your `id` is kept as written; note that it is then repeated on every row. When you need a stable `id` for CSS or `label for=""`, put it on a wrapper element that has no bindings.
 
 ### Mixed Static and Dynamic Attribute Values
 
@@ -68,8 +68,8 @@ Thane uses Light DOM exclusively — no Shadow DOM. This means:
 Scoped styles depend on native CSS Nesting (the `&` selector). This sets the minimum browser versions:
 
 | Chrome | Firefox | Safari | Edge |
-|:------:|:-------:|:------:|:----:|
-| 120+   | 117+    | 17.2+  | 120+ |
+| :----: | :-----: | :----: | :--: |
+|  120+  |  117+   | 17.2+  | 120+ |
 
 Older browsers will not render scoped styles correctly.
 
@@ -122,16 +122,16 @@ Cascading signal updates that form a cycle are detected after 100 iterations and
 
 These features are **not currently supported**:
 
-| Feature | Status |
-|:--------|:-------|
-| Shadow DOM | By design — Light DOM only |
-| SSR / Server-Side Rendering | Not supported |
+| Feature                           | Status                                                      |
+| :-------------------------------- | :---------------------------------------------------------- |
+| Shadow DOM                        | By design — Light DOM only                                  |
+| SSR / Server-Side Rendering       | Not supported                                               |
 | `ref` API (direct element access) | Not available — use `ctx.root.querySelector()` in `onMount` |
-| Context / Provide / Inject | Not available — use module-level signals for shared state |
-| Async component setup | Not supported — use `onMount` for async work |
-| Multiple router instances | Not supported — single-instance only |
-| Route guards / middleware | Not built-in |
-| Animated route transitions | Not built-in |
+| Context / Provide / Inject        | Not available — use module-level signals for shared state   |
+| Async component setup             | Not supported — use `onMount` for async work                |
+| Multiple router instances         | Not supported — single-instance only                        |
+| Route guards / middleware         | Not built-in                                                |
+| Animated route transitions        | Not built-in                                                |
 
 ## Production Build Behavior
 
