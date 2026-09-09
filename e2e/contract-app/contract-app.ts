@@ -143,6 +143,7 @@ export const ContractApp = defineComponent('contract-app', () => {
       { id: 2, name: 'O-2' },
     ]);
   const pickBatchRow = (id: number) => pickedBatchRow(id);
+  const renameBatchRows = () => batchRows(batchRows().map((row) => ({ ...row, name: `${row.name}!` })));
   const appendBatchRows = () => {
     const from = batchRows().length + 1;
     batchRows([...batchRows(), ...Array.from({ length: 20 }, (_, i) => ({ id: from + i, name: `B-${from + i}` }))]);
@@ -560,13 +561,14 @@ export const ContractApp = defineComponent('contract-app', () => {
 
         <section data-testid="batch-rows-section">
           <button data-testid="append-batch-rows" @click=${appendBatchRows}>append 20</button>
+          <button data-testid="rename-batch-rows" @click=${renameBatchRows}>rename</button>
           <span data-testid="picked-batch-row">${pickedBatchRow()}</span>
           <ul data-testid="batch-list">
             ${repeat(
               batchRows(),
               (item, index) => html`
                 <li data-testid="batch-row" data-index=${index}>
-                  <button data-testid="batch-pick" @click=${() => pickBatchRow(item.id)}>${item.name}</button>
+                  <button data-testid="batch-pick" @click=${() => pickBatchRow(item.id)}>${item.name} #${index}</button>
                 </li>
               `,
               html`<li data-testid="batch-empty">batch-empty</li>`,

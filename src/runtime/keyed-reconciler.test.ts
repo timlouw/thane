@@ -248,3 +248,46 @@ describe('batch row creation', () => {
     expect(order()).toEqual([...Array(8).fill('tr'), 'anchor']);
   });
 });
+
+describe('shared update function for lean rows', () => {
+  test('is called with the record, the new item and the current index, after value is updated', () => {
+    const tbody = new FakeNode('tbody');
+    const anchor = new FakeNode('anchor');
+    tbody.appendChild(anchor);
+    const template = new FakeNode('tr');
+    const calls: Array<{ id: number; index: number; valueId: number; p0: string }> = [];
+    const reconciler = createKeyedReconciler<Row>(
+      tbody as unknown as ParentNode & Element,
+      anchor as unknown as Element,
+      (item, _index, refNode) => {
+        const el = template.cloneNode(true);
+        tbody.insertBefore(el, refNode as unknown as FakeNode);
+        return { el: el as unknown as Element, cleanups: [], value: item, p0: item.label } as never;
+      },
+      'id',
+      {
+        size: 100,
+        row: template as unknown as Node,
+        bind: (el, item) => ({ el, cleanups: [], value: item, p0: item.label }) as never,
+        update: (managed, item, index) => {
+          const record = managed as unknown as { value: Row; p0: string };
+          calls.push({ id: item.id, index, valueId: record.value.id, p0: record.p0 });
+          record.p0 = item.label;
+        },
+      },
+    );
+    const rows = [
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+    ];
+    reconciler.reconcile(rows);
+    reconciler.reconcile([rows[0]!, { id: 2, label: 'b2' }, rows[2]!]);
+    expect(calls).toEqual([{ id: 2, index: 1, valueId: 2, p0: 'b' }]);
+    // Records have no per-row update closure
+    expect((reconciler.get(2) as unknown as { update?: unknown }).update).toBeUndefined();
+    // Append path also updates changed existing rows through the shared function
+    reconciler.reconcile([rows[0]!, { id: 2, label: 'b3' }, rows[2]!, { id: 4, label: 'd' }]);
+    expect(calls[1]).toEqual({ id: 2, index: 1, valueId: 2, p0: 'b2' });
+  });
+});
