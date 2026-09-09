@@ -23,6 +23,13 @@ Measured with the in-repo harness against the previous release on the js-framewo
 - Unsubscribing from a signal is constant time; tearing down a list of subscribed rows no longer moves O(n²) array elements.
 - Delegated row event listeners dispatch by the row child the event came through instead of running a containment probe per handler.
 
+A second round, measured the same way against the build above: create 10,000 rows 0.88x, append rows 0.91x, partial update 0.86x, create rows 0.97x (30 interleaved iterations), everything else the same; geometric mean 0.96x. Heap after creating 1,000 rows 0.97x. Combined with the round above, script time is about 0.74x of the previous release.
+
+- `repeat()` rows that need no per-row cleanups (no subscriptions, nested directives or child components) are cloned in batches of 16 from a fragment built once per list, and bound and inserted per batch instead of per row.
+- Those rows no longer carry an update closure. The row's record holds the last-written value per binding and its lazily resolved text nodes, and one update function per list re-navigates from the row element; rows also share one empty cleanups array. Heap after creating 1,000 rows drops by about 5%.
+- Reconciling a list against an array of the same length matches rows by position before deriving keys: an identical item needs nothing, an item whose key matches the row at that index is updated in place, and only a moved row falls through to the keyed paths.
+- Unsubscribing from a `computed()` is constant time, like plain signals.
+
 ### Fixed
 
 - `repeat()` rows with an attribute binding on an item element, such as `<tr data-id=${item.id}>` or `<a href=${item.url}>`, compiled to the fallback renderer, which re-renders every row's HTML on each change. They now use the optimised row path, and an attribute that mixes a signal with item data on an element below the row root is written to that element instead of the row element.
