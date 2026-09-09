@@ -296,6 +296,26 @@ export function createKeyedReconciler<T>(
       }
     }
 
+    if (oldLength === newLength) {
+      // Identity-first pass. When keys and order are unchanged, which is every immutable
+      // update pattern (`rows.map(...)`, replacing some items in a copied array), each row is
+      // matched by position: an identical item needs nothing, an item whose key matches the
+      // row at that index is updated in place. Neither derives a key for unchanged rows nor
+      // touches the key map. The first position whose key differs means something moved,
+      // and the keyed paths below take over from the start (rows already updated here are
+      // skipped there because their value now matches).
+      let inPlace = 0;
+      for (; inPlace < newLength; inPlace++) {
+        const managed = managedItems[inPlace]!;
+        const newItem = newItems[inPlace]!;
+        if (managed.value === newItem) continue;
+        if (keyFn(newItem, inPlace) !== managed.key) break;
+        managed.value = newItem;
+        managed.update!(newItem);
+      }
+      if (inPlace === newLength) return;
+    }
+
     // Fast path: reorder with same keys (fused allKeysExist + update in single pass)
     if (oldLength === newLength) {
       let allKeysExist = true;
