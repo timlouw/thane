@@ -368,3 +368,62 @@ describe('shared update function for lean rows', () => {
     expect(calls[1]).toEqual({ id: 2, index: 1, valueId: 2, p0: 'b2' });
   });
 });
+
+describe('slim records', () => {
+  test('rows without a cleanups field are removed and cleared', () => {
+    const tbody = new FakeNode('tbody');
+    const anchor = new FakeNode('anchor');
+    tbody.appendChild(anchor);
+    const reconciler = createKeyedReconciler<Row>(
+      tbody as unknown as ParentNode & Element,
+      anchor as unknown as Element,
+      (item, _index, refNode) => {
+        const el = new FakeNode(`row:${item.id}`);
+        tbody.insertBefore(el, refNode as unknown as FakeNode);
+        return { el: el as unknown as Element, value: item, update: () => {} };
+      },
+      'id',
+    );
+    const rows = [
+      { id: 1, label: 'a' },
+      { id: 2, label: 'b' },
+      { id: 3, label: 'c' },
+    ];
+    reconciler.reconcile(rows);
+    reconciler.reconcile([rows[0]!, rows[2]!]);
+    expect(tbody.childNodes.map((n) => n.name)).toEqual(['row:1', 'row:3', 'anchor']);
+    reconciler.reconcile([]);
+    expect(tbody.childNodes.map((n) => n.name)).toEqual(['anchor']);
+  });
+
+  test('with keyed batches the key set by bind is used and the key function is not called', () => {
+    const tbody = new FakeNode('tbody');
+    const anchor = new FakeNode('anchor');
+    tbody.appendChild(anchor);
+    const template = new FakeNode('tr');
+    let keyCalls = 0;
+    const record = (el: Element, item: Row) => ({ el, value: item, key: item.id });
+    const reconciler = createKeyedReconciler<Row>(
+      tbody as unknown as ParentNode & Element,
+      anchor as unknown as Element,
+      (item, _index, refNode) => {
+        const el = template.cloneNode(true);
+        tbody.insertBefore(el, refNode as unknown as FakeNode);
+        return record(el as unknown as Element, item);
+      },
+      (item) => {
+        keyCalls++;
+        return item.id;
+      },
+      { size: 4, row: template as unknown as Node, bind: record, update: () => {}, keyed: true },
+    );
+    const rows = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(rows);
+    expect(keyCalls).toBe(0);
+    expect(reconciler.get(7)!.value.id).toBe(7);
+    expect(reconciler.get(10)!.value.id).toBe(10);
+    reconciler.reconcile(rows.filter((r) => r.id !== 3));
+    expect(tbody.childNodes.length).toBe(10);
+    expect(reconciler.get(3)).toBeUndefined();
+  });
+});

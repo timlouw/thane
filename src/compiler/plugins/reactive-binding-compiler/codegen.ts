@@ -323,7 +323,8 @@ const partitionItemEvents = (
 
 /**
  * Build delegated listener statements — one addEventListener per event type on the container.
- * Each listener walks from e.target up to the item root, reads __d, and dispatches.
+ * Each listener walks from e.target up to the item root, reads the row's record from __r
+ * (its `value` is the current item), and dispatches.
  */
 const buildDelegatedListenerStatements = (
   delegatedByType: Map<string, DelegatedEvent[]>,
@@ -339,8 +340,8 @@ const buildDelegatedListenerStatements = (
     const finalBody = [
       `let _row = e.target, _cell = null;`,
       `while (_row && _row.parentNode !== ${containerVar}) { _cell = _row; _row = _row.parentNode; }`,
-      `if (!_row || !_row.__d) return;`,
-      `const item = _row.__d;`,
+      `if (!_row || !_row.__r) return;`,
+      `const item = _row.__r.value;`,
     ];
 
     for (const evt of events) {
@@ -1244,8 +1245,6 @@ export const generateInitBindingsFunction = (
   if (repeatBlocks.length > 0) {
     staticTemplates.push(`  const _cloneNode = Node.prototype.cloneNode;`);
     staticTemplates.push(`  const _insertBefore = Node.prototype.insertBefore;`);
-    // Rows without cleanups share one empty array instead of allocating one each
-    staticTemplates.push(`  const _nc = [];`);
   }
 
   for (const rep of repeatBlocks) {
@@ -1586,9 +1585,15 @@ export const generateInitBindingsFunction = (
           hasSignalSubs || hasNestedConditionals || hasNestedRepeats || rep.nestedWhenElse.length > 0 || hasRepMounts;
 
         const updateParts = [...updateStatements, ...commentUpdateStatements, ...mixedUpdateStatements];
-        if (useDelegation) {
-          updateParts.push('_el.__d = item');
-        }
+        // The row's record is the source of truth for delegated handlers: the reconciler sets
+        // `value` before calling update, so nothing is written to the element here.
+        // A key property known at compile time goes on the record too, so the reconciler
+        // does not derive it per row.
+        const keyExpr = _keyProp
+          ? /^[A-Za-z_$][\w$]*$/.test(_keyProp)
+            ? `item.${_keyProp}`
+            : `item[${JSON.stringify(_keyProp)}]`
+          : 'undefined';
 
         // Rows that need no cleanups (no per-row subscriptions, nested directives or child mounts)
         // are bound by a standalone function, so the reconciler can clone them in batches of
@@ -1600,9 +1605,6 @@ export const generateInitBindingsFunction = (
           lines.push(`    const ${reconcilerVar} = ${BIND_FN.KEYED_RECONCILER}(${containerVar}, ${anchorVar},`);
           lines.push(`      (item, ${indexVar}, _ref) => {`);
           lines.push(`        const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true);`);
-        }
-        if (useDelegation) {
-          lines.push(`        _el.__d = item;`);
         }
         for (const navStmt of navStatements) {
           lines.push(`        ${navStmt};`);
@@ -1909,10 +1911,11 @@ export const generateInitBindingsFunction = (
             ...commentVars.map((v) => `${v.slice(1)}: ${v}`),
           ];
           lines.push(
-            `        return { el: _el, cleanups: _nc, value: item, key: undefined${fields.length > 0 ? ', ' + fields.join(', ') : ''} };`,
+            `        const _r = { el: _el, value: item, key: ${keyExpr}${fields.length > 0 ? ', ' + fields.join(', ') : ''} };`,
           );
+          if (useDelegation) lines.push(`        _el.__r = _r;`);
+          lines.push(`        return _r;`);
           lines.push(`    };`);
-          if (useDelegation) leanParts.push('_el.__d = item');
           lines.push(`    const _update_${rep.id} = (_m, item, ${indexVar}) => {`);
           lines.push(`      const _el = _m.el;`);
           for (const navStmt of navStatements) {
@@ -1921,8 +1924,12 @@ export const generateInitBindingsFunction = (
           lines.push(`      ${leanParts.join('; ')};`);
           lines.push(`    };`);
         } else {
-          lines.push(`        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '_nc'}, value: item,`);
+          lines.push(
+            `        const _r = { el: _el, value: item, key: ${keyExpr},${needsCleanups ? ' cleanups: _cleanups,' : ''}`,
+          );
           lines.push(`          update: (item) => { ${updateParts.join('; ')}; } };`);
+          if (useDelegation) lines.push(`        _el.__r = _r;`);
+          lines.push(`        return _r;`);
         }
         if (batchRows) {
           if (!leanRows) lines.push(`    };`);
@@ -1931,7 +1938,7 @@ export const generateInitBindingsFunction = (
             `      (item, ${indexVar}, _ref) => { const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true); const _m = _bind_${rep.id}(_el, item, ${indexVar}); ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref); return _m; },`,
           );
           lines.push(
-            `    ${keyFnExpr}, { size: ${ROW_BATCH_SIZE}, row: ${tplContentVar}, bind: _bind_${rep.id}${leanRows ? `, update: _update_${rep.id}` : ''} });`,
+            `    ${keyFnExpr}, { size: ${ROW_BATCH_SIZE}, row: ${tplContentVar}, bind: _bind_${rep.id}${leanRows ? `, update: _update_${rep.id}` : ''}${_keyProp ? ', keyed: true' : ''} });`,
           );
         } else {
           lines.push(`      },`);
