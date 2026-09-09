@@ -157,6 +157,23 @@ interface ManagedItem<T> {
 /** Key function for tracking items in repeat. */
 type KeyFn<T> = (item: T, index: number) => string | number;
 
+/**
+ * How to create rows in batches: `size` rows are cloned from one fragment (built once from
+ * `row`) and bound one by one with `bind`, then inserted together. Only rows that need no
+ * per-row cleanups use it; the reconciler falls back to the single-row factory for the
+ * remainder of a batch and for lists shorter than one batch.
+ */
+export interface BatchRows<T> {
+  size: number;
+  row: Node;
+  bind: (el: Element, item: T, index: number) => ManagedItem<T>;
+  /**
+   * One update function shared by every row, given the managed record (which carries the
+   * row's guard state) and the new item; rows bound this way have no per-row update closure.
+   */
+  update?: (managed: ManagedItem<T>, item: T, index: number) => void;
+}
+
 // ─────────────────────────────────────────────────────────────
 //  createKeyedReconciler — keyed-only, direct-update mode
 // ─────────────────────────────────────────────────────────────
@@ -166,6 +183,7 @@ export function createKeyedReconciler<T>(
   anchor: Element,
   createItemFn: (item: T, index: number, refNode: Node) => ManagedItem<T>,
   keyFnOrProp: KeyFn<T> | string,
+  batch?: BatchRows<T>,
 ) {
   // Resolve key accessor once: string prop → direct access, function → use as-is
   const keyFn: KeyFn<T> =
@@ -173,6 +191,14 @@ export function createKeyedReconciler<T>(
 
   const containerParent = container.parentNode;
   const containerNextSibling = container.nextSibling;
+
+  // Rows either carry their own update closure or share the one in `batch.update`.
+  const sharedUpdate = batch?.update;
+  const updateRow = (managed: ManagedItem<T>, item: T, index: number) => {
+    managed.value = item;
+    if (sharedUpdate !== undefined) sharedUpdate(managed, item, index);
+    else managed.update!(item);
+  };
 
   const managedItems: ManagedItem<T>[] = [];
   const keyMap = new Map<string | number, ManagedItem<T>>();
@@ -207,8 +233,11 @@ export function createKeyedReconciler<T>(
    * per insertion; when rows already exist it stays attached, because removing and re-adding
    * a large subtree costs more than the incremental inserts it would save.
    */
+  let batchFragment: Node | null = null;
+
   const bulkCreate = (items: T[], from = 0) => {
-    const count = items.length - from;
+    const end = items.length;
+    const count = end - from;
     if (count <= 0) return;
 
     const base = managedItems.length;
@@ -216,12 +245,39 @@ export function createKeyedReconciler<T>(
     if (parent) container.remove();
 
     managedItems.length = base + count;
-    for (let i = from; i < items.length; i++) {
+    let write = base;
+    let i = from;
+
+    // Whole batches: one clone and one insert per `size` rows instead of one of each per row.
+    if (batch !== undefined && count >= batch.size) {
+      const size = batch.size;
+      const bind = batch.bind;
+      if (batchFragment === null) {
+        batchFragment = batch.row.ownerDocument!.createDocumentFragment();
+        for (let k = 0; k < size; k++) batchFragment.appendChild(batch.row.cloneNode(true));
+      }
+      while (end - i >= size) {
+        const rows = batchFragment.cloneNode(true) as ParentNode & Node;
+        let el = rows.firstElementChild!;
+        for (let k = 0; k < size; k++, i++) {
+          const item = items[i]!;
+          const managed = bind(el, item, i);
+          const key = keyFn(item, i);
+          managed.key = key;
+          managedItems[write++] = managed;
+          keyMap.set(key, managed);
+          el = el.nextElementSibling!;
+        }
+        container.insertBefore(rows, anchor);
+      }
+    }
+
+    for (; i < end; i++) {
       const item = items[i]!;
       const managed = createItemFn(item, i, anchor);
       const key = keyFn(item, i);
       managed.key = key;
-      managedItems[base + i - from] = managed;
+      managedItems[write++] = managed;
       keyMap.set(key, managed);
     }
 
@@ -256,10 +312,7 @@ export function createKeyedReconciler<T>(
         for (let i = 0; i < oldLength; i++) {
           const managed = managedItems[i]!;
           const newItem = newItems[i]!;
-          if (managed.value !== newItem) {
-            managed.value = newItem;
-            managed.update!(newItem);
-          }
+          if (managed.value !== newItem) updateRow(managed, newItem, i);
         }
         bulkCreate(newItems, oldLength);
         return;
@@ -296,6 +349,25 @@ export function createKeyedReconciler<T>(
       }
     }
 
+    if (oldLength === newLength) {
+      // Identity-first pass. When keys and order are unchanged, which is every immutable
+      // update pattern (`rows.map(...)`, replacing some items in a copied array), each row is
+      // matched by position: an identical item needs nothing, an item whose key matches the
+      // row at that index is updated in place. Neither derives a key for unchanged rows nor
+      // touches the key map. The first position whose key differs means something moved,
+      // and the keyed paths below take over from the start (rows already updated here are
+      // skipped there because their value now matches).
+      let inPlace = 0;
+      for (; inPlace < newLength; inPlace++) {
+        const managed = managedItems[inPlace]!;
+        const newItem = newItems[inPlace]!;
+        if (managed.value === newItem) continue;
+        if (keyFn(newItem, inPlace) !== managed.key) break;
+        updateRow(managed, newItem, inPlace);
+      }
+      if (inPlace === newLength) return;
+    }
+
     // Fast path: reorder with same keys (fused allKeysExist + update in single pass)
     if (oldLength === newLength) {
       let allKeysExist = true;
@@ -310,10 +382,7 @@ export function createKeyedReconciler<T>(
           allKeysExist = false;
           break;
         }
-        if (existing.value !== newItem) {
-          existing.value = newItem;
-          existing.update!(newItem);
-        }
+        if (existing.value !== newItem) updateRow(existing, newItem, i);
         if (managedItems[i] !== existing) {
           mismatchCount++;
           if (mismatchCount === 1) mismatch1 = i;
@@ -397,10 +466,7 @@ export function createKeyedReconciler<T>(
       const key = keyFn(newItem, i);
       const existing = keyMap.get(key);
       if (existing) {
-        if (existing.value !== newItem) {
-          existing.value = newItem;
-          existing.update!(newItem);
-        }
+        if (existing.value !== newItem) updateRow(existing, newItem, i);
         newManagedItems.push(existing);
       } else {
         const refNode = i < managedItems.length ? managedItems[i]!.el : anchor;
