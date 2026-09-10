@@ -13,6 +13,7 @@ import {
   getBindingsForElement,
   getElementHtml,
   injectIdIntoFirstElement,
+  firstElementId,
   type HtmlElement,
   type ParsedTemplate,
 } from '../../utils/html-parser/index.js';
@@ -326,8 +327,9 @@ export const collectWhenElseBlocks = (
     const signalNames = [
       ...new Set([...(binding.signalNames || [binding.signalName]), ...(rewritten?.extraSignals ?? [])]),
     ].filter((s) => s !== '');
-    const thenId = `b${state.idCounter++}`;
-    const elseId = `b${state.idCounter++}`;
+    // A branch root's own id is the branch id: nothing is injected and the id survives
+    const thenId = firstElementId(binding.thenTemplate) ?? `b${state.idCounter++}`;
+    const elseId = firstElementId(binding.elseTemplate) ?? `b${state.idCounter++}`;
     const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);
 
     const thenProcessed = processSubTemplate(binding.thenTemplate, thenId);

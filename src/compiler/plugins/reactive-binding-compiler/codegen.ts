@@ -32,6 +32,14 @@ import { INTERNAL_RUNTIME_SPECIFIER, PUBLIC_RUNTIME_SPECIFIER } from '../../../c
  */
 const ROW_BATCH_SIZE = 16;
 
+/**
+ * The variable that holds a bound element or marker. Compiler ids (`b12`) are used as they
+ * are; a developer's own id is mapped to a name that cannot collide with the component's
+ * variables or contain characters an identifier cannot (`my-box` → `_u_my$2dbox`).
+ */
+const elVar = (id: string): string =>
+  /^b\d+$/.test(id) ? id : '_u_' + id.replace(/[^A-Za-z0-9_]/g, (c) => '$' + c.charCodeAt(0).toString(16));
+
 // ============================================================================
 // Key Function Inlining
 // ============================================================================
@@ -493,7 +501,7 @@ const compileKeyGuard = (modifiers: string[]): string | null => {
  * For text bindings, navigates from comment marker to adjacent text node.
  */
 export const generateBindingUpdateCode = (binding: SimpleBinding): string => {
-  const elRef = binding.id;
+  const elRef = elVar(binding.id);
 
   if (binding.type === 'style') {
     const prop = toCamelCase(binding.property!);
@@ -527,7 +535,7 @@ const expressionWrite = (binding: {
  * Generate initial value assignment code for a simple binding
  */
 export const generateInitialValueCode = (binding: SimpleBinding, ap: AccessPattern = CLOSURE_ACCESS): string => {
-  const elRef = binding.id;
+  const elRef = elVar(binding.id);
   const signalCall = ap.signalCall(binding.signalName);
 
   if (binding.type === 'style') {
@@ -537,7 +545,7 @@ export const generateInitialValueCode = (binding: SimpleBinding, ap: AccessPatte
     return attributeWrite(elRef, binding, signalCall);
   } else {
     // Comment marker → next sibling text node
-    return `${elRef}.nextSibling.data = ${signalCall} ?? '' ?? ''`;
+    return `${elRef}.nextSibling.data = ${signalCall} ?? ''`;
   }
 };
 
@@ -640,7 +648,7 @@ const generateRepeatNestedCondInitFn = (
   // Item bindings: set once when conditional shows
   const itemElIds = [...new Set(nestedItemBindings.map((b) => b.elementId))];
   for (const elId of itemElIds) {
-    parts.push(`  const _n_${elId} = ${itemTextIds.has(elId) ? `_rcm['${elId}']` : `_q('${elId}')`};`);
+    parts.push(`  const _n_${elVar(elId)} = ${itemTextIds.has(elId) ? `_rcm['${elId}']` : `_q('${elId}')`};`);
   }
   for (const ib of nestedItemBindings) {
     const expr = renameIdentifierInExpression(ib.expression, outerItemVar, 'item');
@@ -657,7 +665,7 @@ const generateRepeatNestedCondInitFn = (
   const signalElIds = [...new Set([...simpleNested.map((b) => b.id), ...exprNested.map((b) => b.id)])];
   for (const elId of signalElIds) {
     if (!itemElIds.includes(elId)) {
-      parts.push(`  const _n_${elId} = ${signalTextIds.has(elId) ? `_rcm['${elId}']` : `_q('${elId}')`};`);
+      parts.push(`  const _n_${elVar(elId)} = ${signalTextIds.has(elId) ? `_rcm['${elId}']` : `_q('${elId}')`};`);
     }
   }
   // Initial values for signal bindings
@@ -665,22 +673,22 @@ const generateRepeatNestedCondInitFn = (
     const renamedSignalName = sb.signalName === outerItemVar ? 'item' : sb.signalName;
     const signalCall = ap.signalCall(renamedSignalName);
     if (sb.type === 'text') {
-      parts.push(`  if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = ${signalCall} ?? '' ?? '';`);
+      parts.push(`  if (_n_${elVar(sb.id)}) _n_${elVar(sb.id)}.nextSibling.data = ${signalCall} ?? '';`);
     } else if (sb.type === 'attr' && sb.property) {
-      parts.push(`  if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, signalCall)};`);
+      parts.push(`  if (_n_${elVar(sb.id)}) ${attributeWrite(`_n_${elVar(sb.id)}`, sb, signalCall)};`);
     } else if (sb.type === 'style' && sb.property) {
-      parts.push(`  if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', ${signalCall});`);
+      parts.push(`  if (_n_${elVar(sb.id)}) _n_${elVar(sb.id)}.style.setProperty('${sb.property}', ${signalCall});`);
     }
   }
   // Expression bindings: first write here, guarded re-writes in the subscriptions below
   const exprNestedWrites = new Map<ExpressionBinding, GuardedWrite>();
   for (const eb of exprNested) {
     const renamedExpr = renameIdentifierInExpression(eb.expression, outerItemVar, 'item');
-    const write = expressionWrite({ ...eb, id: `_n_${eb.id}` });
+    const write = expressionWrite({ ...eb, id: `_n_${elVar(eb.id)}` });
     if (!write) continue;
-    const gw = guardedWrite(`_pv_${eb.id}`, write, renamedExpr);
+    const gw = guardedWrite(`_pv_${elVar(eb.id)}`, write, renamedExpr);
     exprNestedWrites.set(eb, gw);
-    parts.push(`  let _pv_${eb.id}; if (_n_${eb.id}) ${gw.fill};`);
+    parts.push(`  let _pv_${elVar(eb.id)}; if (_n_${elVar(eb.id)}) ${gw.fill};`);
   }
   parts.push('  const _nsubs = [];');
   // Subscriptions for signal bindings
@@ -692,10 +700,11 @@ const generateRepeatNestedCondInitFn = (
   for (const [signalName, sbs] of signalGroups) {
     const updates = sbs
       .map((sb) => {
-        if (sb.type === 'text') return `if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = v ?? ''`;
-        if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, 'v')}`;
+        if (sb.type === 'text') return `if (_n_${elVar(sb.id)}) _n_${elVar(sb.id)}.nextSibling.data = v ?? ''`;
+        if (sb.type === 'attr' && sb.property)
+          return `if (_n_${elVar(sb.id)}) ${attributeWrite(`_n_${elVar(sb.id)}`, sb, 'v')}`;
         if (sb.type === 'style' && sb.property)
-          return `if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', v)`;
+          return `if (_n_${elVar(sb.id)}) _n_${elVar(sb.id)}.style.setProperty('${sb.property}', v)`;
         return '';
       })
       .filter(Boolean);
@@ -708,7 +717,7 @@ const generateRepeatNestedCondInitFn = (
   for (const eb of exprNested) {
     const gw = exprNestedWrites.get(eb);
     if (!gw) continue;
-    const updFn = `() => { if (_n_${eb.id}) ${gw.update}; }`;
+    const updFn = `() => { if (_n_${elVar(eb.id)}) ${gw.update}; }`;
     for (const sig of eb.signalNames) {
       const renamedSig = sig === outerItemVar ? 'item' : ap.signal(sig);
       parts.push(`  _nsubs.push(${renamedSig}.subscribe(${updFn}, true));`);
@@ -842,7 +851,7 @@ export const generateInitBindingsFunction = (
   if (topLevelIds.length > 0) {
     for (const id of topLevelIds) {
       // Text bindings use comment markers found via TreeWalker; others use getElementById
-      lines.push(`    const ${id} = ${textBindingIds.has(id) ? `_cm['${id}']` : `_gid('${id}')`};`);
+      lines.push(`    const ${elVar(id)} = ${textBindingIds.has(id) ? `_cm['${id}']` : `_gid('${id}')`};`);
     }
   }
   // Simple bindings: initial value assignment + consolidated subscription
@@ -857,14 +866,14 @@ export const generateInitBindingsFunction = (
   // e.g. const _upd_b2 = () => { b2.nextSibling.data = count() + 1; };
   //      count.subscribe(_upd_b2, true);
   expressionBindings.forEach((binding, idx) => {
-    const updFn = `_upd_${binding.id}_${idx}`;
+    const updFn = `_upd_${elVar(binding.id)}_${idx}`;
     const expr = binding.expression;
     const signals = binding.signalNames;
     // The expression re-runs whenever any of its signals change; the guard skips the DOM
     // write when the result is unchanged.
-    const write = expressionWrite(binding);
+    const write = expressionWrite({ ...binding, id: elVar(binding.id) });
     if (!write) return;
-    const guard = `_pv_${binding.id}_${idx}`;
+    const guard = `_pv_${elVar(binding.id)}_${idx}`;
     lines.push(`    let ${guard}; const ${updFn} = () => { ${guardedWrite(guard, write, expr).update}; };`);
     lines.push(`    ${updFn}();`);
     for (const sig of signals) {
@@ -1363,7 +1372,7 @@ export const generateInitBindingsFunction = (
           const condAnchorPath = staticInfo.directiveAnchorPaths?.get(cond.id);
           if (!condAnchorPath) continue;
           const condNavExpr = pathToSiblingNav('_el', condAnchorPath);
-          lines.push(`        const _cond_${cond.id} = ${condNavExpr};`);
+          lines.push(`        const _cond_${elVar(cond.id)} = ${condNavExpr};`);
           const condTemplate = escapeTemplateLiteral(cond.templateContent);
           const condInitNested = generateRepeatNestedCondInitFn(
             cond.nestedBindings,
@@ -1375,12 +1384,12 @@ export const generateInitBindingsFunction = (
           const isSimpleExpr = cond.signalNames.length === 1 && cond.jsExpression === ap.signalCall(cond.signalName);
           if (isSimpleExpr) {
             lines.push(
-              `        _cleanups.push(${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${cond.id}));`,
+              `        _cleanups.push(${BIND_FN.IF}(r, ${ap.signal(cond.signalName)}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${elVar(cond.id)}));`,
             );
           } else {
             const condSignals = cond.signalNames.map((s) => ap.signal(s)).join(', ');
             lines.push(
-              `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${condSignals}], () => ${cond.jsExpression}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${cond.id}));`,
+              `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${condSignals}], () => ${cond.jsExpression}, '${cond.id}', \`${condTemplate}\`, ${condInitNested}, _cond_${elVar(cond.id)}));`,
             );
           }
         }
@@ -1391,8 +1400,8 @@ export const generateInitBindingsFunction = (
           if (!thenAnchorPath || !elseAnchorPath) continue;
           const thenNavExpr = pathToSiblingNav('_el', thenAnchorPath);
           const elseNavExpr = pathToSiblingNav('_el', elseAnchorPath);
-          lines.push(`        const _cond_${we.thenId} = ${thenNavExpr};`);
-          lines.push(`        const _cond_${we.elseId} = ${elseNavExpr};`);
+          lines.push(`        const _cond_${elVar(we.thenId)} = ${thenNavExpr};`);
+          lines.push(`        const _cond_${elVar(we.elseId)} = ${elseNavExpr};`);
           const thenTplWithId = injectIdIntoFirstElement(we.thenTemplate, we.thenId);
           const elseTplWithId = injectIdIntoFirstElement(we.elseTemplate, we.elseId);
           const escapedThen = escapeTemplateLiteral(thenTplWithId);
@@ -1401,10 +1410,10 @@ export const generateInitBindingsFunction = (
           const elseInitFn = generateRepeatNestedCondInitFn(we.elseBindings, [], [], rep.itemVar, ap);
           const weSignals = we.signalNames.map((s) => ap.signal(s)).join(', ');
           lines.push(
-            `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThen}\`, ${thenInitFn}, _cond_${we.thenId}));`,
+            `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThen}\`, ${thenInitFn}, _cond_${elVar(we.thenId)}));`,
           );
           lines.push(
-            `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElse}\`, ${elseInitFn}, _cond_${we.elseId}));`,
+            `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => !(${we.jsExpression}), '${we.elseId}', \`${escapedElse}\`, ${elseInitFn}, _cond_${elVar(we.elseId)}));`,
           );
         }
         // Nested repeat codegen (Step 15)
@@ -1794,7 +1803,7 @@ export const generateInitBindingsFunction = (
       initLines.push(`      const _wcm = _fcm(r);`);
     }
     for (const id of ids) {
-      initLines.push(`      const ${id} = ${weTextIds.has(id) ? `_wcm['${id}']` : `_gid('${id}')`};`);
+      initLines.push(`      const ${elVar(id)} = ${weTextIds.has(id) ? `_wcm['${id}']` : `_gid('${id}')`};`);
     }
     const simpleNestedBindings = bindings.filter(isSimpleBinding);
     const exprNestedBindings = bindings.filter(isExpressionBinding);
@@ -1802,11 +1811,11 @@ export const generateInitBindingsFunction = (
       initLines.push(`      ${generateInitialValueCode(binding, ap)};`);
     }
     exprNestedBindings.forEach((binding, idx) => {
-      const updFn = `_upd_${binding.id}_${idx}`;
+      const updFn = `_upd_${elVar(binding.id)}_${idx}`;
       const expr = binding.expression;
-      const write = expressionWrite(binding);
+      const write = expressionWrite({ ...binding, id: elVar(binding.id) });
       if (write) {
-        const guard = `_pv_${binding.id}_${idx}`;
+        const guard = `_pv_${elVar(binding.id)}_${idx}`;
         initLines.push(`      let ${guard}; const ${updFn} = () => { ${guardedWrite(guard, write, expr).update}; };`);
       }
       // Expression bindings always need an explicit initial call because
@@ -1847,7 +1856,7 @@ export const generateInitBindingsFunction = (
       initLines.push(`        ${ce},`);
     }
     exprNestedBindings.forEach((binding, idx) => {
-      const updFn = `_upd_${binding.id}_${idx}`;
+      const updFn = `_upd_${elVar(binding.id)}_${idx}`;
       const signals = binding.signalNames;
       for (const sig of signals) {
         initLines.push(`        ${ap.signal(sig)}.subscribe(${updFn}, true),`);

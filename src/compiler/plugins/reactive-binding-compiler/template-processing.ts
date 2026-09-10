@@ -461,8 +461,9 @@ export const processHtmlTemplateWithConditionals = (
       );
       continue;
     }
+    // An element's own id is its binding id, so nothing is injected and the id survives
     if (!elementIdMap.has(binding.element)) {
-      elementIdMap.set(binding.element, `b${state.idCounter++}`);
+      elementIdMap.set(binding.element, binding.element.attributes.get('id')?.value || `b${state.idCounter++}`);
     }
     const elementId = elementIdMap.get(binding.element)!;
 
@@ -718,7 +719,10 @@ export const processSubTemplateWithNesting = (
 
     if (!elementIdMap.has(binding.element)) {
       const isFirstRootBindingElement = firstRootElement !== null && binding.element === firstRootElement;
-      elementIdMap.set(binding.element, isFirstRootBindingElement ? parentId : `b${state.idCounter++}`);
+      elementIdMap.set(
+        binding.element,
+        isFirstRootBindingElement ? parentId : binding.element.attributes.get('id')?.value || `b${state.idCounter++}`,
+      );
     }
     const elementId = elementIdMap.get(binding.element)!;
 

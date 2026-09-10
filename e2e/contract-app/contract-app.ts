@@ -91,6 +91,8 @@ export const ContractApp = defineComponent('contract-app', () => {
   const whenClicksB = signal(0);
   const whenItems = signal([{ id: 1, name: 'W-1' }]);
   const pickedWhenItem = signal('none');
+  const devKind = signal('one');
+  const devFlag = signal(true);
   const orderItems = signal([
     { id: 1, name: 'O-1' },
     { id: 2, name: 'O-2' },
@@ -149,6 +151,8 @@ export const ContractApp = defineComponent('contract-app', () => {
   const incWhenA = () => whenClicksA(whenClicksA() + 1);
   const incWhenB = () => whenClicksB(whenClicksB() + 1);
   const pickWhenItem = (name: string) => pickedWhenItem(name);
+  const toggleDev = () => devFlag(!devFlag());
+  const bumpDev = () => devKind('two');
   const addWhenItem = () => {
     const next = whenItems().length + 1;
     whenItems([...whenItems(), { id: next, name: `W-${next}` }]);
@@ -971,6 +975,32 @@ export const ContractApp = defineComponent('contract-app', () => {
               mixedRows(),
               (_row) => html`<li data-testid="static-row">static</li>`,
               html`<li data-testid="static-empty">static-empty</li>`,
+              (row) => row.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="dev-id-section">
+          <button data-testid="dev-toggle" @click=${toggleDev}>toggle</button>
+          <button data-testid="dev-bump" @click=${bumpDev}>bump</button>
+          <p id="dev-attr" title=${devKind()}>attr</p>
+          <p id="dev-style" style="color: ${devKind() === 'one' ? 'rgb(1, 1, 1)' : 'rgb(2, 2, 2)'}">style</p>
+          <label for="dev-input">Dev input</label>
+          <input id="dev-input" value=${devKind()} />
+          ${whenElse(
+            devFlag(),
+            html`<div id="dev-then" data-testid="dev-branch">then-${devKind()}</div>`,
+            html`<div id="dev-else" data-testid="dev-branch">else</div>`,
+          )}
+          <ul>
+            ${repeat(
+              mixedRows(),
+              (row) => html`
+                <li data-testid="dev-row">
+                  ${whenElse(devFlag(), html`<b id="dev-row-then">${row.label}</b>`, html`<i id="dev-row-else">off</i>`)}
+                </li>
+              `,
+              null,
               (row) => row.id,
             )}
           </ul>

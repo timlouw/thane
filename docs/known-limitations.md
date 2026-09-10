@@ -41,13 +41,13 @@ The compiler's Compile-Time Function Evaluation (CTFE) runs component setup func
 
 Template variables cannot use ternary or logical operators (THANE405). Use `whenElse()` for conditional rendering instead.
 
-### User IDs on Bound Elements
+### User IDs and Directive Placeholders
 
-At component level, an element with an attribute, style, or text binding receives a compiler-generated `id` (`b0`, `b1`, …). If you also give such an element your own `id`, the compiler-generated one takes precedence and yours is dropped. Event handlers and `when()` elements reuse your `id` instead. Inside `repeat()` rows, bound elements are located by position rather than by `id`, so your `id` is kept as written; note that it is then repeated on every row. When you need a stable `id` for CSS or `label for=""`, put it on a wrapper element that has no bindings.
+Your `id` attributes are kept on every element, bound or not, including `when()` elements and `whenElse()` branch roots; the compiler adds its own `bN` ids only to bound elements that have none. Two things to know: inside `repeat()` rows an `id` is repeated on every row, so prefer `data-*` attributes there; and while a `when()` element or `whenElse()` branch is hidden, a `<template>` placeholder carries its `id`, so `getElementById` finds that placeholder until the content is shown again.
 
 ### One Root Element per Repeat Row
 
-Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
+Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\``is reported at build time as THANE007; wrap the pair in a single element instead. A row that is a child component call,`(item) => Card({ item })`, has no markup of its own and is not affected.
 
 ## Runtime Constraints
 

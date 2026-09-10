@@ -429,6 +429,34 @@ test('rows with an index and mixed signal content render, update and follow the 
   await expect(page.getByTestId('static-row')).toHaveCount(2);
 });
 
+test('developer ids are kept on bound elements and whenElse branch roots', async ({ page }) => {
+  await gotoApp({ page });
+
+  await expect(page.locator('#dev-attr')).toHaveAttribute('title', 'one');
+  await expect(page.locator('#dev-style')).toHaveCSS('color', 'rgb(1, 1, 1)');
+  await expect(page.getByLabel('Dev input')).toHaveValue('one');
+  await expect(page.locator('div#dev-then')).toHaveText('then-one');
+  await expect(page.locator('div#dev-else')).toHaveCount(0);
+  await expect(page.getByTestId('dev-row').locator('b#dev-row-then')).toHaveText(['FB-A', 'FB-B']);
+
+  await page.getByTestId('dev-bump').click();
+  await expect(page.locator('#dev-attr')).toHaveAttribute('title', 'two');
+  await expect(page.locator('#dev-style')).toHaveCSS('color', 'rgb(2, 2, 2)');
+  await expect(page.getByLabel('Dev input')).toHaveValue('two');
+  await expect(page.locator('div#dev-then')).toHaveText('then-two');
+
+  // The branch roots' own ids drive the directive
+  await page.getByTestId('dev-toggle').click();
+  await expect(page.locator('div#dev-then')).toHaveCount(0);
+  await expect(page.locator('div#dev-else')).toHaveText('else');
+  await expect(page.getByTestId('dev-branch')).toHaveCount(1);
+  await expect(page.getByTestId('dev-row').locator('i#dev-row-else')).toHaveCount(2);
+  await page.getByTestId('dev-toggle').click();
+  await expect(page.locator('div#dev-then')).toHaveText('then-two');
+  await expect(page.getByTestId('dev-branch')).toHaveCount(1);
+  await expect(page.getByTestId('dev-row').locator('b#dev-row-then')).toHaveText(['FB-A', 'FB-B']);
+});
+
 test('inter-component reactivity and child-parent interaction with remount', async ({ page }) => {
   await gotoApp({ page });
 

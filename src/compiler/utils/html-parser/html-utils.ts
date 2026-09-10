@@ -283,3 +283,9 @@ export function injectIdIntoFirstElement(html: string, id: string): string {
 
   return trimmed.substring(0, tagNameEnd) + ` id="${id}"` + trimmed.substring(tagNameEnd);
 }
+
+/** The `id` attribute of a template's first element, if it has one. */
+export function firstElementId(html: string): string | undefined {
+  const firstTagMatch = html.trim().match(/^<(\w+)([^>]*)>/);
+  return firstTagMatch?.[2]?.match(/\sid\s*=\s*['"]([^'"]*)['"]/)?.[1];
+}
