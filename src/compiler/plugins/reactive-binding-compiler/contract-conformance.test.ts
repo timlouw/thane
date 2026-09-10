@@ -148,7 +148,7 @@ export const App = defineComponent('sub-nesting-app', () => {
                 \${repeat(
                   groupA().filter((x) => x.id > 0),
                   (item, i) => html\`
-                    \${whenElse(item.id > 1, html\`<li>large-\${item.v}-\${i}</li>\`, html\`<li>small-\${item.v}-\${i}</li>\`)}
+                    <li>\${whenElse(item.id > 1, html\`<b>large-\${item.v}-\${i}</b>\`, html\`<i>small-\${item.v}-\${i}</i>\`)}</li>
                   \`,
                   html\`<li>none-a</li>\`,
                   (item) => item.id,

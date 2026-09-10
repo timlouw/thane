@@ -2,11 +2,7 @@
  * Type definitions for the reactive binding compiler
  */
 
-import type {
-  ReactiveBindingKind,
-  RepeatOptimizationSkipReasonKind,
-  TextBindingMode,
-} from '../../../contracts/index.js';
+import type { ReactiveBindingKind, TextBindingMode } from '../../../contracts/index.js';
 
 /**
  * Access pattern abstraction for code generation.
@@ -250,11 +246,4 @@ export interface StaticTemplateInfo {
     expression: string;
     staticValue?: string | undefined;
   }>;
-  /** Whether this template can use the optimized path */
-  canUseOptimized: boolean;
-  /** Reason optimization was skipped (for warnings) */
-  skipReason?: RepeatOptimizationSkipReason;
 }
-
-/** Reasons why a repeat block cannot use the optimized template-based rendering */
-export type RepeatOptimizationSkipReason = RepeatOptimizationSkipReasonKind;

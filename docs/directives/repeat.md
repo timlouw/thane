@@ -15,6 +15,8 @@ ${repeat(items, renderFn, emptyTemplate?, trackBy?)}
 | `emptyTemplate` | `html \| null` | *(Optional)* Template shown when the array is empty |
 | `trackBy` | `(item: T, index: number) => string \| number` | *(Optional)* Key function for stable identity |
 
+The template returned by `renderFn` has exactly one root element; every row is cloned from a static copy of it and updated in place. A row with two root elements, or none, is reported at build time as THANE007.
+
 ## Basic Usage
 
 ```typescript

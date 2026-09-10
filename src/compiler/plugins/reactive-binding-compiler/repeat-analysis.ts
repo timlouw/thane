@@ -13,11 +13,10 @@ import type {
   ItemEventBinding,
   EventBinding,
   StaticTemplateInfo,
-  RepeatOptimizationSkipReason,
   SimpleBinding,
 } from './types.js';
 import { isSimpleBinding } from './types.js';
-import { REPEAT_OPTIMIZATION_SKIP_REASON } from '../../../contracts/index.js';
+import { ErrorCode } from '../../errors.js';
 import { processSubTemplateWithNesting } from './template-processing.js';
 import {
   parseHtmlTemplate,
@@ -87,32 +86,6 @@ const createRowRefRewriter = (itemVar: string, indexVar: string | undefined) => 
 };
 
 /**
- * Get a human-readable explanation for why optimization was skipped
- */
-export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason): string => {
-  switch (reason) {
-    case REPEAT_OPTIMIZATION_SKIP_REASON.NO_BINDINGS:
-      return 'no item bindings found';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.SIGNAL_BINDINGS:
-      return 'contains component signal bindings inside items - move to data model';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.NESTED_REPEAT:
-      return 'contains nested repeat() - not yet supported for optimization';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.NESTED_CONDITIONAL:
-      return 'contains when()/whenElse() inside items - not yet supported for optimization';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.MIXED_BINDINGS:
-      return 'item bindings reference component signals - use pure item data instead';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.MULTI_ROOT:
-      return 'template has multiple root elements - wrap in a single container element';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND:
-      return 'element navigation path could not be computed';
-    default: {
-      const exhaustive: never = reason;
-      throw new Error(`Unhandled repeat optimization reason: ${String(exhaustive)}`);
-    }
-  }
-};
-
-/**
  * The id used to locate a bound element inside a row template. A developer-supplied id is
  * reused as-is (so it survives in the row and nothing else has to be injected); otherwise a
  * generated one is assigned. Either way the element is registered in elementIdMap, which is
@@ -147,14 +120,17 @@ export const generateStaticRepeatTemplate = (
   // Parse the template to get element structure
   const parsed = parseHtmlTemplate(itemTemplate);
 
+  // Rows are cloned from one element and reconciled by that element, so a row template is
+  // exactly one root element; anything else is reported rather than rendered another way.
   if (parsed.roots.length !== 1) {
-    // Multiple root elements - cannot use optimized path
-    return {
-      staticHtml: '',
-      elementBindings: [],
-      canUseOptimized: false,
-      skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.MULTI_ROOT,
-    };
+    // A row that is only a when()/whenElse() parses as its anchor elements.
+    const onlyDirectives = parsed.roots.length > 0 && parsed.roots.every((r) => r.tagName === 'template');
+    throw new Error(
+      `${ErrorCode.REPEAT_ROW_ROOT}: a repeat() row template must have exactly one root element` +
+        (onlyDirectives
+          ? '; this row is only a when()/whenElse() directive. Wrap it in an element such as <li>.'
+          : ` (found ${parsed.roots.length}). Wrap the row's content in a single element.`),
+    );
   }
 
   const rootEl = parsed.roots[0]!;
@@ -212,15 +188,13 @@ export const generateStaticRepeatTemplate = (
     }
   }
 
-  // Check if all bindings have paths
+  // Every bound element has a path; since ids are injected before analysis this can only be
+  // a compiler bug, and an error surfaces it instead of hiding it behind another renderer.
   for (const elementId of bindingsByElement.keys()) {
     if (!elementPaths.has(elementId)) {
-      return {
-        staticHtml: '',
-        elementBindings: [],
-        canUseOptimized: false,
-        skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND,
-      };
+      throw new Error(
+        `${ErrorCode.PLUGIN_ERROR}: internal compiler error — the element path for a bound element in a repeat() row could not be computed. Please report this with the row template.`,
+      );
     }
   }
 
@@ -364,17 +338,13 @@ export const generateStaticRepeatTemplate = (
     mixedSignalItemBindings = [];
     for (const mb of mixedItemBindings) {
       // The bound element carries an injected id like any other bound element, so its
-      // path resolves the same way. If it cannot be found, use the fallback renderer
-      // rather than guessing an element.
+      // path resolves the same way.
       const rootId = rootEl.attributes.get('id')?.value;
       const path = rootId === mb.elementId ? [] : findElementPath(rootEl, mb.elementId, []);
       if (path === null) {
-        return {
-          staticHtml: '',
-          elementBindings: [],
-          canUseOptimized: false,
-          skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND,
-        };
+        throw new Error(
+          `${ErrorCode.PLUGIN_ERROR}: internal compiler error — the element path for a bound element in a repeat() row could not be computed. Please report this with the row template.`,
+        );
       }
       {
         mixedSignalItemBindings.push({
@@ -398,7 +368,6 @@ export const generateStaticRepeatTemplate = (
     ...(signalCommentBindings && signalCommentBindings.length > 0 ? { signalCommentBindings } : {}),
     ...(directiveAnchorPaths ? { directiveAnchorPaths } : {}),
     ...(mixedSignalItemBindings && mixedSignalItemBindings.length > 0 ? { mixedSignalItemBindings } : {}),
-    canUseOptimized: true,
   };
 };
 

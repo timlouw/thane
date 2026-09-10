@@ -385,38 +385,48 @@ test('nested repeat/when/whenElse keep structure and deep bindings correct', asy
   await expect(page.getByTestId('nested-row')).toHaveCount(2);
 });
 
-test('repeat safe fallback renders correct rows and content in browser', async ({ page }) => {
+test('rows with an index and mixed signal content render, update and follow the list', async ({ page }) => {
   await gotoApp({ page });
 
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-index')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-expr')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-label').nth(0)).toHaveText('FB-A');
-  await expect(page.getByTestId('fallback-row-label').nth(1)).toHaveText('FB-B');
-  await expect(page.getByTestId('fallback-row-index').nth(0)).toHaveText('0');
-  await expect(page.getByTestId('fallback-row-index').nth(1)).toHaveText('1');
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-1');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-1');
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-index')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-expr')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-label').nth(0)).toHaveText('FB-A');
+  await expect(page.getByTestId('mixed-row-label').nth(1)).toHaveText('FB-B');
+  await expect(page.getByTestId('mixed-row-index').nth(0)).toHaveText('0');
+  await expect(page.getByTestId('mixed-row-index').nth(1)).toHaveText('1');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-1');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-1');
 
   await page.getByTestId('inc-expr-a').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-2');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-2');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-2');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-2');
 
-  await page.getByTestId('fallback-add').click();
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(3);
-  await expect(page.getByTestId('fallback-row-label').nth(2)).toHaveText('FB-203');
-  await expect(page.getByTestId('fallback-row-index').nth(2)).toHaveText('2');
-  await expect(page.getByTestId('fallback-row-expr').nth(2)).toHaveText('FB-203-2');
+  await page.getByTestId('mixed-add').click();
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(3);
+  await expect(page.getByTestId('mixed-row-label').nth(2)).toHaveText('FB-203');
+  await expect(page.getByTestId('mixed-row-index').nth(2)).toHaveText('2');
+  await expect(page.getByTestId('mixed-row-expr').nth(2)).toHaveText('FB-203-2');
 
-  await page.getByTestId('fallback-clear').click();
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(0);
-  await expect(page.getByTestId('fallback-row-expr')).toHaveCount(0);
-  await expect(page.getByTestId('fallback-empty')).toHaveText('fallback-empty');
+  await page.getByTestId('mixed-clear').click();
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(0);
+  await expect(page.getByTestId('mixed-row-expr')).toHaveCount(0);
+  await expect(page.getByTestId('mixed-empty')).toHaveText('mixed-empty');
 
-  await page.getByTestId('fallback-reset').click();
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-label').nth(0)).toHaveText('FB-A');
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-2');
+  await page.getByTestId('mixed-reset').click();
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-label').nth(0)).toHaveText('FB-A');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-2');
+
+  // Rows with no bindings are cloned from the static template and follow the list
+  await expect(page.getByTestId('static-row')).toHaveCount(2);
+  await page.getByTestId('mixed-add').click();
+  await expect(page.getByTestId('static-row')).toHaveCount(3);
+  await page.getByTestId('mixed-clear').click();
+  await expect(page.getByTestId('static-row')).toHaveCount(0);
+  await expect(page.getByTestId('static-empty')).toHaveText('static-empty');
+  await page.getByTestId('mixed-reset').click();
+  await expect(page.getByTestId('static-row')).toHaveCount(2);
 });
 
 test('inter-component reactivity and child-parent interaction with remount', async ({ page }) => {
@@ -630,6 +640,11 @@ test('when() content supports events, nested directives and re-initialises after
   await page.getByTestId('add-when-item').click();
   await expect(page.getByTestId('when-item')).toHaveCount(2);
 
+  // Row events inside the block reach their handler with the row's item
+  await expect(page.getByTestId('when-picked')).toHaveText('none');
+  await page.getByTestId('when-item-btn').nth(1).click();
+  await expect(page.getByTestId('when-picked')).toHaveText('W-2');
+
   // Hide, then show again: every nested binding must be re-initialised on the fresh DOM
   await page.getByTestId('toggle-when-content').click();
   await expect(page.getByTestId('when-content')).toHaveCount(0);
@@ -639,6 +654,8 @@ test('when() content supports events, nested directives and re-initialises after
   await expect(page.getByTestId('when-inner')).toHaveText('inner-else');
   await expect(page.getByTestId('when-item')).toHaveCount(2);
   await expect(page.getByTestId('when-nested')).toHaveCount(0);
+  await page.getByTestId('when-item-btn').nth(0).click();
+  await expect(page.getByTestId('when-picked')).toHaveText('W-1');
 
   await page.getByTestId('when-btn-a').click();
   await expect(page.getByTestId('when-clicks')).toHaveText('2-2');
@@ -831,31 +848,31 @@ test('boundary comments isolate text nodes in multi-binding expressions', async 
   await expect(page.getByTestId('expr-mixed')).toHaveText('pre-5-post');
 });
 
-test('fallback repeat mixed-content with signal expression in item template', async ({ page }) => {
+test('mixed-content rows react to a component signal after add, clear and reset', async ({ page }) => {
   await gotoApp({ page });
 
-  // fallback-row-expr uses "${row.label}-${exprA()}" — item var + signal, comment markers
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-1');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-1');
+  // mixed-row-expr uses "${row.label}-${exprA()}" — item data and a component signal in one text binding
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-1');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-1');
 
-  // Signal change updates all fallback rows
+  // Signal change updates every row
   await page.getByTestId('inc-expr-a').click();
   await page.getByTestId('inc-expr-a').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-3');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-3');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-3');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-3');
 
   // Add row, then signal update should include new row
-  await page.getByTestId('fallback-add').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(2)).toHaveText('FB-203-3');
+  await page.getByTestId('mixed-add').click();
+  await expect(page.getByTestId('mixed-row-expr').nth(2)).toHaveText('FB-203-3');
   await page.getByTestId('inc-expr-a').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-4');
-  await expect(page.getByTestId('fallback-row-expr').nth(2)).toHaveText('FB-203-4');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-4');
+  await expect(page.getByTestId('mixed-row-expr').nth(2)).toHaveText('FB-203-4');
 
-  // Clear → empty fallback renders, then reset restores mixed-content
-  await page.getByTestId('fallback-clear').click();
-  await expect(page.getByTestId('fallback-empty')).toBeVisible();
-  await page.getByTestId('fallback-reset').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-4');
+  // Clear → empty template renders, then reset restores mixed-content
+  await page.getByTestId('mixed-clear').click();
+  await expect(page.getByTestId('mixed-empty')).toBeVisible();
+  await page.getByTestId('mixed-reset').click();
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-4');
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

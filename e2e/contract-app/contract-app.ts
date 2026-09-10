@@ -40,7 +40,7 @@ const initialNestedItems = (): NestedItem[] => [
   { id: 102, label: 'Nest-B', visible: false, children: [] },
 ];
 
-const initialFallbackRows = (): Array<{ id: number; label: string }> => [
+const initialMixedRows = (): Array<{ id: number; label: string }> => [
   { id: 201, label: 'FB-A' },
   { id: 202, label: 'FB-B' },
 ];
@@ -55,7 +55,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const complexWhenElseFlag = signal(true);
   const items = signal<Item[]>(initialItems());
   const nestedItems = signal<NestedItem[]>(initialNestedItems());
-  const fallbackRows = signal(initialFallbackRows());
+  const mixedRows = signal(initialMixedRows());
   const parentCount = signal(10);
   const childMounts = signal(0);
   const childToParentEvents = signal(0);
@@ -90,6 +90,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const whenClicksA = signal(0);
   const whenClicksB = signal(0);
   const whenItems = signal([{ id: 1, name: 'W-1' }]);
+  const pickedWhenItem = signal('none');
   const orderItems = signal([
     { id: 1, name: 'O-1' },
     { id: 2, name: 'O-2' },
@@ -147,6 +148,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const toggleWhenContentInner = () => whenContentInner(!whenContentInner());
   const incWhenA = () => whenClicksA(whenClicksA() + 1);
   const incWhenB = () => whenClicksB(whenClicksB() + 1);
+  const pickWhenItem = (name: string) => pickedWhenItem(name);
   const addWhenItem = () => {
     const next = whenItems().length + 1;
     whenItems([...whenItems(), { id: next, name: `W-${next}` }]);
@@ -215,12 +217,12 @@ export const ContractApp = defineComponent('contract-app', () => {
   const clearNested = () => nestedItems([]);
   const resetNested = () => nestedItems(initialNestedItems());
 
-  const addFallbackRow = () => {
-    const nextId = fallbackRows().length ? Math.max(...fallbackRows().map((r) => r.id)) + 1 : 201;
-    fallbackRows([...fallbackRows(), { id: nextId, label: `FB-${nextId}` }]);
+  const addMixedRow = () => {
+    const nextId = mixedRows().length ? Math.max(...mixedRows().map((r) => r.id)) + 1 : 201;
+    mixedRows([...mixedRows(), { id: nextId, label: `FB-${nextId}` }]);
   };
-  const clearFallbackRows = () => fallbackRows([]);
-  const resetFallbackRows = () => fallbackRows(initialFallbackRows());
+  const clearMixedRows = () => mixedRows([]);
+  const resetMixedRows = () => mixedRows(initialMixedRows());
 
   const incrementParent = () => parentCount(parentCount() + 1);
   const onChildMount = () => childMounts(childMounts() + 1);
@@ -836,11 +838,17 @@ export const ContractApp = defineComponent('contract-app', () => {
             <ul data-testid="when-list">
               ${repeat(
                 whenItems(),
-                (item) => html`<li data-testid="when-item">${item.name}</li>`,
+                (item) => html`
+                  <li data-testid="when-item">
+                    <span>${item.name}</span>
+                    <button data-testid="when-item-btn" @click=${() => pickWhenItem(item.name)}>pick</button>
+                  </li>
+                `,
                 html`<li data-testid="when-empty">empty</li>`,
                 (item) => item.id,
               )}
             </ul>
+            <span data-testid="when-picked">${pickedWhenItem()}</span>
             <i data-testid="when-nested" ${when(whenContentInner())}>nested-${whenClicksB()}</i>
           </div>
           <p data-testid="when-content-after">after-when-content</p>
@@ -939,20 +947,30 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="multi-child-events-b">${childEventsB()}</p>
         </section>
 
-        <section data-testid="repeat-fallback-section">
-          <button data-testid="fallback-add" @click=${addFallbackRow}>fallback-add</button>
-          <button data-testid="fallback-clear" @click=${clearFallbackRows}>fallback-clear</button>
-          <button data-testid="fallback-reset" @click=${resetFallbackRows}>fallback-reset</button>
+        <section data-testid="repeat-mixed-section">
+          <button data-testid="mixed-add" @click=${addMixedRow}>mixed-add</button>
+          <button data-testid="mixed-clear" @click=${clearMixedRows}>mixed-clear</button>
+          <button data-testid="mixed-reset" @click=${resetMixedRows}>mixed-reset</button>
 
-          <ul data-testid="fallback-list">
+          <ul data-testid="mixed-list">
             ${repeat(
-              fallbackRows(),
+              mixedRows(),
               (row, index) => html`
-                <li data-testid="fallback-row-label">${row.label}</li>
-                <li data-testid="fallback-row-index">${index}</li>
-                <li data-testid="fallback-row-expr">${row.label}-${exprA()}</li>
+                <li data-testid="mixed-row">
+                  <span data-testid="mixed-row-label">${row.label}</span>
+                  <span data-testid="mixed-row-index">${index}</span>
+                  <span data-testid="mixed-row-expr">${row.label}-${exprA()}</span>
+                </li>
               `,
-              html`<li data-testid="fallback-empty">fallback-empty</li>`,
+              html`<li data-testid="mixed-empty">mixed-empty</li>`,
+              (row) => row.id,
+            )}
+          </ul>
+          <ul data-testid="static-list">
+            ${repeat(
+              mixedRows(),
+              (_row) => html`<li data-testid="static-row">static</li>`,
+              html`<li data-testid="static-empty">static-empty</li>`,
               (row) => row.id,
             )}
           </ul>

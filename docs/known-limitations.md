@@ -45,9 +45,9 @@ Template variables cannot use ternary or logical operators (THANE405). Use `when
 
 At component level, an element with an attribute, style, or text binding receives a compiler-generated `id` (`b0`, `b1`, …). If you also give such an element your own `id`, the compiler-generated one takes precedence and yours is dropped. Event handlers and `when()` elements reuse your `id` instead. Inside `repeat()` rows, bound elements are located by position rather than by `id`, so your `id` is kept as written; note that it is then repeated on every row. When you need a stable `id` for CSS or `label for=""`, put it on a wrapper element that has no bindings.
 
-### Repeat Items Outside the Fast Path
+### One Root Element per Repeat Row
 
-`repeat()` items are normally compiled to a cloned static template with direct DOM navigation. Item templates the analyser cannot handle, such as multi-root items, fall back to a renderer that rebuilds the item from a template string. They still work, only without the fast path.
+Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
 
 ## Runtime Constraints
 

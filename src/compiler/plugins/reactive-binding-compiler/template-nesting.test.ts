@@ -58,39 +58,3 @@ mount(FixtureApp);
     await removeTempProject(project);
   }
 });
-
-test('repeat with unsupported optimized shape compiles via safe fallback renderer', async () => {
-  const source = `
-import { defineComponent, signal, mount } from 'thane';
-
-export const FixtureApp = defineComponent('fixture-app', () => {
-  const rows = signal([{ id: 1, label: 'A' }, { id: 2, label: 'B' }]);
-  return {
-    template: html\`
-      <main>
-        <ul>
-          \${repeat(
-            rows(),
-            (item) => html\`<li data-testid="row-label">\${item.label}</li><li data-testid="row-id">\${item.id}</li>\`,
-            html\`<li data-testid="empty">empty</li>\`,
-            (item) => item.id,
-          )}
-        </ul>
-      </main>
-    \`,
-  };
-});
-
-mount(FixtureApp);
-`;
-
-  const project = await createTempProject(source);
-  try {
-    await runBuild(createTestBuildConfig(project));
-
-    const jsFiles = await listBuiltJsFiles(project.outDir);
-    expect(jsFiles.length).toBeGreaterThan(0);
-  } finally {
-    await removeTempProject(project);
-  }
-});
