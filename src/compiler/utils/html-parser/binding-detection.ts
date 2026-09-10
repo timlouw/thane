@@ -192,9 +192,18 @@ function extractSignalsFromExpression(expression: string): string[] {
   );
 
   const visit = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && node.arguments.length === 0 && ts.isIdentifier(node.expression)) {
-      const signalName = node.expression.text;
-      if (!signals.includes(signalName)) {
+    if (ts.isCallExpression(node) && node.arguments.length === 0) {
+      // `count()` reads a signal in scope; `props.count()` reads a signal passed as a prop
+      const callee = node.expression;
+      const signalName = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee) &&
+            ts.isIdentifier(callee.expression) &&
+            callee.expression.text === 'props' &&
+            ts.isIdentifier(callee.name)
+          ? `props.${callee.name.text}`
+          : undefined;
+      if (signalName !== undefined && !signals.includes(signalName)) {
         signals.push(signalName);
       }
     }

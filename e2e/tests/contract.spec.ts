@@ -1023,6 +1023,7 @@ test('signal props propagate reactive updates through nested component chain', a
   await expect(section.getByTestId('prop-a-source')).toHaveText('11');
   await expect(section.getByTestId('prop-parent-a')).toHaveText('11');
   await expect(section.getByTestId('prop-grandchild-a')).toHaveText('11');
+  await expect(section.getByTestId('prop-grandchild-a')).toHaveAttribute('data-a', '11');
   // Signal B bindings untouched
   await expect(section.getByTestId('prop-child-b')).toHaveText('20');
 
