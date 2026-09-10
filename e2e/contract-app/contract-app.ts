@@ -99,6 +99,13 @@ export const ContractApp = defineComponent('contract-app', () => {
     { id: 2, name: 'L-2', url: '/links/2' },
   ]);
   const batchRows = signal(Array.from({ length: 40 }, (_, i) => ({ id: i + 1, name: `B-${i + 1}` })));
+  const scopeRows = signal([
+    { id: 1, name: 's1', on: true, tags: ['a', 'b'] },
+    { id: 2, name: 's2', on: false, tags: ['c'] },
+    { id: 3, name: 's3', on: true, tags: [] },
+  ]);
+  const scopePicked = signal('');
+  const scopeUser = signal({ name: 'tim' });
   const pickedBatchRow = signal(0);
 
   const clickCount = () => count(count() + 1);
@@ -143,6 +150,11 @@ export const ContractApp = defineComponent('contract-app', () => {
       { id: 2, name: 'O-2' },
     ]);
   const pickBatchRow = (id: number) => pickedBatchRow(id);
+  const flipScopeRows = () => scopeRows(scopeRows().map((r) => ({ ...r, on: !r.on })));
+  const renameScopeRows = () => scopeRows(scopeRows().map((r) => ({ ...r, name: r.name + '!' })));
+  const tagScopeRow = () => scopeRows(scopeRows().map((r) => (r.id === 1 ? { ...r, tags: [...r.tags, 'z'] } : r)));
+  const pickScopeRow = (id: number) => scopePicked('scope' + id);
+  const renameScopeUser = () => scopeUser({ name: 'bob' });
   const renameBatchRows = () => batchRows(batchRows().map((row) => ({ ...row, name: `${row.name}!` })));
   const appendBatchRows = () => {
     const from = batchRows().length + 1;
@@ -573,6 +585,38 @@ export const ContractApp = defineComponent('contract-app', () => {
               `,
               html`<li data-testid="batch-empty">batch-empty</li>`,
               (item) => item.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="row-scope-section">
+          <button data-testid="scope-flip" @click=${flipScopeRows}>flip</button>
+          <button data-testid="scope-rename" @click=${renameScopeRows}>rename</button>
+          <button data-testid="scope-add-tag" @click=${tagScopeRow}>tag</button>
+          <button data-testid="scope-user" @click=${renameScopeUser}>user</button>
+          <span data-testid="scope-picked">${scopePicked()}</span>
+          <ul>
+            ${repeat(
+              scopeRows(),
+              (row, index) => html`
+                <li data-testid="scope-row">
+                  <span data-testid="scope-name">${row.name}</span>
+                  <b data-testid="scope-when" ${when(row.on)} title=${row.name}>
+                    <a data-testid="scope-when-click" @click=${() => pickScopeRow(row.id)}>${row.name}/${index}</a>
+                  </b>
+                  ${whenElse(
+                    row.on,
+                    html`<em data-testid="scope-then">${row.name}-then</em>`,
+                    html`<em data-testid="scope-else">${row.name}-else</em>`,
+                  )}
+                  <i data-testid="scope-user-name">${scopeUser().name}</i>
+                  <ol>
+                    ${repeat(row.tags, (t) => html`<li data-testid="scope-tag">${row.name}:${t}</li>`)}
+                  </ol>
+                </li>
+              `,
+              html`<li data-testid="scope-empty">empty</li>`,
+              (row) => row.id,
             )}
           </ul>
         </section>

@@ -25,6 +25,7 @@ import {
   findElementsWithWhenDirective,
   injectIdIntoFirstElement,
   attributeDomProperty,
+  findTemplateExpressions,
   type HtmlElement,
 } from '../../utils/html-parser/index.js';
 import { renameIdentifierInExpression, expressionReferencesIdentifier } from '../../utils/index.js';
@@ -39,6 +40,49 @@ import {
   type TemplateEdit,
   type Range,
 } from './template-utils.js';
+
+/**
+ * Inside a row, nested directives (when/whenElse/repeat) cannot close over the row factory's
+ * `item` and index parameters: their conditions and templates are compiled as sub-templates
+ * whose bindings are driven by signals. So the row factory declares one signal per referenced
+ * variable, `<itemVar>$` and `<indexVar>$`, and every reference inside a nested directive is
+ * rewritten to read it (`row.name` → `row$().name`). The row's update writes the signals, and
+ * the existing signal machinery re-evaluates conditions, branch bindings and nested lists.
+ *
+ * An expression that calls the item variable (`row()`, the Signal<Signal<T>[]> pattern) is left
+ * alone: there the item is itself the signal to subscribe to.
+ */
+const createRowRefRewriter = (itemVar: string, indexVar: string | undefined) => {
+  const used = new Set<string>();
+  const itemAccessor = itemVar + '$';
+  const indexAccessor = indexVar ? indexVar + '$' : undefined;
+  const callsItemVar = new RegExp('\\b' + itemVar.replace(/[$]/g, '\\$&') + '\\s*\\(');
+  const expression = (expr: string): { expression: string; extraSignals: string[] } => {
+    let out = expr;
+    const extraSignals: string[] = [];
+    if (expressionReferencesIdentifier(expr, itemVar) && !callsItemVar.test(expr)) {
+      out = renameIdentifierInExpression(out, itemVar, itemAccessor + '()');
+      used.add(itemAccessor);
+      extraSignals.push(itemAccessor);
+    }
+    if (indexVar && indexAccessor && expressionReferencesIdentifier(out, indexVar)) {
+      out = renameIdentifierInExpression(out, indexVar, indexAccessor + '()');
+      used.add(indexAccessor);
+      extraSignals.push(indexAccessor);
+    }
+    return { expression: out, extraSignals };
+  };
+  const html = (source: string): string => {
+    let out = '';
+    let last = 0;
+    for (const span of findTemplateExpressions(source)) {
+      out += source.slice(last, span.start) + '${' + expression(span.expression).expression + '}';
+      last = span.end;
+    }
+    return out + source.slice(last);
+  };
+  return { expression, html, used };
+};
 
 /**
  * Get a human-readable explanation for why optimization was skipped
@@ -267,6 +311,8 @@ export const generateStaticRepeatTemplate = (
         signalCommentBindings.push({
           commentId: sb.id,
           signalName: sb.signalName,
+          expression: sb.expression,
+          signalNames: sb.signalNames,
         });
         continue;
       }
@@ -284,6 +330,8 @@ export const generateStaticRepeatTemplate = (
           type: sb.type,
           property: sb.property,
           domProperty: sb.domProperty,
+          expression: sb.expression,
+          signalNames: sb.signalNames,
         });
       }
     }
@@ -619,11 +667,19 @@ const classifyParsedBindings = (
         binding.type === 'text'
           ? textBindingSpans.get(binding.expressionStart)!.spanId
           : elementIdMap.get(binding.element)!;
+      // Keep the expression when it is more than a bare read, so `user().name` writes the
+      // member and not the object, and subscribe to every signal it reads.
+      // The parser records a bare read as its full ${…} text; strip the braces before deciding
+      const exprText = fullExpr.replace(/^\s*\$\{([\s\S]*)\}\s*$/, '$1').trim();
+      const bareRead = /^[A-Za-z_$][\w$]*\(\)$/.test(exprText);
       signalBindings.push({
         id: bindingId,
         signalName: binding.signalName,
         type: binding.type,
         ...(binding.property ? { property: binding.property } : {}),
+        ...(bareRead || !exprText
+          ? {}
+          : { expression: exprText, signalNames: binding.signalNames ?? [binding.signalName] }),
         isInsideConditional: false,
       });
     }
@@ -815,6 +871,7 @@ export const processItemTemplateRecursively = (
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
   nestedRepeats: RepeatBlock[];
+  rowSignalVars: string[];
   nextId: number;
 } => {
   const parsed = parseHtmlTemplate(templateContent);
@@ -837,47 +894,34 @@ export const processItemTemplateRecursively = (
     });
   }
 
-  // ── Conditionals (with item binding transformation) ──
+  // ── Nested directives read the row's item and index through row-scoped signals ──
+  const rowRefs = createRowRefRewriter(itemVar, indexVar);
+  const processRowSubTemplate = (template: string, id: string) =>
+    processSubTemplateWithNesting(
+      rowRefs.html(template),
+      signalInitializers,
+      state.idCounter,
+      id,
+      undefined,
+      state.eventIdCounter,
+    );
+
+  // ── Conditionals: compiled as sub-templates, like at component level ──
   const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state, {
-    onConditionalHtml: (html) => {
-      // Find ${...} expressions that reference the item variable using AST check
-      const exprPattern = /\$\{((?:[^{}]|\{[^}]*\})*)\}/g;
-      const condItemBindings: ItemBinding[] = [];
-      let transformedHtml = html;
-      const matches = [...html.matchAll(exprPattern)].filter(
-        (m) => m[1] !== undefined && expressionReferencesIdentifier(m[1].trim(), itemVar),
-      );
-      if (matches.length > 0) {
-        let offset = 0;
-        for (const match of matches) {
-          const innerExpr = match[1]!.trim();
-          const matchStart = match.index! + offset;
-          const matchEnd = matchStart + match[0].length;
-          const itemBindingId = `i${state.idCounter++}`;
-          const transformedExpr = renameIdentifierInExpression(innerExpr, itemVar, `${itemVar}$()`);
-          // Use comment marker instead of span wrapper
-          const replacement = `<!--${itemBindingId}-->\${${transformedExpr}}`;
-          transformedHtml =
-            transformedHtml.substring(0, matchStart) + replacement + transformedHtml.substring(matchEnd);
-          condItemBindings.push({
-            elementId: itemBindingId,
-            expression: innerExpr,
-            type: 'text',
-            textBindingMode: 'commentMarker',
-          });
-          offset += replacement.length - match[0].length;
-        }
-      }
-      return { html: transformedHtml, extraData: condItemBindings };
-    },
+    processSubTemplate: processRowSubTemplate,
+    rewriteExpression: rowRefs.expression,
   });
   const conditionals = condResult.conditionals;
   signalBindings.push(...condResult.bindings.filter(isSimpleBinding));
   eventBindings.push(...condResult.eventBindings);
 
   // ── WhenElse ──
-  const whenElseBlocks = collectWhenElseBlocks(parsed, signalInitializers, state, (template, id) =>
-    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id, undefined, state.eventIdCounter),
+  const whenElseBlocks = collectWhenElseBlocks(
+    parsed,
+    signalInitializers,
+    state,
+    processRowSubTemplate,
+    rowRefs.expression,
   );
 
   // ── Nested repeats ──
@@ -885,10 +929,14 @@ export const processItemTemplateRecursively = (
     if (binding.type !== 'repeat') continue;
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
 
-    const nestedSignalNames = binding.signalNames || [binding.signalName];
+    // The inner list and its rows may read the outer item/index: route them through the row signals
+    const nestedItems = rowRefs.expression(binding.itemsExpression);
+    const nestedSignalNames = [
+      ...new Set([...(binding.signalNames || [binding.signalName]), ...nestedItems.extraSignals]),
+    ].filter((s) => s !== '');
     const nestedRepeatId = `b${state.idCounter++}`;
     const nestedProcessed = processItemTemplateRecursively(
-      binding.itemTemplate,
+      rowRefs.html(binding.itemTemplate),
       binding.itemVar,
       binding.indexVar,
       signalInitializers,
@@ -908,7 +956,7 @@ export const processItemTemplateRecursively = (
       id: nestedRepeatId,
       signalName: nestedSignalNames[0] || '',
       signalNames: nestedSignalNames,
-      itemsExpression: binding.itemsExpression,
+      itemsExpression: nestedItems.expression,
       itemVar: binding.itemVar,
       indexVar: binding.indexVar,
       itemTemplate: nestedProcessed.processedContent,
@@ -923,6 +971,7 @@ export const processItemTemplateRecursively = (
       nestedConditionals: nestedProcessed.nestedConditionals,
       nestedWhenElse: nestedProcessed.nestedWhenElse,
       nestedRepeats: nestedProcessed.nestedRepeats,
+      rowSignalVars: nestedProcessed.rowSignalVars,
     });
   }
 
@@ -1067,6 +1116,7 @@ export const processItemTemplateRecursively = (
     nestedConditionals: conditionals,
     nestedWhenElse: whenElseBlocks,
     nestedRepeats: repeatBlocks,
+    rowSignalVars: [...rowRefs.used],
     nextId: state.idCounter,
   };
 };
@@ -1089,6 +1139,7 @@ export const processItemTemplate = (
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
   nestedRepeats: RepeatBlock[];
+  rowSignalVars: string[];
   nextId: number;
 } => {
   const result = processItemTemplateRecursively(templateContent, itemVar, indexVar, signalInitializers, startingId);
@@ -1101,6 +1152,7 @@ export const processItemTemplate = (
     nestedConditionals: result.nestedConditionals,
     nestedWhenElse: result.nestedWhenElse,
     nestedRepeats: result.nestedRepeats,
+    rowSignalVars: result.rowSignalVars,
     nextId: result.nextId,
   };
 };

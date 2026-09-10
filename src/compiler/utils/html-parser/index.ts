@@ -30,6 +30,7 @@ export {
   parseRepeatExpression,
   findBindingsInText,
   findBindingsInAttributes,
+  findTemplateExpressions,
 } from './binding-detection.js';
 
 // Utilities

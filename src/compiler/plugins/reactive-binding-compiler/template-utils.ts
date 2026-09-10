@@ -137,6 +137,8 @@ export const collectConditionalBlocks = (
     processSubTemplate?: SubTemplateProcessor;
     /** Transform conditional HTML after processing (item templates use this for item binding wrapping) */
     onConditionalHtml?: (html: string, condEl: HtmlElement) => { html: string; extraData?: any };
+    /** Rewrite the when() condition before it is stored (row templates route item reads through a signal). */
+    rewriteExpression?: (expr: string) => { expression: string; extraSignals: string[] };
   },
 ): {
   conditionals: ConditionalBlock[];
@@ -162,8 +164,11 @@ export const collectConditionalBlocks = (
     const whenBinding = parsed.bindings.find((b) => b.element === condEl && b.type === 'when');
     if (!whenBinding || !whenBinding.jsExpression) continue;
 
-    const signalNames = whenBinding.signalNames || [whenBinding.signalName];
-    const jsExpression = whenBinding.jsExpression;
+    const rewritten = opts?.rewriteExpression?.(whenBinding.jsExpression);
+    const jsExpression = rewritten ? rewritten.expression : whenBinding.jsExpression;
+    const signalNames = [
+      ...new Set([...(whenBinding.signalNames || [whenBinding.signalName]), ...(rewritten?.extraSignals ?? [])]),
+    ].filter((s) => s !== '');
     // Reuse user-defined ID if the element already has one, otherwise generate a compiler ID
     const existingId = condEl.attributes.get('id');
     const conditionalId = existingId ? existingId.value : `b${state.idCounter++}`;
@@ -308,6 +313,7 @@ export const collectWhenElseBlocks = (
   signalInitializers: Map<string, string | number | boolean>,
   state: IdState,
   processSubTemplate: SubTemplateProcessor,
+  rewriteExpression?: (expr: string) => { expression: string; extraSignals: string[] },
 ): WhenElseBlock[] => {
   const whenElseBlocks: WhenElseBlock[] = [];
 
@@ -315,8 +321,11 @@ export const collectWhenElseBlocks = (
     if (binding.type !== 'whenElse') continue;
     if (!binding.jsExpression || !binding.thenTemplate || !binding.elseTemplate) continue;
 
-    const signalNames = binding.signalNames || [binding.signalName];
-    const jsExpression = binding.jsExpression;
+    const rewritten = rewriteExpression?.(binding.jsExpression);
+    const jsExpression = rewritten ? rewritten.expression : binding.jsExpression;
+    const signalNames = [
+      ...new Set([...(binding.signalNames || [binding.signalName]), ...(rewritten?.extraSignals ?? [])]),
+    ].filter((s) => s !== '');
     const thenId = `b${state.idCounter++}`;
     const elseId = `b${state.idCounter++}`;
     const initialValue = safeEvaluateCondition(jsExpression, signalNames, signalInitializers);

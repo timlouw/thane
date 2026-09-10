@@ -408,6 +408,7 @@ export const processHtmlTemplateWithConditionals = (
       nestedConditionals: itemTemplateProcessed.nestedConditionals,
       nestedWhenElse: itemTemplateProcessed.nestedWhenElse,
       nestedRepeats: itemTemplateProcessed.nestedRepeats,
+      rowSignalVars: itemTemplateProcessed.rowSignalVars,
     });
   }
   const textBindingSpans = new Map<number, { spanId: string; exprEnd: number; signalName: string }>(); // Map expression position to binding info
@@ -655,6 +656,7 @@ export const processSubTemplateWithNesting = (
       nestedConditionals: itemTemplateProcessed.nestedConditionals,
       nestedWhenElse: itemTemplateProcessed.nestedWhenElse,
       nestedRepeats: itemTemplateProcessed.nestedRepeats,
+      rowSignalVars: itemTemplateProcessed.rowSignalVars,
     });
   }
 

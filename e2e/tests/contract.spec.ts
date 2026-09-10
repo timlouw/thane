@@ -195,6 +195,42 @@ test('directive order permutations remain stable across remounts and depth toggl
   await expect(page.getByTestId('order-c-row')).toHaveCount(2);
 });
 
+test('nested directives inside rows read the row item and index and follow row updates', async ({ page }) => {
+  await gotoApp({ page });
+
+  const whens = page.getByTestId('scope-when');
+  await expect(page.getByTestId('scope-row')).toHaveCount(3);
+  await expect(whens).toHaveCount(2);
+  await expect(whens.nth(0)).toHaveAttribute('title', 's1');
+  await expect(whens.nth(1)).toHaveAttribute('title', 's3');
+  await expect(page.getByTestId('scope-when-click').nth(1)).toHaveText('s3/2');
+  await expect(page.getByTestId('scope-then')).toHaveText(['s1-then', 's3-then']);
+  await expect(page.getByTestId('scope-else')).toHaveText(['s2-else']);
+  await expect(page.getByTestId('scope-tag')).toHaveText(['s1:a', 's1:b', 's2:c']);
+  await expect(page.getByTestId('scope-user-name')).toHaveText(['tim', 'tim', 'tim']);
+
+  // A handler inside the when() content sees its own row, not the first one
+  await page.getByTestId('scope-when-click').nth(1).click();
+  await expect(page.getByTestId('scope-picked')).toHaveText('scope3');
+
+  await page.getByTestId('scope-flip').click();
+  await expect(whens).toHaveCount(1);
+  await expect(whens.nth(0)).toHaveAttribute('title', 's2');
+  await expect(page.getByTestId('scope-then')).toHaveText(['s2-then']);
+  await expect(page.getByTestId('scope-else')).toHaveText(['s1-else', 's3-else']);
+
+  await page.getByTestId('scope-rename').click();
+  await expect(whens.nth(0)).toHaveAttribute('title', 's2!');
+  await expect(page.getByTestId('scope-then')).toHaveText(['s2!-then']);
+  await expect(page.getByTestId('scope-tag')).toHaveText(['s1!:a', 's1!:b', 's2!:c']);
+
+  await page.getByTestId('scope-add-tag').click();
+  await expect(page.getByTestId('scope-tag')).toHaveText(['s1!:a', 's1!:b', 's1!:z', 's2!:c']);
+
+  await page.getByTestId('scope-user').click();
+  await expect(page.getByTestId('scope-user-name')).toHaveText(['bob', 'bob', 'bob']);
+});
+
 test('rows created in batches carry their own item, index and delegated handler', async ({ page }) => {
   await gotoApp({ page });
 

@@ -147,7 +147,7 @@ interface ManagedItem<T> {
   el: Element;
   cleanups: (() => void)[];
   /** Direct update function used when available */
-  update?: ((newValue: T) => void) | undefined;
+  update?: ((newValue: T, index: number) => void) | undefined;
   /** Cached value for direct update path (no signal) */
   value?: T | undefined;
   /** Cached key — avoids re-calling keyFn on old items */
@@ -197,7 +197,7 @@ export function createKeyedReconciler<T>(
   const updateRow = (managed: ManagedItem<T>, item: T, index: number) => {
     managed.value = item;
     if (sharedUpdate !== undefined) sharedUpdate(managed, item, index);
-    else managed.update!(item);
+    else managed.update!(item, index);
   };
 
   const managedItems: ManagedItem<T>[] = [];

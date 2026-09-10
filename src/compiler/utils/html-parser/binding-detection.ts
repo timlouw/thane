@@ -206,7 +206,7 @@ function extractSignalsFromExpression(expression: string): string[] {
   return signals;
 }
 
-function findTemplateExpressions(
+export function findTemplateExpressions(
   value: string,
 ): Array<{ start: number; end: number; expression: string; full: string }> {
   const results: Array<{ start: number; end: number; expression: string; full: string }> = [];

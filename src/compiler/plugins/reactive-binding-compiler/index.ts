@@ -739,6 +739,7 @@ export const transformDefineComponentSource = (
         requiredFunctions.push(BIND_FN.IF_EXPR);
       }
       if (everyRepeat.length > 0) requiredFunctions.push(BIND_FN.KEYED_RECONCILER);
+      if (everyRepeat.some((r) => (r.rowSignalVars?.length ?? 0) > 0)) requiredFunctions.push(BIND_FN.SIGNAL);
       // Events now use direct addEventListener — no runtime import needed
     }
 

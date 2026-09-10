@@ -100,6 +100,12 @@ export interface RepeatBlock {
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
   nestedRepeats: RepeatBlock[];
+  /**
+   * Row-scoped signals the row factory declares (`<itemVar>$`, `<indexVar>$`) so that nested
+   * directives read the row's item and index through a signal and re-evaluate when the row's
+   * update writes them. Only present when a nested directive references the item or index.
+   */
+  rowSignalVars?: string[] | undefined;
 }
 
 export interface ItemBinding {
@@ -160,6 +166,12 @@ export interface SimpleBinding extends BindingBase {
   property?: string;
   /** For attr bindings: DOM property to write instead of setAttribute (e.g. `className`), when one applies */
   domProperty?: string | undefined;
+  /**
+   * Row signal bindings only: the full expression when it is more than a bare signal read
+   * (`user().name`, `row$().label`), and every signal it reads. Absent for `signal()`.
+   */
+  expression?: string | undefined;
+  signalNames?: string[] | undefined;
 }
 
 /**
@@ -211,6 +223,8 @@ export interface StaticTemplateInfo {
   eventElementPaths?: Map<string, number[]> | undefined;
   /** Navigation paths and binding info for signal-bound elements inside repeat items */
   signalElementBindings?: Array<{
+    expression?: string | undefined;
+    signalNames?: string[] | undefined;
     path: number[];
     signalName: string;
     type: ReactiveBindingKind;
@@ -219,6 +233,8 @@ export interface StaticTemplateInfo {
   }>;
   /** Signal text bindings that use comment markers (cannot be navigated by element path) */
   signalCommentBindings?: Array<{
+    expression?: string | undefined;
+    signalNames?: string[] | undefined;
     commentId: string;
     signalName: string;
   }>;
