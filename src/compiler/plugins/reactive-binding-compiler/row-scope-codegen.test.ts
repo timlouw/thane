@@ -47,7 +47,7 @@ describe('Nested directives inside rows read the row through row-scoped signals'
     expect(js).toMatch(/const row\$ = (?:__sig|signal)\(item\);/);
     expect(js).toMatch(/__bindIfExpr\(r, \[row\$\], \(\) => row\$\(\)\.on,/);
     expect(js).toMatch(/__bindIfExpr\(r, \[row\$\], \(\) => !row\$\(\)\.on,/);
-    expect(js).toMatch(/\.nextSibling\.data = _pv_b\d+ = row\$\(\)\.name/);
+    expect(js).toMatch(/\.nextSibling\.data = \(_pv_b\d+ = row\$\(\)\.name\) \?\? ""/);
   });
 
   test('a nested repeat over item data re-reconciles on row update and its rows read the outer item', async () => {

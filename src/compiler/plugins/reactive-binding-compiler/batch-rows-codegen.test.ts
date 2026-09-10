@@ -57,7 +57,7 @@ describe('Rows without cleanups are bound by a standalone function and created i
     expect(js).not.toMatch(/const _update_b\d+ = [^]*?const _e0 = _el;[^]*?\};\s*const _rc_/);
     expect(js).toMatch(/if \(_m\.p0 !== \(_m\.p0 = item\.id\)\) _el\.setAttribute\("data-id", _m\.p0\)/);
     expect(js).toMatch(
-      /\(_m\.t0 \?\?= _el\.firstElementChild\.firstChild\) \? _m\.t0\.nodeValue = _m\.p1 : _el\.firstElementChild\.textContent = _m\.p1/,
+      /\(_m\.t0 \?\?= _el\.firstElementChild\.firstChild\) \? _m\.t0\.nodeValue = _m\.p1 \?\? "" : _el\.firstElementChild\.textContent = _m\.p1 \?\? ""/,
     );
     expect(js).toMatch(/if \(_m\.p3 !== \(_m\.p3 = idx\)\) _m\.c1\.data = _m\.p3/);
     expect(js).toMatch(/bind: _bind_b\d+, update: _update_b\d+ \}/);

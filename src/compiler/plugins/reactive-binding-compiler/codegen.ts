@@ -516,7 +516,7 @@ export const generateBindingUpdateCode = (binding: SimpleBinding): string => {
     return attributeWrite(elRef, binding, 'v');
   } else {
     // Comment marker → next sibling text node
-    return `${elRef}.nextSibling.data = v`;
+    return `${elRef}.nextSibling.data = v ?? ''`;
   }
 };
 
@@ -530,7 +530,7 @@ const expressionWrite = (binding: {
   property?: string | undefined;
   domProperty?: string | undefined;
 }): ((value: string) => string) | undefined => {
-  if (binding.type === 'text') return (v) => `${binding.id}.nextSibling.data = ${v}`;
+  if (binding.type === 'text') return (v) => `${binding.id}.nextSibling.data = (${v}) ?? ''`;
   if (binding.type === 'attr' && binding.property) return (v) => attributeWrite(binding.id, binding, v);
   if (binding.type === 'style' && binding.property)
     return (v) => `${binding.id}.style.setProperty('${binding.property}', ${v})`;
@@ -551,7 +551,7 @@ export const generateInitialValueCode = (binding: SimpleBinding, ap: AccessPatte
     return attributeWrite(elRef, binding, signalCall);
   } else {
     // Comment marker → next sibling text node
-    return `${elRef}.nextSibling.data = ${signalCall}`;
+    return `${elRef}.nextSibling.data = ${signalCall} ?? '' ?? ''`;
   }
 };
 
@@ -660,7 +660,7 @@ const generateRepeatNestedCondInitFn = (
     const expr = renameIdentifierInExpression(ib.expression, outerItemVar, 'item');
     if (ib.type === 'text') {
       // Comment marker: nextSibling.data targets the text node after <!--id-->
-      parts.push(`  if (_n_${ib.elementId}) _n_${ib.elementId}.nextSibling.data = ${expr};`);
+      parts.push(`  if (_n_${ib.elementId}) _n_${ib.elementId}.nextSibling.data = (${expr}) ?? '';`);
     } else if (ib.type === 'attr' && ib.property) {
       parts.push(`  if (_n_${ib.elementId}) ${attributeWrite(`_n_${ib.elementId}`, ib, expr)};`);
     }
@@ -679,7 +679,7 @@ const generateRepeatNestedCondInitFn = (
     const renamedSignalName = sb.signalName === outerItemVar ? 'item' : sb.signalName;
     const signalCall = ap.signalCall(renamedSignalName);
     if (sb.type === 'text') {
-      parts.push(`  if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = ${signalCall};`);
+      parts.push(`  if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = ${signalCall} ?? '' ?? '';`);
     } else if (sb.type === 'attr' && sb.property) {
       parts.push(`  if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, signalCall)};`);
     } else if (sb.type === 'style' && sb.property) {
@@ -706,7 +706,7 @@ const generateRepeatNestedCondInitFn = (
   for (const [signalName, sbs] of signalGroups) {
     const updates = sbs
       .map((sb) => {
-        if (sb.type === 'text') return `if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = v`;
+        if (sb.type === 'text') return `if (_n_${sb.id}) _n_${sb.id}.nextSibling.data = v ?? ''`;
         if (sb.type === 'attr' && sb.property) return `if (_n_${sb.id}) ${attributeWrite(`_n_${sb.id}`, sb, 'v')}`;
         if (sb.type === 'style' && sb.property)
           return `if (_n_${sb.id}) _n_${sb.id}.style.setProperty('${sb.property}', v)`;
@@ -1379,9 +1379,9 @@ export const generateInitBindingsFunction = (
               textVars.push(textVar);
               const guard = guards.next();
               const textUpdate = (g: string, t: string, target: string): string =>
-                `if (${g} !== (${g} = ${expr})) (${t} ??= ${target}.firstChild) ? (${t}.nodeValue = ${g}) : (${target}.textContent = ${g})`;
+                `if (${g} !== (${g} = ${expr})) (${t} ??= ${target}.firstChild) ? (${t}.nodeValue = ${g} ?? '') : (${target}.textContent = ${g} ?? '')`;
               gw = {
-                fill: `${varName}.textContent = ${guard} = ${expr}; let ${textVar}`,
+                fill: `${varName}.textContent = (${guard} = ${expr}) ?? ''; let ${textVar}`,
                 update: textUpdate(guard, textVar, varName),
               };
               // The shared update navigates only when a binding actually changes, and the text
@@ -1422,12 +1422,12 @@ export const generateInitBindingsFunction = (
             commentVars.push(textVar);
             commentNavStatements.push(`const ${textVar} = _icm['${cb.elementId}']?.nextSibling`);
             const guard = guards.next();
-            const gw = guardedWrite(guard, (v) => `${textVar}.data = ${v}`, expr);
+            const gw = guardedWrite(guard, (v) => `${textVar}.data = (${v}) ?? ''`, expr);
             commentFillStatements.push(`if (${textVar}) ${gw.fill}`);
             commentUpdateStatements.push(`if (${textVar}) ${gw.update}`);
             const rec = recordField(textVar);
             leanCommentUpdateStatements.push(
-              `if (${rec}) ${guardedWrite(guard, (v) => `${rec}.data = ${v}`, expr, undefined, recordField(guard)).update}`,
+              `if (${rec}) ${guardedWrite(guard, (v) => `${rec}.data = (${v}) ?? ''`, expr, undefined, recordField(guard)).update}`,
             );
           });
         }
@@ -1479,10 +1479,10 @@ export const generateInitBindingsFunction = (
             const signalRefs = (scb.signalNames ?? [scb.signalName]).map((s) => ap.signal(s));
             const signalCall = scb.expression ?? ap.signalCall(scb.signalName);
             const cmVar = `_icm['${scb.commentId}']`;
-            signalFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}`);
+            signalFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall} ?? ''`);
             for (const signalRef of signalRefs) {
               signalSubscriptions.push(
-                `_cleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}; }, true))`,
+                `_cleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall} ?? ''; }, true))`,
               );
             }
           }
@@ -1542,7 +1542,7 @@ export const generateInitBindingsFunction = (
             if (mb.type === 'attr' && mb.property) {
               gw = guardedWrite(guards.next(), (v) => attributeWrite(varName, mb, v), expr, mb.staticValue);
             } else if (mb.type === 'text') {
-              gw = guardedWrite(guards.next(), (v) => `${varName}.textContent = ${v}`, expr);
+              gw = guardedWrite(guards.next(), (v) => `${varName}.textContent = (${v}) ?? ''`, expr);
             } else if (mb.type === 'style' && mb.property) {
               gw = guardedWrite(guards.next(), (v) => `${varName}.style.setProperty('${mb.property}', ${v})`, expr);
             }
@@ -1796,8 +1796,8 @@ export const generateInitBindingsFunction = (
                   const textVar = `_nrt${innerWrites.length}`;
                   const guard = innerGuards.next();
                   gw = {
-                    fill: `${nv}.textContent = ${guard} = ${expr}; let ${textVar}`,
-                    update: `if (${guard} !== (${guard} = ${expr})) (${textVar} ??= ${nv}.firstChild) ? (${textVar}.nodeValue = ${guard}) : (${nv}.textContent = ${guard})`,
+                    fill: `${nv}.textContent = (${guard} = ${expr}) ?? ''; let ${textVar}`,
+                    update: `if (${guard} !== (${guard} = ${expr})) (${textVar} ??= ${nv}.firstChild) ? (${textVar}.nodeValue = ${guard} ?? '') : (${nv}.textContent = ${guard} ?? '')`,
                   };
                 } else if (binding.type === 'attr' && binding.property) {
                   gw = guardedWrite(
@@ -1831,8 +1831,8 @@ export const generateInitBindingsFunction = (
             for (const cb of innerCommentBindings) {
               const expr = renameIdentifierInExpression(cb.expression, nr.itemVar, '_nrItem');
               const cmVar = `_nricm['${cb.elementId}']`;
-              innerCommentFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${expr}`);
-              innerCommentUpdateStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${expr}`);
+              innerCommentFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = (${expr}) ?? ''`);
+              innerCommentUpdateStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = (${expr}) ?? ''`);
             }
           }
           for (const navStmt of innerCommentNavStatements) {
@@ -1887,10 +1887,10 @@ export const generateInitBindingsFunction = (
               const signalRefs = (scb.signalNames ?? [scb.signalName]).map((s) => ap.signal(s));
               const signalCall = scb.expression ?? ap.signalCall(scb.signalName);
               const cmVar = `_nricm['${scb.commentId}']`;
-              innerSignalFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}`);
+              innerSignalFillStatements.push(`if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall} ?? ''`);
               for (const signalRef of signalRefs) {
                 innerSignalSubscriptions.push(
-                  `_nrCleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall}; }, true))`,
+                  `_nrCleanups.push(${signalRef}.subscribe(() => { if (${cmVar}) ${cmVar}.nextSibling.data = ${signalCall} ?? ''; }, true))`,
                 );
               }
             }

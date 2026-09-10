@@ -76,7 +76,7 @@ mount(App);
     const js = await buildAndReadJs(source);
     // The fill writes textContent (through the guard variable) and keeps the Text node it
     // created; the guarded update writes the node's nodeValue
-    expect(js).toMatch(/\.textContent\s*=\s*(\w+\s*=\s*)?\w+\.label/);
+    expect(js).toMatch(/\.textContent\s*=\s*\(?(\w+\s*=\s*)?\w+\.label/);
     expect(js).toMatch(/\.firstChild/);
     expect(js).toMatch(/\.nodeValue\s*=\s*\w+/);
   });

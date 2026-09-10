@@ -105,6 +105,13 @@ export const ContractApp = defineComponent('contract-app', () => {
     { id: 3, name: 's3', on: true, tags: [] },
   ]);
   const scopePicked = signal('');
+  const formOn = signal(false);
+  const formName = signal('alice');
+  const formNote = signal<string | null>(null);
+  const formRows = signal([
+    { id: 1, on: true, note: 'x' },
+    { id: 2, on: false, note: null as string | null },
+  ]);
   const refClicks = signal(0);
   const paramText = signal('');
   const scopeUser = signal({ name: 'tim' });
@@ -156,6 +163,10 @@ export const ContractApp = defineComponent('contract-app', () => {
   const renameScopeRows = () => scopeRows(scopeRows().map((r) => ({ ...r, name: r.name + '!' })));
   const tagScopeRow = () => scopeRows(scopeRows().map((r) => (r.id === 1 ? { ...r, tags: [...r.tags, 'z'] } : r)));
   const pickScopeRow = (id: number) => scopePicked('scope' + id);
+  const toggleFormOn = () => formOn(!formOn());
+  const renameForm = () => formName('bob');
+  const setFormNote = () => formNote('note');
+  const flipFormRows = () => formRows(formRows().map((r) => ({ ...r, on: !r.on, note: r.note ? null : 'y' })));
   const bumpRefClicks = () => refClicks(refClicks() + 1);
   const setParamText = (text: string | null) => paramText(text ?? '');
   const renameScopeUser = () => scopeUser({ name: 'bob' });
@@ -589,6 +600,31 @@ export const ContractApp = defineComponent('contract-app', () => {
               `,
               html`<li data-testid="batch-empty">batch-empty</li>`,
               (item) => item.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="form-section">
+          <button data-testid="form-toggle" @click=${toggleFormOn}>toggle</button>
+          <button data-testid="form-rename" @click=${renameForm}>rename</button>
+          <button data-testid="form-note" @click=${setFormNote}>note</button>
+          <button data-testid="form-flip" @click=${flipFormRows}>flip rows</button>
+          <input data-testid="form-check" type="checkbox" checked=${formOn()} />
+          <button data-testid="form-disabled" disabled=${formOn()}>d</button>
+          <input data-testid="form-value" value=${formName()} />
+          <p data-testid="form-null">[${formNote()}]</p>
+          <ul>
+            ${repeat(
+              formRows(),
+              (row) => html`
+                <li data-testid="form-row">
+                  <input data-testid="form-row-check" type="checkbox" checked=${row.on} />
+                  <button data-testid="form-row-btn" disabled=${!row.on}>b</button>
+                  <b data-testid="form-row-note">${row.note}</b>
+                </li>
+              `,
+              null,
+              (row) => row.id,
             )}
           </ul>
         </section>

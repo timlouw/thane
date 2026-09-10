@@ -135,7 +135,7 @@ describe('generated initializer for when() content', () => {
     expect(code).toMatch(/_gid\('b\d+'\)\?\.addEventListener\('click', a\)/);
     expect(code).toContain('__bindIfExpr(r, [inner], () => inner()');
     expect(code).toContain('__bindIfExpr(r, [inner], () => !(inner())');
-    expect(code).toMatch(/count\.subscribe\(v => \{ b\d+\.nextSibling\.data = v; \}, true\)/);
+    expect(code).toMatch(/count\.subscribe\(v => \{ b\d+\.nextSibling\.data = v \?\? ''; \}, true\)/);
     // Nothing from inside the block leaks into the top-level initializer
     expect(code.split("__bindIf(r, show, 'b0'")[0]).not.toContain('addEventListener');
   });

@@ -30,7 +30,7 @@ describe('Item attribute bindings in repeat() rows use the optimised row path', 
     expect(js).toMatch(/const _e0 = _el;/);
     expect(js).toMatch(/const _e1 = _e0\.firstElementChild;/);
     expect(js).toMatch(/_e0\.setAttribute\("data-id", _p\d+\)/);
-    expect(js).toMatch(/_e1\.textContent = _p\d+ = item\.label/);
+    expect(js).toMatch(/_e1\.textContent = \(_p\d+ = item\.label\) \?\? ""/);
   });
 
   test('an attribute as the only binding in the row', async () => {
@@ -46,7 +46,7 @@ describe('Item attribute bindings in repeat() rows use the optimised row path', 
     expect(js).toMatch(/const _e0 = _el\.firstElementChild;/);
     expect(js).not.toMatch(/const _e1 = /);
     expect(js).toMatch(/_e0\.setAttribute\("href", _p\d+\)/);
-    expect(js).toMatch(/_e0\.textContent = _p\d+ = item\.label/);
+    expect(js).toMatch(/_e0\.textContent = \(_p\d+ = item\.label\) \?\? ""/);
   });
 
   test('several attributes across several elements, with sibling navigation', async () => {
@@ -99,6 +99,6 @@ describe('Developer ids on bound row elements', () => {
     expect(rowTemplate(withEvent)).toBe('<li><a id="link"></a></li>');
     const onRoot = await buildAndReadJs(app('<li id="row">${item.label}</li>'));
     expect(rowTemplate(onRoot)).toBe('<li id="row"></li>');
-    expect(onRoot).toMatch(/_e0\.textContent = _p\d+ = item\.label/);
+    expect(onRoot).toMatch(/_e0\.textContent = \(_p\d+ = item\.label\) \?\? ""/);
   });
 });

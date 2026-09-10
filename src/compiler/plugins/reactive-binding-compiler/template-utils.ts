@@ -452,6 +452,30 @@ export const buildWhenElseEdits = (
 };
 
 /**
+ * Remove attributes that a binding writes as a DOM property (checked, disabled, value, …) from
+ * the static markup of their element. The property is set when the element is bound; an
+ * attribute left in the template would mean "present" for a boolean, or a stale default for
+ * `value`. `class` stays: an empty class attribute is harmless and lets the first write be
+ * skipped when the value is empty.
+ */
+export const stripPropertyBoundAttributes = (
+  html: string,
+  bindings: Array<{ id?: string; elementId?: string; property?: string | undefined; domProperty?: string | undefined }>,
+): string => {
+  let out = html;
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  for (const b of bindings) {
+    if (!b.domProperty || b.domProperty === 'className' || !b.property) continue;
+    const id = b.id ?? b.elementId;
+    if (!id) continue;
+    const attr = `\\s${esc(b.property)}(?:="[^"]*"|='[^']*'|(?=[\\s/>]))`;
+    out = out.replace(new RegExp(`(<[^>]*\\bid="${esc(id)}"[^>]*?)${attr}`), '$1');
+    out = out.replace(new RegExp(`(<[^>]*?)${attr}([^>]*\\bid="${esc(id)}")`), '$1$2');
+  }
+  return out;
+};
+
+/**
  * Build edits to inject element IDs into non-conditional elements that have bindings.
  * Elements whose user-supplied id was reused as the binding id are left untouched.
  */

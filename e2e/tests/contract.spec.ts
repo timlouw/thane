@@ -195,6 +195,46 @@ test('directive order permutations remain stable across remounts and depth toggl
   await expect(page.getByTestId('order-c-row')).toHaveCount(2);
 });
 
+test('form attributes follow their values as properties and null text renders empty', async ({ page }) => {
+  await gotoApp({ page });
+
+  const check = page.getByTestId('form-check');
+  const disabled = page.getByTestId('form-disabled');
+  const value = page.getByTestId('form-value');
+  await expect(check).not.toBeChecked();
+  await expect(disabled).toBeEnabled();
+  await expect(check).not.toHaveAttribute('checked');
+  await expect(page.getByTestId('form-null')).toHaveText('[]');
+  await expect(page.getByTestId('form-row-check').nth(0)).toBeChecked();
+  await expect(page.getByTestId('form-row-check').nth(1)).not.toBeChecked();
+  await expect(page.getByTestId('form-row-btn').nth(0)).toBeEnabled();
+  await expect(page.getByTestId('form-row-btn').nth(1)).toBeDisabled();
+  await expect(page.getByTestId('form-row-note')).toHaveText(['x', '']);
+
+  await page.getByTestId('form-toggle').click();
+  await expect(check).toBeChecked();
+  await expect(disabled).toBeDisabled();
+  await page.getByTestId('form-toggle').click();
+  await expect(check).not.toBeChecked();
+  await expect(disabled).toBeEnabled();
+
+  // A value binding drives the live value, even after the user typed
+  await expect(value).toHaveValue('alice');
+  await value.fill('typed');
+  await page.getByTestId('form-rename').click();
+  await expect(value).toHaveValue('bob');
+
+  await page.getByTestId('form-note').click();
+  await expect(page.getByTestId('form-null')).toHaveText('[note]');
+
+  await page.getByTestId('form-flip').click();
+  await expect(page.getByTestId('form-row-check').nth(0)).not.toBeChecked();
+  await expect(page.getByTestId('form-row-check').nth(1)).toBeChecked();
+  await expect(page.getByTestId('form-row-btn').nth(0)).toBeDisabled();
+  await expect(page.getByTestId('form-row-btn').nth(1)).toBeEnabled();
+  await expect(page.getByTestId('form-row-note')).toHaveText(['', 'y']);
+});
+
 test('nested directives inside rows read the row item and index and follow row updates', async ({ page }) => {
   await gotoApp({ page });
 

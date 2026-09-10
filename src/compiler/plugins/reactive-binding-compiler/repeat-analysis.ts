@@ -36,6 +36,7 @@ import {
   buildWhenElseEdits,
   buildElementIdEdits,
   applyTemplateEdits,
+  stripPropertyBoundAttributes,
   type IdState,
   type TemplateEdit,
   type Range,
@@ -232,6 +233,8 @@ export const generateStaticRepeatTemplate = (
   // which are handled at runtime via the element binding paths — so they must
   // all be removed from the static template.
   staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
+  // Property-bound attributes (checked, disabled, value, …) must not ship in the template
+  staticHtml = stripPropertyBoundAttributes(staticHtml, itemBindings);
 
   // Remove inline id attributes that were only added for bindings
   // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
@@ -810,15 +813,20 @@ const collectItemAttrBindings = (
           }
         }
 
+        const domProperty = attributeDomProperty(attrName, el);
         itemBindings.push({
           elementId: id,
           type: 'attr',
           property: attrName,
-          domProperty: attributeDomProperty(attrName, el),
+          domProperty,
           expression: innerExpr,
           ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
-          // What the static template ships for this attribute once every expression is stripped
-          staticValue: attr.value.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, ''),
+          // What the static template ships for this attribute once every expression is stripped.
+          // Property-bound attributes ship nothing, so the first write always happens.
+          staticValue:
+            domProperty && domProperty !== 'className'
+              ? undefined
+              : attr.value.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, ''),
         });
 
         itemAttrMatches.push({

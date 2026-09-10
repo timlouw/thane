@@ -31,6 +31,7 @@ import {
   buildWhenElseEdits,
   buildSignalReplacementEdits,
   buildElementIdEdits,
+  stripPropertyBoundAttributes,
   buildRangeOverlapChecker,
   applyTemplateEdits,
   type IdState,
@@ -545,7 +546,7 @@ export const processHtmlTemplateWithConditionals = (
   );
 
   return {
-    processedContent,
+    processedContent: stripPropertyBoundAttributes(processedContent, bindings),
     bindings,
     conditionals,
     whenElseBlocks,
@@ -816,7 +817,7 @@ export const processSubTemplateWithNesting = (
   }
 
   return {
-    processedContent: applyTemplateEdits(templateContent, edits),
+    processedContent: stripPropertyBoundAttributes(applyTemplateEdits(templateContent, edits), bindings),
     bindings,
     conditionals,
     whenElseBlocks,
