@@ -229,6 +229,13 @@ test('nested directives inside rows read the row item and index and follow row u
 
   await page.getByTestId('scope-user').click();
   await expect(page.getByTestId('scope-user-name')).toHaveText(['bob', 'bob', 'bob']);
+
+  // Row handlers given as a reference are called; an arrow with its own parameter name sees the event
+  await page.getByTestId('scope-ref-click').nth(0).click();
+  await page.getByTestId('scope-ref-click').nth(2).click();
+  await expect(page.getByTestId('scope-ref-clicks')).toHaveText('2');
+  await page.getByTestId('scope-param-click').nth(1).click();
+  await expect(page.getByTestId('scope-param-text')).toHaveText('s2!-param');
 });
 
 test('rows created in batches carry their own item, index and delegated handler', async ({ page }) => {

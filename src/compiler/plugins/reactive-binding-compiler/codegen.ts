@@ -271,6 +271,26 @@ interface PartitionedEvents {
 }
 
 /**
+ * Turn a row event attribute's expression into statements for the row listener body, where
+ * the event is `e`. An arrow function is inlined (its parameter aliased to `e` when it has
+ * another name); a plain reference is called with the event; a call expression such as
+ * `select(item.id)` runs as written.
+ */
+const inlineRowHandler = (handlerExpr: string): string => {
+  const arrow = parseArrowFunction(handlerExpr);
+  if (arrow) {
+    const body = arrow.isBlockBody ? arrow.body.slice(1, -1).trim() : arrow.body;
+    const param = arrow.params.replace(/^\(|\)$/g, '').trim();
+    if (param === '' || param === 'e') return body;
+    if (/^[A-Za-z_$][\w$]*$/.test(param)) return `{ const ${param} = e; ${body}; }`;
+    return `(${handlerExpr})(e)`;
+  }
+  const trimmed = handlerExpr.trim();
+  if (/^[A-Za-z_$][\w$.]*$/.test(trimmed)) return `${trimmed}(e)`;
+  return handlerExpr;
+};
+
+/**
  * Partition item events into delegatable (container-level listener) and
  * non-delegatable (.self modifier or missing path) groups.
  */
@@ -297,10 +317,7 @@ const partitionItemEvents = (
     if (rep.indexVar) {
       handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
     }
-    const arrowParsed = parseArrowFunction(handlerExpr);
-    if (arrowParsed) {
-      handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
-    }
+    handlerExpr = inlineRowHandler(handlerExpr);
 
     // .self requires currentTarget === target — cannot delegate
     if (evt.modifiers.includes('self')) {
@@ -429,10 +446,7 @@ const buildNonDelegatableEventStatements = (
     if (rep.indexVar) {
       handlerExpr = renameIdentifierInExpression(handlerExpr, rep.indexVar, indexVar);
     }
-    const arrowParsed = parseArrowFunction(handlerExpr);
-    if (arrowParsed) {
-      handlerExpr = arrowParsed.isBlockBody ? arrowParsed.body.slice(1, -1).trim() : arrowParsed.body;
-    }
+    handlerExpr = inlineRowHandler(handlerExpr);
     const bodyParts: string[] = [];
     if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
     if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');

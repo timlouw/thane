@@ -597,7 +597,7 @@ const classifyParsedBindings = (
   state: IdState,
   itemEvents: ItemEventBinding[],
   signalBindings: SimpleBinding[],
-  eventBindings: EventBinding[],
+  _eventBindings: EventBinding[],
   elementIdMap: Map<HtmlElement, string>,
   textBindingSpans: Map<number, { spanId: string; exprEnd: number; signalName: string }>,
 ): { itemEventIdCounter: number } => {
@@ -610,32 +610,18 @@ const classifyParsedBindings = (
     const insideRange = allRanges.some((r) => binding.expressionStart >= r.start && binding.expressionStart < r.end);
     if (insideRange) continue;
     if (binding.type === 'event' && binding.eventName && binding.handlerExpression) {
-      const refsItem = expressionReferencesIdentifier(binding.handlerExpression, itemVar);
-      const refsIndex = indexVar ? expressionReferencesIdentifier(binding.handlerExpression, indexVar) : false;
-
-      if (refsItem || refsIndex) {
-        const eventId = `ie${itemEventIdCounter++}`;
-        const eventElementId = ensureRowElementId(binding.element, state, 'b');
-        itemEvents.push({
-          eventId,
-          elementId: eventElementId,
-          eventName: binding.eventName,
-          modifiers: binding.eventModifiers || [],
-          handlerExpression: binding.handlerExpression,
-        });
-      } else {
-        const eventId = `e${state.eventIdCounter.value++}`;
-        const elementId = ensureRowElementId(binding.element, state, 'b');
-        eventBindings.push({
-          id: eventId,
-          eventName: binding.eventName,
-          modifiers: binding.eventModifiers || [],
-          handlerExpression: binding.handlerExpression,
-          elementId,
-          startIndex: binding.expressionStart,
-          endIndex: binding.expressionEnd,
-        });
-      }
+      // Every handler on a row element is a row event, whether or not it mentions the item:
+      // rows do not exist when the component binds, so a root-level listener would attach to
+      // nothing. The row's delegated (or per-row) listener calls it with the event.
+      const eventId = `ie${itemEventIdCounter++}`;
+      const eventElementId = ensureRowElementId(binding.element, state, 'b');
+      itemEvents.push({
+        eventId,
+        elementId: eventElementId,
+        eventName: binding.eventName,
+        modifiers: binding.eventModifiers || [],
+        handlerExpression: binding.handlerExpression,
+      });
       continue;
     }
     if (binding.type === 'text' || binding.type === 'style' || binding.type === 'attr') {

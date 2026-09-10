@@ -105,6 +105,8 @@ export const ContractApp = defineComponent('contract-app', () => {
     { id: 3, name: 's3', on: true, tags: [] },
   ]);
   const scopePicked = signal('');
+  const refClicks = signal(0);
+  const paramText = signal('');
   const scopeUser = signal({ name: 'tim' });
   const pickedBatchRow = signal(0);
 
@@ -154,6 +156,8 @@ export const ContractApp = defineComponent('contract-app', () => {
   const renameScopeRows = () => scopeRows(scopeRows().map((r) => ({ ...r, name: r.name + '!' })));
   const tagScopeRow = () => scopeRows(scopeRows().map((r) => (r.id === 1 ? { ...r, tags: [...r.tags, 'z'] } : r)));
   const pickScopeRow = (id: number) => scopePicked('scope' + id);
+  const bumpRefClicks = () => refClicks(refClicks() + 1);
+  const setParamText = (text: string | null) => paramText(text ?? '');
   const renameScopeUser = () => scopeUser({ name: 'bob' });
   const renameBatchRows = () => batchRows(batchRows().map((row) => ({ ...row, name: `${row.name}!` })));
   const appendBatchRows = () => {
@@ -595,6 +599,8 @@ export const ContractApp = defineComponent('contract-app', () => {
           <button data-testid="scope-add-tag" @click=${tagScopeRow}>tag</button>
           <button data-testid="scope-user" @click=${renameScopeUser}>user</button>
           <span data-testid="scope-picked">${scopePicked()}</span>
+          <span data-testid="scope-ref-clicks">${refClicks()}</span>
+          <span data-testid="scope-param-text">${paramText()}</span>
           <ul>
             ${repeat(
               scopeRows(),
@@ -610,6 +616,12 @@ export const ContractApp = defineComponent('contract-app', () => {
                     html`<em data-testid="scope-else">${row.name}-else</em>`,
                   )}
                   <i data-testid="scope-user-name">${scopeUser().name}</i>
+                  <u data-testid="scope-ref-click" @click=${bumpRefClicks}>ref</u>
+                  <s
+                    data-testid="scope-param-click"
+                    @click=${(ev) => setParamText((ev.target as HTMLElement).textContent)}
+                    >${row.name}-param</s
+                  >
                   <ol>
                     ${repeat(row.tags, (t) => html`<li data-testid="scope-tag">${row.name}:${t}</li>`)}
                   </ol>
