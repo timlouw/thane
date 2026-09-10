@@ -19,7 +19,13 @@ import type {
 } from './types.js';
 import { CLOSURE_ACCESS, isExpressionBinding, isSimpleBinding } from './types.js';
 import { generateStaticRepeatTemplate } from './repeat-analysis.js';
-import { toCamelCase, BIND_FN, renameIdentifierInExpression, parseArrowFunction } from '../../utils/index.js';
+import {
+  toCamelCase,
+  BIND_FN,
+  renameIdentifierInExpression,
+  parseArrowFunction,
+  expressionReferencesIdentifier,
+} from '../../utils/index.js';
 import { injectIdIntoFirstElement, escapeTemplateLiteral } from '../../utils/html-parser/index.js';
 import type { ImportInfo } from '../../types.js';
 import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
@@ -1300,8 +1306,12 @@ export const generateInitBindingsFunction = (
         // Row-scoped signals for nested directives (see createRowRefRewriter in repeat-analysis)
         const rowSignalVars = rep.rowSignalVars ?? [];
         const hasIndexSignal = rowSignalVars.includes(`${indexVar}$`);
+        // A list whose bindings read the index asks the reconciler to refresh rows that move
+        const usesIndex =
+          hasIndexSignal ||
+          (!!rep.indexVar && rep.itemBindings.some((b) => expressionReferencesIdentifier(b.expression, rep.indexVar!)));
         for (const v of rowSignalVars) {
-          updateParts.push(`${v}(${v === `${rep.itemVar}$` ? 'item' : '_ix'})`);
+          updateParts.push(`${v}(${v === `${rep.itemVar}$` ? 'item' : indexVar})`);
         }
 
         // Rows that need no cleanups (no per-row subscriptions, nested directives or child mounts)
@@ -1627,7 +1637,9 @@ export const generateInitBindingsFunction = (
           lines.push(`    };`);
         } else {
           lines.push(`        return { el: _el, cleanups: ${needsCleanups ? '_cleanups' : '_nc'}, value: item,`);
-          lines.push(`          update: (item${hasIndexSignal ? ', _ix' : ''}) => { ${updateParts.join('; ')}; } };`);
+          lines.push(
+            `          update: (item${usesIndex ? `, ${indexVar}` : ''}) => { ${updateParts.join('; ')}; } };`,
+          );
         }
         if (batchRows) {
           if (!leanRows) lines.push(`    };`);
@@ -1636,11 +1648,11 @@ export const generateInitBindingsFunction = (
             `      (item, ${indexVar}, _ref) => { const _el = ${ap.staticPrefix}_cloneNode.call(${tplContentVar}, true); const _m = _bind_${rep.id}(_el, item, ${indexVar}); ${ap.staticPrefix}_insertBefore.call(${containerVar}, _el, _ref); return _m; },`,
           );
           lines.push(
-            `    ${keyFnExpr}, { size: ${ROW_BATCH_SIZE}, row: ${tplContentVar}, bind: _bind_${rep.id}${leanRows ? `, update: _update_${rep.id}` : ''} });`,
+            `    ${keyFnExpr}, { size: ${ROW_BATCH_SIZE}, row: ${tplContentVar}, bind: _bind_${rep.id}${leanRows ? `, update: _update_${rep.id}` : ''} }${usesIndex ? ', true' : ''});`,
           );
         } else {
           lines.push(`      },`);
-          lines.push(`    ${keyFnExpr});`);
+          lines.push(`    ${keyFnExpr}${usesIndex ? ', undefined, true' : ''});`);
         }
         for (const sub of selectionSubscriptions) {
           lines.push(`    ${sub}`);

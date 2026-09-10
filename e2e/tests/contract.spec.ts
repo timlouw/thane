@@ -757,23 +757,23 @@ test('comment-marker mixed-content in repeat items renders and updates correctly
   await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Beta-1');
   await expect(page.getByTestId('item-derived').nth(2)).toHaveText('Gamma-2');
 
-  // After reorder (3,1,2), items are DOM-reordered but keyed reconciler
-  // calls update(newItem) — the index was captured at creation time.
-  // Reorder moves items: Gamma(was idx 2), Alpha(was idx 0), Beta(was idx 1)
+  // After reorder (3,1,2) the rows move and every index binding reads the row's new position
   await page.getByTestId('reorder-items').click();
-  await expect(page.getByTestId('item-derived').nth(0)).toHaveText('Gamma-2');
-  await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Alpha-0');
-  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('Beta-1');
+  await expect(page.getByTestId('item-derived').nth(0)).toHaveText('Gamma-0');
+  await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Alpha-1');
+  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('Beta-2');
+  await expect(page.getByTestId('item-index')).toHaveText(['0', '1', '2']);
 
   // After add, the new item also uses comment markers
   await page.getByTestId('add-item').click();
   await expect(page.getByTestId('item-derived').nth(3)).toHaveText('New-4-3');
 
-  // After remove-first (removes Gamma), remaining: [Alpha, Beta, New-4]
+  // After remove-first (removes Gamma), the remaining rows shift down: [Alpha, Beta, New-4]
   await page.getByTestId('remove-first').click();
   await expect(page.getByTestId('item-derived').nth(0)).toHaveText('Alpha-0');
   await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Beta-1');
-  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('New-4-3');
+  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('New-4-2');
+  await expect(page.getByTestId('item-index')).toHaveText(['0', '1', '2']);
 });
 
 test('signal text binding inside repeat reacts to parent signal changes', async ({ page }) => {

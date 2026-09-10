@@ -64,8 +64,9 @@ describe('Nested directives inside rows read the row through row-scoped signals'
   test('the index is available to nested directives through its own signal', async () => {
     const js = await buildAndReadJs(app('<li><b ${when(i > 0)}>${i}</b></li>', '(row, i)'));
     expect(js).toMatch(/const i\$ = (?:__sig|signal)\(i\);/);
-    expect(js).toMatch(/update: \(item2?, _ix\) => \{/);
-    expect(js).toMatch(/i\$\(_ix\);/);
+    // the update takes the row's current index (esbuild renames the shadowing parameter)
+    expect(js).toMatch(/update: \(item2?, i2?\) => \{/);
+    expect(js).toMatch(/i\$\(i2?\);/);
     expect(js).toMatch(/__bindIfExpr\(r, \[i\$\], \(\) => i\$\(\) > 0,/);
   });
 

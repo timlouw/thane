@@ -152,6 +152,8 @@ interface ManagedItem<T> {
   value?: T | undefined;
   /** Cached key — avoids re-calling keyFn on old items */
   key?: string | number | undefined;
+  /** The row's position; stored only for lists whose bindings read the index */
+  i?: number | undefined;
 }
 
 /** Key function for tracking items in repeat. */
@@ -184,6 +186,7 @@ export function createKeyedReconciler<T>(
   createItemFn: (item: T, index: number, refNode: Node) => ManagedItem<T>,
   keyFnOrProp: KeyFn<T> | string,
   batch?: BatchRows<T>,
+  trackIndex?: boolean,
 ) {
   // Resolve key accessor once: string prop → direct access, function → use as-is
   const keyFn: KeyFn<T> =
@@ -196,8 +199,19 @@ export function createKeyedReconciler<T>(
   const sharedUpdate = batch?.update;
   const updateRow = (managed: ManagedItem<T>, item: T, index: number) => {
     managed.value = item;
+    if (trackIndex) managed.i = index;
     if (sharedUpdate !== undefined) sharedUpdate(managed, item, index);
     else managed.update!(item, index);
+  };
+
+  // A list whose bindings read the index (trackIndex) refreshes every row that sits at a new
+  // position after a removal or a reorder; the row's guards skip the writes that did not
+  // change. Other lists never store a position.
+  const syncIndexes = () => {
+    for (let i = 0, len = managedItems.length; i < len; i++) {
+      const managed = managedItems[i]!;
+      if (managed.i !== i) updateRow(managed, managed.value as T, i);
+    }
   };
 
   const managedItems: ManagedItem<T>[] = [];
@@ -264,6 +278,7 @@ export function createKeyedReconciler<T>(
           const managed = bind(el, item, i);
           const key = keyFn(item, i);
           managed.key = key;
+          if (trackIndex) managed.i = i;
           managedItems[write++] = managed;
           keyMap.set(key, managed);
           el = el.nextElementSibling!;
@@ -277,6 +292,7 @@ export function createKeyedReconciler<T>(
       const managed = createItemFn(item, i, anchor);
       const key = keyFn(item, i);
       managed.key = key;
+      if (trackIndex) managed.i = i;
       managedItems[write++] = managed;
       keyMap.set(key, managed);
     }
@@ -345,6 +361,7 @@ export function createKeyedReconciler<T>(
         removeItem(removedManaged);
         keyMap.delete(removedManaged.key!);
         managedItems.splice(removedIdx, 1);
+        if (trackIndex) syncIndexes();
         return;
       }
     }
@@ -416,6 +433,7 @@ export function createKeyedReconciler<T>(
             }
             managedItems[mismatch1] = m2;
             managedItems[mismatch2] = m1;
+            if (trackIndex) syncIndexes();
             return;
           }
         }
@@ -431,6 +449,7 @@ export function createKeyedReconciler<T>(
         }
         managedItems.length = newLength;
         for (let i = 0; i < newLength; i++) managedItems[i] = newManagedItems[i]!;
+        if (trackIndex) syncIndexes();
         return;
       }
     }
@@ -476,6 +495,7 @@ export function createKeyedReconciler<T>(
         const refNode = i < managedItems.length ? managedItems[i]!.el : anchor;
         const managed = createItemFn(newItem, i, refNode);
         managed.key = key;
+        if (trackIndex) managed.i = i;
         keyMap.set(key, managed);
         newManagedItems.push(managed);
       }
@@ -490,6 +510,7 @@ export function createKeyedReconciler<T>(
     }
     managedItems.length = newLength;
     for (let i = 0; i < newLength; i++) managedItems[i] = newManagedItems[i]!;
+    if (trackIndex) syncIndexes();
   };
 
   /**
