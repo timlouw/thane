@@ -31,6 +31,7 @@ export {
   findBindingsInText,
   findBindingsInAttributes,
   findTemplateExpressions,
+  stripTemplateExpressions,
 } from './binding-detection.js';
 
 // Utilities

@@ -64,7 +64,7 @@ Tagged template literals — `html```, text bindings, attribute bindings, style 
 
 ```typescript
 template: html`
-  <span :style=${'color:' + color()}>
+  <span style=${'color:' + color()}>
     ${label()}: ${count()}
   </span>
 `

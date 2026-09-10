@@ -194,12 +194,12 @@ This typically indicates signals subscribing to and setting each other in an inf
 
 ## Summary
 
-| Function | Purpose | Returns |
-|:---------|:--------|:--------|
-| `signal(initial)` | Create a read/write reactive value | `Signal<T>` |
-| `computed(fn)` | Derived value, auto-tracked, lazy | `ReadonlySignal<T> & { dispose }` |
-| `effect(fn)` | Side effect, auto-tracked, immediate | `() => void` (dispose) |
-| `batch(fn)` | Defer notifications until complete | `void` |
-| `untrack(fn)` | Read signals without tracking | `T` (return value of fn) |
+| Function          | Purpose                              | Returns                           |
+| :---------------- | :----------------------------------- | :-------------------------------- |
+| `signal(initial)` | Create a read/write reactive value   | `Signal<T>`                       |
+| `computed(fn)`    | Derived value, auto-tracked, lazy    | `ReadonlySignal<T> & { dispose }` |
+| `effect(fn)`      | Side effect, auto-tracked, immediate | `() => void` (dispose)            |
+| `batch(fn)`       | Defer notifications until complete   | `void`                            |
+| `untrack(fn)`     | Read signals without tracking        | `T` (return value of fn)          |
 
 ← [Back to Docs](README.md)

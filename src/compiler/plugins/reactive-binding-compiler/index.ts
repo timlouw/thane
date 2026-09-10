@@ -980,7 +980,8 @@ export const ReactiveBindingPlugin: Plugin = {
           ErrorCode.PLUGIN_ERROR,
         );
         logger.diagnostic(diagnostic);
-        return undefined;
+        // A component the compiler cannot process must fail the build rather than ship uncompiled
+        return { errors: [{ text: diagnostic.message, location: { file: args.path } }] };
       }
     });
   },

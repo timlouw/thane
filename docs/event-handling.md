@@ -7,7 +7,7 @@ Bind DOM events using the `@event` syntax inside `html` templates.
 ```typescript
 const handleClick = () => console.log('Clicked!');
 
-template: html`<button @click=${handleClick}>Click me</button>`
+template: html`<button @click=${handleClick}>Click me</button>`;
 ```
 
 The compiler transforms `@click=${handler}` into an `addEventListener('click', handler)` call.
@@ -17,7 +17,7 @@ The compiler transforms `@click=${handler}` into an `addEventListener('click', h
 Use inline arrow functions directly:
 
 ```typescript
-template: html`<button @click=${() => count(count() + 1)}>+1</button>`
+template: html`<button @click=${() => count(count() + 1)}>+1</button>`;
 ```
 
 ## Event Object
@@ -30,7 +30,7 @@ const handleInput = (event: Event) => {
   query(target.value);
 };
 
-template: html`<input @input=${handleInput} />`
+template: html`<input @input=${handleInput} />`;
 ```
 
 For mouse events:
@@ -40,7 +40,7 @@ const handleClick = (event: MouseEvent) => {
   console.log(event.clientX, event.clientY);
 };
 
-template: html`<div @click=${handleClick}>Click anywhere</div>`
+template: html`<div @click=${handleClick}>Click anywhere</div>`;
 ```
 
 ## Common Events
@@ -52,7 +52,7 @@ template: html`
     <button @click=${onClick}>Submit</button>
   </form>
   <div @keydown=${onKeyDown} @keyup=${onKeyUp}></div>
-`
+`;
 ```
 
 ## Event Methods
@@ -65,7 +65,7 @@ const addCurrentToCart = (event: Event) => {
   addToCart(productId);
 };
 
-template: html`<button @click=${addCurrentToCart}>Add to Cart</button>`
+template: html`<button @click=${addCurrentToCart}>Add to Cart</button>`;
 ```
 
 This pattern is used in the [e-commerce example app](examples/e-commerce-app.md) where a card click navigates to details, but the "Add to Cart" button inside the card needs to stop propagation.
@@ -78,7 +78,7 @@ const handleSubmit = (event: Event) => {
   // custom form handling
 };
 
-template: html`<form @submit=${handleSubmit}>...</form>`
+template: html`<form @submit=${handleSubmit}>...</form>`;
 ```
 
 ## Navigate on Click
@@ -89,7 +89,7 @@ When using the router, bind `navigate()` directly to click handlers:
 template: html`
   <a @click=${navigate('/')}>Home</a>
   <a @click=${navigate('/about')}>About</a>
-`
+`;
 ```
 
 Or with `preventDefault` for anchor elements:
@@ -100,7 +100,7 @@ const goHome = (event: Event) => {
   navigate('/');
 };
 
-template: html`<a href="/" @click=${goHome}>Home</a>`
+template: html`<a href="/" @click=${goHome}>Home</a>`;
 ```
 
 ← [Back to Docs](README.md)

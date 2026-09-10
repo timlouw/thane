@@ -4,20 +4,20 @@ Thane includes 12 compile-time lint rules (THANE400–THANE411) that catch patte
 
 ## Summary
 
-| Code | Rule | Severity |
-|:-----|:-----|:---------|
-| THANE400 | [no-default-export-component](#thane400--no-default-export-component) | Error |
-| THANE401 | [component-property-order](#thane401--component-property-order) | Error |
-| THANE402 | [lifecycle-arrow-function](#thane402--lifecycle-arrow-function) | Error |
-| THANE403 | [require-const-tagged-templates](#thane403--require-const-tagged-templates) | Error |
-| THANE404 | [no-nested-html-tags](#thane404--no-nested-html-tags) | Error |
-| THANE405 | [no-conditional-template-init](#thane405--no-conditional-template-init) | Warning |
-| THANE406 | [no-element-id](#thane406--no-element-id) | Warning |
-| THANE407 | [single-component-per-file](#thane407--single-component-per-file) | Error |
-| THANE408 | [component-const-declaration](#thane408--component-const-declaration) | Error |
-| THANE409 | [no-aliased-component-export](#thane409--no-aliased-component-export) | Error |
-| THANE410 | [no-cross-file-html-template](#thane410--no-cross-file-html-template) | Warning |
-| THANE411 | [duplicate-mount-target](#thane411--duplicate-mount-target) | Warning |
+| Code     | Rule                                                                        | Severity |
+| :------- | :-------------------------------------------------------------------------- | :------- |
+| THANE400 | [no-default-export-component](#thane400--no-default-export-component)       | Error    |
+| THANE401 | [component-property-order](#thane401--component-property-order)             | Error    |
+| THANE402 | [lifecycle-arrow-function](#thane402--lifecycle-arrow-function)             | Error    |
+| THANE403 | [require-const-tagged-templates](#thane403--require-const-tagged-templates) | Error    |
+| THANE404 | [no-nested-html-tags](#thane404--no-nested-html-tags)                       | Error    |
+| THANE405 | [no-conditional-template-init](#thane405--no-conditional-template-init)     | Warning  |
+| THANE406 | [no-element-id](#thane406--no-element-id)                                   | Warning  |
+| THANE407 | [single-component-per-file](#thane407--single-component-per-file)           | Error    |
+| THANE408 | [component-const-declaration](#thane408--component-const-declaration)       | Error    |
+| THANE409 | [no-aliased-component-export](#thane409--no-aliased-component-export)       | Error    |
+| THANE410 | [no-cross-file-html-template](#thane410--no-cross-file-html-template)       | Warning  |
+| THANE411 | [duplicate-mount-target](#thane411--duplicate-mount-target)                 | Warning  |
 
 ---
 
@@ -50,14 +50,22 @@ Properties in the `defineComponent()` return object must follow canonical order:
 ```typescript
 // ❌ BAD — styles before template
 export const A = defineComponent(() => ({
-  styles: css`:host { color: red }`,
-  template: html`<div/>`,
+  styles: css`
+    :host {
+      color: red;
+    }
+  `,
+  template: html`<div />`,
 }));
 
 // ✅ GOOD
 export const A = defineComponent(() => ({
-  template: html`<div/>`,
-  styles: css`:host { color: red }`,
+  template: html`<div />`,
+  styles: css`
+    :host {
+      color: red;
+    }
+  `,
   onMount: () => {},
   onDestroy: () => {},
 }));
@@ -74,20 +82,24 @@ Lifecycle hooks (`onMount`, `onDestroy`) must be **arrow functions**. Method sho
 ```typescript
 // ❌ BAD — method shorthand
 export const A = defineComponent(() => ({
-  template: html`<div/>`,
-  onMount() { console.log('hi'); },
+  template: html`<div />`,
+  onMount() {
+    console.log('hi');
+  },
 }));
 
 // ❌ BAD — function expression
 export const A = defineComponent(() => ({
-  template: html`<div/>`,
-  onDestroy: function() {},
+  template: html`<div />`,
+  onDestroy: function () {},
 }));
 
 // ✅ GOOD — arrow functions
 export const A = defineComponent(() => ({
-  template: html`<div/>`,
-  onMount: () => { console.log('hi'); },
+  template: html`<div />`,
+  onMount: () => {
+    console.log('hi');
+  },
   onDestroy: () => {},
 }));
 ```
@@ -103,11 +115,19 @@ export const A = defineComponent(() => ({
 ```typescript
 // ❌ BAD
 let header = html`<header>Title</header>`;
-var styles = css`:host { color: red }`;
+var styles = css`
+  :host {
+    color: red;
+  }
+`;
 
 // ✅ GOOD
 const header = html`<header>Title</header>`;
-const styles = css`:host { color: red }`;
+const styles = css`
+  :host {
+    color: red;
+  }
+`;
 ```
 
 ---
@@ -120,14 +140,16 @@ const styles = css`:host { color: red }`;
 
 ```typescript
 // ❌ BAD — nested html tag
-template: html`<div>${html`<span>nested</span>`}</div>`
+template: html`<div>${html`<span>nested</span>`}</div>`;
 
 // ✅ GOOD — extract to const variable
 const span = html`<span>nested</span>`;
-template: html`<div>${span}</div>`
+template: html`<div>${span}</div>`;
 
 // ✅ GOOD — inside directives (allowed exception)
-template: html`<ul>${repeat(items(), (i) => html`<li>${i}</li>`)}</ul>`
+template: html`<ul
+  >${repeat(items(), (i) => html`<li>${i}</li>`)}</ul
+>`;
 ```
 
 Templates inside directive callbacks (`repeat`, `whenElse`) are allowed because the compiler processes each callback's template independently.
@@ -142,15 +164,13 @@ Variables holding `html`/`css` templates must not use conditional or logical ini
 
 ```typescript
 // ❌ BAD — ternary
-const tpl = isAdmin
-  ? html`<div>Admin</div>`
-  : html`<div>User</div>`;
+const tpl = isAdmin ? html`<div>Admin</div>` : html`<div>User</div>`;
 
 // ❌ BAD — logical AND
 const tpl = show && html`<div>Content</div>`;
 
 // ✅ GOOD — use whenElse for conditional rendering
-template: html`<div>${whenElse(isAdmin(), html`<p>Admin</p>`, html`<p>User</p>`)}</div>`
+template: html`<div>${whenElse(isAdmin(), html`<p>Admin</p>`, html`<p>User</p>`)}</div>`;
 ```
 
 ---
@@ -163,12 +183,12 @@ User-defined element IDs must not match the compiler-reserved pattern: `b` follo
 
 ```typescript
 // ❌ BAD — conflicts with compiler-generated IDs
-html`<div id="b0">...</div>`
-html`<div id="b12">...</div>`
+html`<div id="b0">...</div>`;
+html`<div id="b12">...</div>`;
 
 // ✅ GOOD
-html`<div id="main">...</div>`
-html`<button id="run">...</button>`
+html`<div id="main">...</div>`;
+html`<button id="run">...</button>`;
 ```
 
 ---
@@ -181,12 +201,12 @@ Only one `defineComponent()` call is allowed per file. Multiple calls cause the 
 
 ```typescript
 // ❌ BAD — two components in one file
-export const Foo = defineComponent(() => ({ template: html`<div/>` }));
-export const Bar = defineComponent(() => ({ template: html`<span/>` }));
+export const Foo = defineComponent(() => ({ template: html`<div />` }));
+export const Bar = defineComponent(() => ({ template: html`<span />` }));
 
 // ✅ GOOD — one component per file
 export const MyCounter = defineComponent(() => ({
-  template: html`<div/>`,
+  template: html`<div />`,
 }));
 ```
 
@@ -249,7 +269,7 @@ export const App = defineComponent(() => ({
 }));
 ```
 
-> Note: CSS imports *are* allowed (`import styles from './Component.module.css'`). This rule only applies to `html` tagged templates.
+> Note: CSS imports _are_ allowed (`import styles from './Component.module.css'`). This rule only applies to `html` tagged templates.
 
 ---
 

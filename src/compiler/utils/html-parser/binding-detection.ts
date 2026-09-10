@@ -206,6 +206,17 @@ function extractSignalsFromExpression(expression: string): string[] {
   return signals;
 }
 
+/** The template with every `${…}` expression removed, nested template literals included. */
+export function stripTemplateExpressions(value: string): string {
+  let out = '';
+  let last = 0;
+  for (const span of findTemplateExpressions(value)) {
+    out += value.slice(last, span.start);
+    last = span.end;
+  }
+  return out + value.slice(last);
+}
+
 export function findTemplateExpressions(
   value: string,
 ): Array<{ start: number; end: number; expression: string; full: string }> {
@@ -602,6 +613,11 @@ export function findBindingsInAttributes(
   }
 
   for (const [name, attr] of element.attributes) {
+    if (name.startsWith(':')) {
+      throw new Error(
+        `THANE006: attribute "${name}" — the ":" prefix is not a binding syntax. Write ${name.slice(1)}=\${…} instead.`,
+      );
+    }
     if (name.startsWith('@')) {
       const eventParts = name.slice(1).split('.');
       const eventName = eventParts[0];
@@ -625,7 +641,11 @@ export function findBindingsInAttributes(
       continue;
     }
 
-    if (name === 'style') {
+    // `style=${expr}` (the whole value is one expression) is an attribute binding written
+    // through cssText; `style="prop: ${expr}"` binds each property individually.
+    const wholeValueIsExpression =
+      /^\s*\$\{[\s\S]*\}\s*$/.test(attr.value) && findTemplateExpressions(attr.value).length === 1;
+    if (name === 'style' && !wholeValueIsExpression) {
       const styleExprs = findTemplateExpressions(attr.value);
       for (const expr of styleExprs) {
         const signals = extractSignalsFromExpression(expr.expression);
@@ -666,6 +686,26 @@ export function findBindingsInAttributes(
     }
 
     const attrExprs = findTemplateExpressions(attr.value);
+    // Static text around an expression, or several expressions, make one binding whose value is
+    // the whole attribute as a template literal: `class="btn ${kind()}"` writes `btn primary`.
+    const staticText = attrExprs.reduce((rest, e) => rest.replace(e.full, ''), attr.value);
+    if (attrExprs.length > 1 || (attrExprs.length === 1 && staticText.trim() !== '')) {
+      const signals = [...new Set(attrExprs.flatMap((e) => extractSignalsFromExpression(e.expression)))];
+      if (signals.length > 0 || options?.detectNonSignalBindings) {
+        bindings.push({
+          element,
+          type: 'attr',
+          signalName: signals[0] ?? '',
+          signalNames: signals,
+          jsExpression: '`' + attr.value + '`',
+          property: name,
+          expressionStart: attr.valueStart,
+          expressionEnd: attr.valueStart + attr.value.length,
+          fullExpression: attr.value,
+        });
+      }
+      continue;
+    }
     for (const expr of attrExprs) {
       const signals = extractSignalsFromExpression(expr.expression);
 

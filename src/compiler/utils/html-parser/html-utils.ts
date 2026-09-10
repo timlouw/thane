@@ -76,6 +76,7 @@ export function isInsideSvg(element: HtmlElement | null): boolean {
  */
 const HTML_ATTRIBUTE_PROPERTIES: Record<string, string> = {
   class: 'className',
+  style: 'style.cssText',
   value: 'value',
   checked: 'checked',
   selected: 'selected',

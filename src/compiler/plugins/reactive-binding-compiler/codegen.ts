@@ -29,6 +29,8 @@ import {
 } from '../../utils/index.js';
 import {
   injectIdIntoFirstElement,
+  stripTemplateExpressions,
+  findTemplateExpressions,
   escapeTemplateLiteral,
   escapeRawTemplateLiteral,
   normalizeHtmlWhitespace,
@@ -269,6 +271,22 @@ interface PartitionedEvents {
   delegatedByType: Map<string, DelegatedEvent[]>;
   nonDelegatable: ItemEventBinding[];
 }
+
+/**
+ * Make a row template safe to embed in a JavaScript template literal: backslashes and backticks
+ * in the static markup are escaped, while `${…}` expressions are left as written so a nested
+ * template literal inside them (`class="row ${`x ${item.kind}`}"`) stays valid.
+ */
+const escapeRowTemplateSource = (template: string): string => {
+  let out = '';
+  let last = 0;
+  const esc = (t: string) => t.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+  for (const span of findTemplateExpressions(template)) {
+    out += esc(template.slice(last, span.start)) + span.full;
+    last = span.end;
+  }
+  return out + esc(template.slice(last));
+};
 
 /**
  * Turn a row event attribute's expression into statements for the row listener body, where
@@ -958,7 +976,7 @@ export const generateInitBindingsFunction = (
       const renderVar = `_wrr_${rep.id}`;
       const itemsGetterVar = `_wget_${rep.id}`;
       const emptyFlagVar = `_wre_${rep.id}`;
-      const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+      const sourceTemplate = escapeRowTemplateSource(rep.itemTemplate);
       const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
       const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
       const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');
@@ -1748,8 +1766,7 @@ export const generateInitBindingsFunction = (
           const innerTplId = `__tpl_${nr.id}`;
           if (innerStaticInfo.canUseOptimized) {
             const innerEscaped = (
-              innerStaticInfo.staticHtml ||
-              nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, '')
+              innerStaticInfo.staticHtml || stripTemplateExpressions(nr.itemTemplate).replace(/\s*id="[ib]\d+"/g, '')
             )
               .replace(/\\/g, '\\\\')
               .replace(/`/g, '\\`')
@@ -1758,7 +1775,7 @@ export const generateInitBindingsFunction = (
             staticTemplates.push(`  const ${innerTplId} = _T(\`${innerEscaped}\`);`);
           } else {
             const fallbackHtml = normalizeHtmlWhitespace(
-              nr.itemTemplate.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '').replace(/\s*id="[ib]\d+"/g, ''),
+              stripTemplateExpressions(nr.itemTemplate).replace(/\s*id="[ib]\d+"/g, ''),
             );
             const innerEscaped = fallbackHtml
               .replace(/\\/g, '\\\\')
@@ -2176,7 +2193,7 @@ export const generateInitBindingsFunction = (
         const renderItemVar = `_ri_${rep.id}`;
         const renderVar = `_rr_${rep.id}`;
         const emptyFlagVar = `_hasEmpty_${rep.id}`;
-        const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+        const sourceTemplate = escapeRowTemplateSource(rep.itemTemplate);
         const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
         const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
         const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');
@@ -2246,7 +2263,7 @@ export const generateInitBindingsFunction = (
     const renderItemVar = `_ri_${rep.id}`;
     const renderVar = `_rr_${rep.id}`;
     const emptyFlagVar = `_hasEmpty_${rep.id}`;
-    const sourceTemplate = rep.itemTemplate.replace(/\\/g, '\\\\').replace(/`/g, '\\`');
+    const sourceTemplate = escapeRowTemplateSource(rep.itemTemplate);
     const itemSignalAccessorDecl = ` const ${rep.itemVar}$ = () => item;`;
     const itemAliasDecl = rep.itemVar === 'item' ? '' : ` const ${rep.itemVar} = item;`;
     const emptyTemplate = escapeRawTemplateLiteral(rep.emptyTemplate || '');

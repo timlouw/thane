@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - [Bun](https://bun.sh) >= 1.0.0
-- [Node.js](https://nodejs.org/) >= 18 *(only for Playwright E2E tests)*
+- [Node.js](https://nodejs.org/) >= 18 _(only for Playwright E2E tests)_
 
 ## Installation
 

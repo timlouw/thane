@@ -45,10 +45,6 @@ Template variables cannot use ternary or logical operators (THANE405). Use `when
 
 At component level, an element with an attribute, style, or text binding receives a compiler-generated `id` (`b0`, `b1`, …). If you also give such an element your own `id`, the compiler-generated one takes precedence and yours is dropped. Event handlers and `when()` elements reuse your `id` instead. Inside `repeat()` rows, bound elements are located by position rather than by `id`, so your `id` is kept as written; note that it is then repeated on every row. When you need a stable `id` for CSS or `label for=""`, put it on a wrapper element that has no bindings.
 
-### Mixed Static and Dynamic Attribute Values
-
-An attribute that mixes static text with an expression, such as `class="btn ${kind()}"`, is driven entirely by the expression at runtime: the static prefix is dropped as soon as the binding initialises. Build the whole value inside the expression instead, for example `class=${'btn ' + kind()}`. Inline `style` bindings are the exception, because each `property: ${value}` pair is bound individually.
-
 ### Repeat Items Outside the Fast Path
 
 `repeat()` items are normally compiled to a cloned static template with direct DOM navigation. Item templates the analyser cannot handle, such as multi-root items, fall back to a renderer that rebuilds the item from a template string. They still work, only without the fast path.

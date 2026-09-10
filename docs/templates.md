@@ -1,6 +1,6 @@
 # Templates
 
-Thane uses tagged template literals for HTML. At build time, the compiler transforms `html``\`\`` into static `<template>` elements with comment markers, then generates binding code that subscribes to the exact DOM nodes that need updating.
+Thane uses tagged template literals for HTML. At build time, the compiler transforms `html``\`\``into static`<template>` elements with comment markers, then generates binding code that subscribes to the exact DOM nodes that need updating.
 
 ## Basic Template
 
@@ -19,7 +19,7 @@ Embed signal reads directly in the template. Only the specific text node updates
 ```typescript
 const count = signal(0);
 
-template: html`<p>Count: ${count()}</p>`
+template: html`<p>Count: ${count()}</p>`;
 ```
 
 The compiler places comment markers around the dynamic text. At runtime, a subscription updates only the text node between the markers.
@@ -29,50 +29,58 @@ The compiler places comment markers around the dynamic text. At runtime, a subsc
 Combine static text with multiple dynamic values in a single element:
 
 ```typescript
-template: html`<p>Name: ${first()} ${last()}</p>`
+template: html`<p>Name: ${first()} ${last()}</p>`;
 ```
 
 Each binding gets its own text node — updating `first` doesn't touch the `last` text node.
 
 ## Attribute Bindings
 
-Use the `:attr` prefix to bind dynamic values to HTML attributes:
+Bind a dynamic value to an attribute by writing the expression as its value:
 
 ```typescript
 template: html`
-  <img :src=${imageUrl()} :alt=${description()} />
-  <input :value=${query()} :placeholder=${'Search...'} />
-`
+  <img src=${imageUrl()} alt=${description()} />
+  <input value=${query()} placeholder="Search..." />
+  <a class="btn ${kind()}" href="/items/${id()}">Open</a>
+`;
 ```
 
-Attribute bindings set the attribute directly via `setAttribute` when the value changes.
+Static text around an expression is kept: `class="btn ${kind()}"` writes `btn primary`. Most
+attributes are written with `setAttribute`. Form and state attributes are written as DOM
+properties, so their values keep their JavaScript meaning: `value`, `checked`, `selected`,
+`disabled`, `open`, `hidden`, `readonly`, `required`, `multiple`, `indeterminate` and `muted`
+(`checked=${false}` unchecks; `value=${name()}` moves the field's live value). A `:`-prefixed
+attribute name is rejected at build time (THANE006).
 
 ### Dynamic Classes
 
 Bind `class` using an expression:
 
 ```typescript
-template: html`
-  <button class=${isActive() ? 'btn active' : 'btn'}>Click</button>
-`
+template: html` <button class=${isActive() ? 'btn active' : 'btn'}>Click</button> `;
 ```
 
 ## Style Bindings
 
-Use `:style` for inline style updates:
+Bind the whole inline style, or individual properties:
 
 ```typescript
 template: html`
-  <div :style=${'color:' + textColor()}>Styled text</div>
-`
+  <div style=${'color:' + textColor()}>Styled text</div>
+  <div style="color: ${textColor()}; width: ${width()}px">Per property</div>
+`;
 ```
+
+The first form writes `style.cssText`. The second binds each `property: ${value}` pair on its
+own at component level; inside `repeat()` rows the whole style is one binding.
 
 ## Ternary Expressions
 
 Use ternary operators for conditional text:
 
 ```typescript
-template: html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`
+template: html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`;
 ```
 
 ## Nullish Coalescing
@@ -80,7 +88,7 @@ template: html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`
 Use `??` for fallback values:
 
 ```typescript
-template: html`<p>${username() ?? 'Anonymous'}</p>`
+template: html`<p>${username() ?? 'Anonymous'}</p>`;
 ```
 
 ## HTML Fragment Injection
@@ -95,7 +103,7 @@ template: html`
   ${header}
   <main>Content</main>
   ${footer}
-`
+`;
 ```
 
 This injects the pre-built HTML fragment at that position.
@@ -110,7 +118,7 @@ import { Navbar } from './navbar.js';
 template: html`
   ${Navbar({})}
   <main>Page content</main>
-`
+`;
 ```
 
 The compiler manages the child's lifecycle and binding initialization.
@@ -121,24 +129,16 @@ The compiler manages the child's lifecycle and binding initialization.
 
 ### No Nested `html` Tags
 
-You cannot nest `html``\`\`` inside another `html``\`\`` (lint rule THANE404). Instead, assign inner templates to `const` variables:
+You cannot nest `html``\`\``inside another`html``\`\`` (lint rule THANE404). Instead, assign inner templates to `const` variables:
 
 ```typescript
 // ❌ BAD — nested html tag
-template: html`
-  <div>
-    ${html`<span>Nested</span>`}
-  </div>
-`
+template: html` <div> ${html`<span>Nested</span>`} </div> `;
 
 // ✅ GOOD — const variable
 const inner = html`<span>Nested</span>`;
 
-template: html`
-  <div>
-    ${inner}
-  </div>
-`
+template: html` <div> ${inner} </div> `;
 ```
 
 ### `const` Required for Tagged Templates

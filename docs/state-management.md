@@ -78,7 +78,7 @@ With a flat `Signal<Product[]>`, any change to any product re-renders the entire
 
 ```typescript
 // Update one product — only its bindings re-render
-const target = products().find(p => p().id === productId);
+const target = products().find((p) => p().id === productId);
 if (target) {
   target({ ...target(), cartCount: target().cartCount + 1 });
 }
@@ -92,9 +92,9 @@ The outer signal only fires when the array itself changes (items added/removed).
 import type { Product } from '../models/product.models.js';
 
 export const setProducts = (payload: Product[]) => {
-  const existingById = new Map(products().map(p => [p().id, p]));
+  const existingById = new Map(products().map((p) => [p().id, p]));
 
-  const newProducts = payload.map(item => {
+  const newProducts = payload.map((item) => {
     const existing = existingById.get(item.id);
     if (existing) {
       // Preserve cart state, update product data
@@ -117,9 +117,7 @@ import { signal, computed } from 'thane';
 
 export const products = signal<Signal<Product>[]>([]);
 
-export const cartCount = computed(() =>
-  products().reduce((sum, p) => sum + p().cartCount, 0),
-);
+export const cartCount = computed(() => products().reduce((sum, p) => sum + p().cartCount, 0));
 
 export const cartTotal = computed(() =>
   products()
@@ -151,16 +149,17 @@ const loadState = (): Product[] => {
 
 // Hydrate signals from localStorage
 const hydrated = loadState();
-export const products = signal<Signal<Product>[]>(
-  hydrated.map(p => signal(p)),
-);
+export const products = signal<Signal<Product>[]>(hydrated.map((p) => signal(p)));
 
 // Save whenever the product list changes
 const saveState = () => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({
-      products: products().map(p => p()),
-    }));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        products: products().map((p) => p()),
+      }),
+    );
   } catch {
     return;
   }
@@ -182,12 +181,12 @@ Navigating between routes that import `user` sees the same signal instance. The 
 
 ## Patterns Summary
 
-| Pattern | When to use |
-|:--------|:------------|
-| Local signals inside `defineComponent` | State owned by a single component instance |
-| Module-level signals in a shared file | State shared across multiple components or routes |
-| Nested signals (`Signal<Signal<T>[]>`) | Lists where individual items update independently |
-| `computed()` | Derived values (totals, filters, formatted strings) |
-| `.subscribe()` + `localStorage` | Persist state across page reloads |
+| Pattern                                | When to use                                         |
+| :------------------------------------- | :-------------------------------------------------- |
+| Local signals inside `defineComponent` | State owned by a single component instance          |
+| Module-level signals in a shared file  | State shared across multiple components or routes   |
+| Nested signals (`Signal<Signal<T>[]>`) | Lists where individual items update independently   |
+| `computed()`                           | Derived values (totals, filters, formatted strings) |
+| `.subscribe()` + `localStorage`        | Persist state across page reloads                   |
 
 ← [Back to Docs](README.md)

@@ -10,10 +10,10 @@ Use `defineRoutes()` from `thane/router` to declare your route map:
 import { defineRoutes } from 'thane/router';
 
 const Routes = defineRoutes({
-  '/':              { component: () => import('./pages/home.js'), title: 'Home' },
-  '/about':         { component: () => import('./pages/about.js'), title: 'About' },
-  '/users/:id':     { component: () => import('./pages/user.js'), title: 'User Details' },
-  notFound:         { component: () => import('./pages/not-found.js'), title: '404' },
+  '/': { component: () => import('./pages/home.js'), title: 'Home' },
+  '/about': { component: () => import('./pages/about.js'), title: 'About' },
+  '/users/:id': { component: () => import('./pages/user.js'), title: 'User Details' },
+  'notFound': { component: () => import('./pages/not-found.js'), title: '404' },
 });
 
 export default Routes;
@@ -21,10 +21,10 @@ export default Routes;
 
 Each route consists of:
 
-| Property | Type | Description |
-|:---------|:-----|:------------|
-| `component` | `() => Promise<any>` \| `ComponentHTMLSelector` | Lazy loader or eager component |
-| `title` | `string` *(optional)* | Sets `document.title` when the route is active |
+| Property    | Type                                            | Description                                    |
+| :---------- | :---------------------------------------------- | :--------------------------------------------- |
+| `component` | `() => Promise<any>` \| `ComponentHTMLSelector` | Lazy loader or eager component                 |
+| `title`     | `string` _(optional)_                           | Sets `document.title` when the route is active |
 
 The `notFound` route is **required** — it renders when no other route matches. Route patterns starting with `/:param` (root-level parameters) are rejected at runtime.
 
@@ -99,7 +99,7 @@ In templates, bind directly to click handlers:
 template: html`
   <a @click=${navigate('/')}>Home</a>
   <a @click=${navigate('/about')}>About</a>
-`
+`;
 ```
 
 `navigate()` is **type-safe** when you register your routes (see [Type-Safe Routes](#type-safe-routes) below).
@@ -109,7 +109,7 @@ template: html`
 Go back in browser history:
 
 ```typescript
-template: html`<button @click=${navigateBack}>← Back</button>`
+template: html`<button @click=${navigateBack}>← Back</button>`;
 ```
 
 ### `currentPath()`
@@ -117,9 +117,7 @@ template: html`<button @click=${navigateBack}>← Back</button>`
 A read-only signal containing the current pathname. Use it for active link styling:
 
 ```typescript
-template: html`
-  <a class=${currentPath() === '/' ? 'active' : ''} @click=${navigate('/')}>Home</a>
-`
+template: html` <a class=${currentPath() === '/' ? 'active' : ''} @click=${navigate('/')}>Home</a> `;
 ```
 
 ## Route Parameters
@@ -147,15 +145,15 @@ export const UserPage = defineComponent('user-page', ({ route }) => {
 
 Every component has access to route context via `ctx.route`:
 
-| Property | Type | Description |
-|:---------|:-----|:------------|
-| `path` | `string` | Current URL pathname |
-| `pattern` | `string` | Matched route pattern (e.g., `/users/:id`) |
-| `params` | `Record<string, string>` | Extracted route parameters |
-| `searchParams` | `URLSearchParams` | URL query parameters |
-| `hash` | `string` | URL hash fragment |
-| `title` | `string` | Document title from route config |
-| `state` | `unknown` | History state object |
+| Property       | Type                     | Description                                |
+| :------------- | :----------------------- | :----------------------------------------- |
+| `path`         | `string`                 | Current URL pathname                       |
+| `pattern`      | `string`                 | Matched route pattern (e.g., `/users/:id`) |
+| `params`       | `Record<string, string>` | Extracted route parameters                 |
+| `searchParams` | `URLSearchParams`        | URL query parameters                       |
+| `hash`         | `string`                 | URL hash fragment                          |
+| `title`        | `string`                 | Document title from route config           |
+| `state`        | `unknown`                | History state object                       |
 
 ## Code Splitting
 
@@ -163,9 +161,9 @@ Use dynamic `import()` for lazy-loaded route components. Each page becomes a sep
 
 ```typescript
 const Routes = defineRoutes({
-  '/':         { component: () => import('./pages/home.js') },
+  '/': { component: () => import('./pages/home.js') },
   '/settings': { component: () => import('./pages/settings.js') },
-  notFound:    { component: () => import('./pages/404.js') },
+  'notFound': { component: () => import('./pages/404.js') },
 });
 ```
 
@@ -195,11 +193,11 @@ mount({
   router: {
     routes: Routes,
     scrollRestoration: {
-      resetOnNavigate: true,        // scroll to top on navigate() — default: true
-      restoreOnBackForward: true,    // restore position on back/forward — default: true
-      behavior: 'auto',             // 'auto' | 'smooth' — default: 'auto'
-      top: 0,                       // reset top offset — default: 0
-      left: 0,                      // reset left offset — default: 0
+      resetOnNavigate: true, // scroll to top on navigate() — default: true
+      restoreOnBackForward: true, // restore position on back/forward — default: true
+      behavior: 'auto', // 'auto' | 'smooth' — default: 'auto'
+      top: 0, // reset top offset — default: 0
+      left: 0, // reset left offset — default: 0
     },
   },
 });
@@ -250,10 +248,13 @@ The types are generated by the `router-typegen` compiler plugin, which scans you
 import { defineRoutes } from 'thane/router';
 
 const Routes = defineRoutes({
-  '/':                          { component: () => import('./pages/Products/Products.js'), title: 'Products' },
-  '/my-cart':                   { component: () => import('./pages/Cart/Cart.js'), title: 'My Cart' },
-  '/product-details/:productID': { component: () => import('./pages/ProductDetails/ProductDetails.js'), title: 'Product Details' },
-  notFound:                     { component: () => import('./pages/NotFound/NotFound.js'), title: 'Not Found' },
+  '/': { component: () => import('./pages/Products/Products.js'), title: 'Products' },
+  '/my-cart': { component: () => import('./pages/Cart/Cart.js'), title: 'My Cart' },
+  '/product-details/:productID': {
+    component: () => import('./pages/ProductDetails/ProductDetails.js'),
+    title: 'Product Details',
+  },
+  'notFound': { component: () => import('./pages/NotFound/NotFound.js'), title: 'Not Found' },
 });
 
 export default Routes;

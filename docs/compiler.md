@@ -37,11 +37,7 @@ export const Counter = defineComponent(() => {
   const inc = () => count(count() + 1);
 
   return {
-    template: html`
-      <button @click=${inc}>
-        Clicks: ${count()}
-      </button>
-    `,
+    template: html` <button @click=${inc}> Clicks: ${count()} </button> `,
   };
 });
 ```
@@ -54,27 +50,33 @@ const _t = document.createElement('template');
 _t.innerHTML = `<button>Clicks: <!--b0-->0<!----></button>`;
 
 // 2. Component registration with binding function
-__registerComponent('counter', (ctx) => {
-  const count = signal(0);
-  const inc = () => count(count() + 1);
+__registerComponent(
+  'counter',
+  (ctx) => {
+    const count = signal(0);
+    const inc = () => count(count() + 1);
 
-  return {
-    __b: (ctx) => {
-      // TreeWalker finds comment markers
-      const markers = _findCommentMarkers(ctx.root);
+    return {
+      __b: (ctx) => {
+        // TreeWalker finds comment markers
+        const markers = _findCommentMarkers(ctx.root);
 
-      // Direct event binding
-      markers['btn0'].addEventListener('click', inc);
+        // Direct event binding
+        markers['btn0'].addEventListener('click', inc);
 
-      // Signal subscription — updates only the text node
-      const unsub = count.subscribe(v => {
-        markers['b0'].nextSibling.data = v;
-      }, true);
+        // Signal subscription — updates only the text node
+        const unsub = count.subscribe((v) => {
+          markers['b0'].nextSibling.data = v;
+        }, true);
 
-      return () => { unsub(); };
-    },
-  };
-}, _t);
+        return () => {
+          unsub();
+        };
+      },
+    };
+  },
+  _t,
+);
 ```
 
 Key points:
@@ -88,25 +90,25 @@ Key points:
 
 The compiler detects and generates different binding types from the contracts:
 
-| Kind | Source syntax | Generated code |
-|:-----|:-------------|:---------------|
-| Text | `${signal()}` | `signal.subscribe(v => textNode.data = v)` |
-| Attribute | `:attr=${value}` | `signal.subscribe(v => el.setAttribute(attr, v))` |
-| Style | `:style=${expr}` | `signal.subscribe(v => el.style.cssText = v)` |
-| Event | `@click=${handler}` | `el.addEventListener('click', handler)` |
-| Conditional | `${when(cond())}` | `__bindIf(root, signal, id, template, initNested)` |
-| IfElse | `${whenElse(...)}` | `__bindIfExpr(root, signals, evalExpr, ...)` |
-| Repeat | `${repeat(...)}` | `createKeyedReconciler(container, anchor, ...)` |
+| Kind        | Source syntax       | Generated code                                     |
+| :---------- | :------------------ | :------------------------------------------------- |
+| Text        | `${signal()}`       | `signal.subscribe(v => textNode.data = v)`         |
+| Attribute   | `:attr=${value}`    | `signal.subscribe(v => el.setAttribute(attr, v))`  |
+| Style       | `style=${expr}`     | `signal.subscribe(v => el.style.cssText = v)`      |
+| Event       | `@click=${handler}` | `el.addEventListener('click', handler)`            |
+| Conditional | `${when(cond())}`   | `__bindIf(root, signal, id, template, initNested)` |
+| IfElse      | `${whenElse(...)}`  | `__bindIfExpr(root, signals, evalExpr, ...)`       |
+| Repeat      | `${repeat(...)}`    | `createKeyedReconciler(container, anchor, ...)`    |
 
 ## Component Registration
 
 The compiler emits one of three registration functions depending on what the component uses:
 
-| Function | When emitted |
-|:---------|:-------------|
-| `__registerComponent` | Component has styles, lifecycle hooks, or extra templates |
-| `__registerComponentLean` | No styles, no lifecycle hooks — minimal overhead |
-| `defineComponent` | Preserved for uncompiled contexts (tests, dev mode fallback) |
+| Function                  | When emitted                                                 |
+| :------------------------ | :----------------------------------------------------------- |
+| `__registerComponent`     | Component has styles, lifecycle hooks, or extra templates    |
+| `__registerComponentLean` | No styles, no lifecycle hooks — minimal overhead             |
+| `defineComponent`         | Preserved for uncompiled contexts (tests, dev mode fallback) |
 
 The lean variant (`__registerComponentLean`) tree-shakes the entire style subsystem when no component in the app uses `styles`.
 
@@ -126,12 +128,20 @@ The `styles` property is processed by `scopeCssRules()` at runtime. Every select
 
 ```css
 /* Input */
-.card { padding: 1rem; }
-.card h1 { color: blue; }
+.card {
+  padding: 1rem;
+}
+.card h1 {
+  color: blue;
+}
 
 /* Output (for component selector 'my-card') */
-.my-card .card { padding: 1rem; }
-.my-card .card h1 { color: blue; }
+.my-card .card {
+  padding: 1rem;
+}
+.my-card .card h1 {
+  color: blue;
+}
 ```
 
 ### CSS File Imports
@@ -143,7 +153,7 @@ The **Global CSS Bundler** plugin transforms `.css` file imports into string exp
 import styles from './Card.module.css';
 
 // Output
-const styles = "/* contents of Card.module.css */";
+const styles = '/* contents of Card.module.css */';
 ```
 
 ## Selector Minification

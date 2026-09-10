@@ -227,12 +227,25 @@ test('form attributes follow their values as properties and null text renders em
   await page.getByTestId('form-note').click();
   await expect(page.getByTestId('form-null')).toHaveText('[note]');
 
+  // Static text around an expression is kept; style binds as cssText or per property
+  await expect(page.getByTestId('form-mixed-class')).toHaveClass('static primary');
+  await expect(page.getByTestId('form-css')).toHaveCSS('color', 'rgb(255, 0, 0)');
+  await expect(page.getByTestId('form-prop-style')).toHaveCSS('color', 'rgb(1, 1, 1)');
+  await expect(page.getByTestId('form-row-class').nth(0)).toHaveClass('row on');
+  await expect(page.getByTestId('form-row-class').nth(1)).toHaveCSS('color', 'rgb(4, 4, 4)');
+  await page.getByTestId('form-restyle').click();
+  await expect(page.getByTestId('form-mixed-class')).toHaveClass('static secondary');
+  await expect(page.getByTestId('form-css')).toHaveCSS('color', 'rgb(0, 0, 255)');
+  await expect(page.getByTestId('form-prop-style')).toHaveCSS('color', 'rgb(2, 2, 2)');
+
   await page.getByTestId('form-flip').click();
   await expect(page.getByTestId('form-row-check').nth(0)).not.toBeChecked();
   await expect(page.getByTestId('form-row-check').nth(1)).toBeChecked();
   await expect(page.getByTestId('form-row-btn').nth(0)).toBeDisabled();
   await expect(page.getByTestId('form-row-btn').nth(1)).toBeEnabled();
   await expect(page.getByTestId('form-row-note')).toHaveText(['', 'y']);
+  await expect(page.getByTestId('form-row-class').nth(0)).toHaveClass('row off');
+  await expect(page.getByTestId('form-row-class').nth(1)).toHaveCSS('color', 'rgb(3, 3, 3)');
 });
 
 test('nested directives inside rows read the row item and index and follow row updates', async ({ page }) => {

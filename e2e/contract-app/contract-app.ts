@@ -108,6 +108,8 @@ export const ContractApp = defineComponent('contract-app', () => {
   const formOn = signal(false);
   const formName = signal('alice');
   const formNote = signal<string | null>(null);
+  const formKind = signal('primary');
+  const formCss = signal('color: rgb(255, 0, 0)');
   const formRows = signal([
     { id: 1, on: true, note: 'x' },
     { id: 2, on: false, note: null as string | null },
@@ -166,6 +168,10 @@ export const ContractApp = defineComponent('contract-app', () => {
   const toggleFormOn = () => formOn(!formOn());
   const renameForm = () => formName('bob');
   const setFormNote = () => formNote('note');
+  const restyleForm = () => {
+    formKind('secondary');
+    formCss('color: rgb(0, 0, 255)');
+  };
   const flipFormRows = () => formRows(formRows().map((r) => ({ ...r, on: !r.on, note: r.note ? null : 'y' })));
   const bumpRefClicks = () => refClicks(refClicks() + 1);
   const setParamText = (text: string | null) => paramText(text ?? '');
@@ -613,6 +619,12 @@ export const ContractApp = defineComponent('contract-app', () => {
           <button data-testid="form-disabled" disabled=${formOn()}>d</button>
           <input data-testid="form-value" value=${formName()} />
           <p data-testid="form-null">[${formNote()}]</p>
+          <button data-testid="form-restyle" @click=${restyleForm}>restyle</button>
+          <p data-testid="form-mixed-class" class="static ${formKind()}">mixed</p>
+          <p data-testid="form-css" style=${formCss()}>css</p>
+          <p data-testid="form-prop-style" style="color: ${formKind() === 'primary' ? 'rgb(1, 1, 1)' : 'rgb(2, 2, 2)'}"
+            >prop</p
+          >
           <ul>
             ${repeat(
               formRows(),
@@ -621,6 +633,12 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <input data-testid="form-row-check" type="checkbox" checked=${row.on} />
                   <button data-testid="form-row-btn" disabled=${!row.on}>b</button>
                   <b data-testid="form-row-note">${row.note}</b>
+                  <i
+                    data-testid="form-row-class"
+                    class="row ${row.on ? 'on' : 'off'}"
+                    style="color: ${row.on ? 'rgb(3, 3, 3)' : 'rgb(4, 4, 4)'}"
+                    >c</i
+                  >
                 </li>
               `,
               null,

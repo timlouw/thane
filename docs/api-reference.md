@@ -8,28 +8,28 @@ Complete API surface for the Thane framework, covering all public exports, globa
 
 #### Reactive Primitives
 
-| Export | Signature | Description |
-|:-------|:----------|:------------|
-| `signal` | `<T>(initialValue: T) => Signal<T>` | Create a reactive signal |
-| `computed` | `<T>(derivation: () => T) => ReadonlySignal<T> & { dispose: () => void }` | Create a derived signal that auto-tracks dependencies |
-| `effect` | `(fn: () => void) => () => void` | Create a side-effect that re-runs on dependency change. Returns dispose function |
-| `batch` | `(fn: () => void) => void` | Batch multiple signal updates — notifications fire once after |
-| `untrack` | `<T>(fn: () => T) => T` | Read signals without creating dependencies |
+| Export     | Signature                                                                 | Description                                                                      |
+| :--------- | :------------------------------------------------------------------------ | :------------------------------------------------------------------------------- |
+| `signal`   | `<T>(initialValue: T) => Signal<T>`                                       | Create a reactive signal                                                         |
+| `computed` | `<T>(derivation: () => T) => ReadonlySignal<T> & { dispose: () => void }` | Create a derived signal that auto-tracks dependencies                            |
+| `effect`   | `(fn: () => void) => () => void`                                          | Create a side-effect that re-runs on dependency change. Returns dispose function |
+| `batch`    | `(fn: () => void) => void`                                                | Batch multiple signal updates — notifications fire once after                    |
+| `untrack`  | `<T>(fn: () => T) => T`                                                   | Read signals without creating dependencies                                       |
 
 #### Component API
 
-| Export | Signature | Description |
-|:-------|:----------|:------------|
-| `defineComponent` | `<P>(setup: SetupFunction<P>) => ComponentHTMLSelector<P>` | Define a component |
-| `defineComponent` | `<P>(selector: string, setup: SetupFunction<P>) => ComponentHTMLSelector<P>` | Define a component with explicit selector |
-| `mount` | `(options: MountOptions) => MountHandle` | Mount a component to the DOM |
-| `unmount` | `(handle: MountHandle) => void` | Destroy a mounted component |
-| `registerGlobalStyles` | `(...styles: string[]) => void` | Register global styles (deduplicated) |
+| Export                 | Signature                                                                    | Description                               |
+| :--------------------- | :--------------------------------------------------------------------------- | :---------------------------------------- |
+| `defineComponent`      | `<P>(setup: SetupFunction<P>) => ComponentHTMLSelector<P>`                   | Define a component                        |
+| `defineComponent`      | `<P>(selector: string, setup: SetupFunction<P>) => ComponentHTMLSelector<P>` | Define a component with explicit selector |
+| `mount`                | `(options: MountOptions) => MountHandle`                                     | Mount a component to the DOM              |
+| `unmount`              | `(handle: MountHandle) => void`                                              | Destroy a mounted component               |
+| `registerGlobalStyles` | `(...styles: string[]) => void`                                              | Register global styles (deduplicated)     |
 
 ### `thane/router` (subpath export)
 
-| Export | Signature | Description |
-|:-------|:----------|:------------|
+| Export         | Signature                                                                   | Description                              |
+| :------------- | :-------------------------------------------------------------------------- | :--------------------------------------- |
 | `defineRoutes` | `<T extends RoutesConfig>(routes: T) => RegisteredRoutes<keyof T & string>` | Define the route map with type-safe keys |
 
 ---
@@ -38,16 +38,16 @@ Complete API surface for the Thane framework, covering all public exports, globa
 
 These are available globally inside `html` tagged templates. The compiler transforms them at build time — they do not exist as runtime values you import.
 
-| Function | Signature | Description |
-|:---------|:----------|:------------|
-| `html` | `` (strings: TemplateStringsArray, ...values: any[]) => any `` | Tagged template for HTML content |
-| `css` | `` (strings: TemplateStringsArray, ...values: any[]) => any `` | Tagged template for CSS content |
-| `when` | `(condition: boolean) => string` | Conditional rendering — show/hide an element |
-| `whenElse` | `<T, F>(condition: boolean, thenTemplate: T, elseTemplate: F) => T \| F` | If/else conditional rendering |
-| `repeat` | `<T>(items: T[], templateFn: (item: T, index: number) => any, emptyTemplate?: any, trackBy?: (item: T, index: number) => string \| number) => any[]` | List rendering with keyed reconciliation |
-| `navigate` | `(path: RoutePaths) => void` | Navigate to a path (type-safe when routes are registered) |
-| `navigateBack` | `() => void` | Navigate back in browser history |
-| `currentPath` | `ReadonlySignal<string>` | Read-only signal with the current pathname |
+| Function       | Signature                                                                                                                                            | Description                                               |
+| :------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------- |
+| `html`         | `(strings: TemplateStringsArray, ...values: any[]) => any`                                                                                           | Tagged template for HTML content                          |
+| `css`          | `(strings: TemplateStringsArray, ...values: any[]) => any`                                                                                           | Tagged template for CSS content                           |
+| `when`         | `(condition: boolean) => string`                                                                                                                     | Conditional rendering — show/hide an element              |
+| `whenElse`     | `<T, F>(condition: boolean, thenTemplate: T, elseTemplate: F) => T \| F`                                                                             | If/else conditional rendering                             |
+| `repeat`       | `<T>(items: T[], templateFn: (item: T, index: number) => any, emptyTemplate?: any, trackBy?: (item: T, index: number) => string \| number) => any[]` | List rendering with keyed reconciliation                  |
+| `navigate`     | `(path: RoutePaths) => void`                                                                                                                         | Navigate to a path (type-safe when routes are registered) |
+| `navigateBack` | `() => void`                                                                                                                                         | Navigate back in browser history                          |
+| `currentPath`  | `ReadonlySignal<string>`                                                                                                                             | Read-only signal with the current pathname                |
 
 ---
 
@@ -57,13 +57,13 @@ These are available globally inside `html` tagged templates. The compiler transf
 
 ```typescript
 type Signal<T> = {
-  (): T;                // Read
-  (newValue: T): T;     // Write
+  (): T; // Read
+  (newValue: T): T; // Write
   subscribe: (callback: (value: T) => void, skipInitial?: boolean) => () => void;
 };
 
 type ReadonlySignal<T> = {
-  (): T;                // Read only
+  (): T; // Read only
   subscribe: (callback: (value: T) => void, skipInitial?: boolean) => () => void;
 };
 
@@ -74,8 +74,8 @@ type ComponentRoot = HTMLElement;
 
 ```typescript
 interface ComponentContext<P = {}, S extends string = string> {
-  root: ComponentRoot;              // Host DOM element
-  props: Readonly<P>;                // Component props
+  root: ComponentRoot; // Host DOM element
+  props: Readonly<P>; // Component props
   route: RouteContextForSelector<S>; // Route context (when using router)
 }
 
@@ -93,15 +93,15 @@ type ComponentHTMLSelector<P> = (props: P) => string;
 
 ```typescript
 interface MountOptions {
-  component?: ComponentHTMLSelector<any>;  // Component to mount
-  target?: HTMLElement;                     // Default: document.body
-  props?: Record<string, any>;             // Root component props
-  router?: RouterConfig;                   // Router configuration
+  component?: ComponentHTMLSelector<any>; // Component to mount
+  target?: HTMLElement; // Default: document.body
+  props?: Record<string, any>; // Root component props
+  router?: RouterConfig; // Router configuration
 }
 
 interface MountHandle {
-  root: ComponentRoot;   // Host element
-  destroy: () => void;   // Teardown
+  root: ComponentRoot; // Host element
+  destroy: () => void; // Teardown
 }
 ```
 
@@ -109,8 +109,8 @@ interface MountHandle {
 
 ```typescript
 interface Route {
-  component: RouteComponent;      // Lazy or eager component
-  title?: string;                  // Document title
+  component: RouteComponent; // Lazy or eager component
+  title?: string; // Document title
 }
 
 type RouteComponent = LazyRouteComponent | EagerRouteComponent;
@@ -121,16 +121,16 @@ type RoutesConfig = Record<string, Route> & { notFound: Route };
 
 interface RouterConfig {
   routes: RoutesConfig;
-  outletId?: `router-${string}`;                        // Default: 'router-outlet'
-  scrollRestoration?: boolean | ScrollRestorationConfig;  // Default: enabled
+  outletId?: `router-${string}`; // Default: 'router-outlet'
+  scrollRestoration?: boolean | ScrollRestorationConfig; // Default: enabled
 }
 
 interface ScrollRestorationConfig {
-  behavior?: ScrollBehavior;       // 'auto' | 'smooth'
-  left?: number;                   // Reset left offset
-  top?: number;                    // Reset top offset
-  resetOnNavigate?: boolean;       // Default: true
-  restoreOnBackForward?: boolean;  // Default: true
+  behavior?: ScrollBehavior; // 'auto' | 'smooth'
+  left?: number; // Reset left offset
+  top?: number; // Reset top offset
+  resetOnNavigate?: boolean; // Default: true
+  restoreOnBackForward?: boolean; // Default: true
 }
 ```
 

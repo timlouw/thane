@@ -26,6 +26,7 @@ import {
   injectIdIntoFirstElement,
   attributeDomProperty,
   findTemplateExpressions,
+  stripTemplateExpressions,
   type HtmlElement,
 } from '../../utils/html-parser/index.js';
 import { renameIdentifierInExpression, expressionReferencesIdentifier } from '../../utils/index.js';
@@ -232,7 +233,7 @@ export const generateStaticRepeatTemplate = (
   // extracted. The only ${...} expressions left are item-variable bindings,
   // which are handled at runtime via the element binding paths — so they must
   // all be removed from the static template.
-  staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
+  staticHtml = stripTemplateExpressions(staticHtml);
   // Property-bound attributes (checked, disabled, value, …) must not ship in the template
   staticHtml = stripPropertyBoundAttributes(staticHtml, itemBindings);
 
@@ -787,14 +788,18 @@ const collectItemAttrBindings = (
 
     for (const [attrName, attr] of el.attributes) {
       if (attrName.startsWith('@')) continue; // Skip event attrs
-      // Check for ${expr} in attribute values that reference item/index vars
+      // One binding per attribute. With static text around the expression, or several
+      // expressions, the value is the whole attribute as a template literal
+      // (`class="row ${item.kind}"` writes `row a`); otherwise it is the expression itself.
       const attrExprRegex = /\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g;
-      let attrMatch: RegExpExecArray | null;
-      while ((attrMatch = attrExprRegex.exec(attr.value)) !== null) {
-        const innerExpr = attrMatch[1]?.trim() ?? '';
-        const refsItem = expressionReferencesIdentifier(innerExpr, itemVar);
-        const refsIndex = indexVar ? expressionReferencesIdentifier(innerExpr, indexVar) : false;
-        if (!refsItem && !refsIndex) continue;
+      const exprs = [...attr.value.matchAll(attrExprRegex)].map((m) => (m[1] ?? '').trim());
+      const refsRow = (e: string) =>
+        expressionReferencesIdentifier(e, itemVar) || (indexVar ? expressionReferencesIdentifier(e, indexVar) : false);
+      if (exprs.length === 0 || !exprs.some(refsRow)) continue;
+      const staticText = attr.value.replace(attrExprRegex, '');
+      const hasStatic = exprs.length > 1 || staticText.trim() !== '';
+      {
+        const innerExpr = hasStatic ? '`' + attr.value + '`' : exprs[0]!;
 
         // One id per element, shared by every item attribute on it and by any event handler
         // or sole-content text binding already assigned to it. Registering the element in
@@ -822,11 +827,8 @@ const collectItemAttrBindings = (
           expression: innerExpr,
           ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
           // What the static template ships for this attribute once every expression is stripped.
-          // Property-bound attributes ship nothing, so the first write always happens.
-          staticValue:
-            domProperty && domProperty !== 'className'
-              ? undefined
-              : attr.value.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, ''),
+          // Property-bound and mixed attributes ship nothing useful, so the first write always happens.
+          staticValue: (domProperty && domProperty !== 'className') || hasStatic ? undefined : staticText,
         });
 
         itemAttrMatches.push({

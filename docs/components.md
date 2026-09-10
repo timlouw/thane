@@ -97,7 +97,7 @@ The setup function receives a `ComponentContext` object:
 
 ```typescript
 export const MyComponent = defineComponent<MyProps>('my-component', (ctx) => {
-  ctx.root;  // HTMLElement — the host element
+  ctx.root; // HTMLElement — the host element
   ctx.props; // Readonly<MyProps> — component props
   ctx.route; // Route context — available when mounted via the router
 
@@ -105,11 +105,11 @@ export const MyComponent = defineComponent<MyProps>('my-component', (ctx) => {
 });
 ```
 
-| Property | Type | Description |
-|:---------|:-----|:------------|
-| `root` | `HTMLElement` | The host DOM element the component renders into |
-| `props` | `Readonly<P>` | Props passed by the parent |
-| `route` | `RouteContext` | Current route info (when used with the router) |
+| Property | Type           | Description                                     |
+| :------- | :------------- | :---------------------------------------------- |
+| `root`   | `HTMLElement`  | The host DOM element the component renders into |
+| `props`  | `Readonly<P>`  | Props passed by the parent                      |
+| `route`  | `RouteContext` | Current route info (when used with the router)  |
 
 ## Lifecycle Hooks
 
@@ -134,12 +134,13 @@ export const Timer = defineComponent(() => {
 });
 ```
 
-| Hook | When it fires | Use case |
-|:-----|:-------------|:---------|
-| `onMount` | After the template is in the DOM and all bindings are initialized | Start intervals, fetch data, attach listeners |
-| `onDestroy` | When the component is removed from the DOM | Clean up intervals, abort fetches, remove listeners |
+| Hook        | When it fires                                                     | Use case                                            |
+| :---------- | :---------------------------------------------------------------- | :-------------------------------------------------- |
+| `onMount`   | After the template is in the DOM and all bindings are initialized | Start intervals, fetch data, attach listeners       |
+| `onDestroy` | When the component is removed from the DOM                        | Clean up intervals, abort fetches, remove listeners |
 
 **Important:** `onDestroy` fires when:
+
 - `mount().destroy()` is called
 - A `when()` directive hides the component
 - The router navigates away from the route containing the component
@@ -158,12 +159,12 @@ const handle = mount({ component: App });
 
 `mount()` accepts:
 
-| Option | Type | Default | Description |
-|:-------|:-----|:--------|:------------|
-| `component` | `ComponentHTMLSelector` | *(required for Mode A)* | Component from `defineComponent` |
-| `target` | `HTMLElement` | `document.body` | DOM element to mount into |
-| `props` | `Record<string, any>` | `{}` | Props for the root component |
-| `router` | `RouterConfig` | *(none)* | Router configuration (see [Routing](routing.md)) |
+| Option      | Type                    | Default                 | Description                                      |
+| :---------- | :---------------------- | :---------------------- | :----------------------------------------------- |
+| `component` | `ComponentHTMLSelector` | _(required for Mode A)_ | Component from `defineComponent`                 |
+| `target`    | `HTMLElement`           | `document.body`         | DOM element to mount into                        |
+| `props`     | `Record<string, any>`   | `{}`                    | Props for the root component                     |
+| `router`    | `RouterConfig`          | _(none)_                | Router configuration (see [Routing](routing.md)) |
 
 ### MountHandle
 
@@ -172,7 +173,7 @@ const handle = mount({ component: App });
 ```typescript
 const handle = mount({ component: App });
 
-handle.root;    // HTMLElement — the component's host element
+handle.root; // HTMLElement — the component's host element
 handle.destroy(); // unmount and run onDestroy
 ```
 
@@ -208,10 +209,7 @@ The compiler automatically manages the child's lifecycle. When the parent is des
 Each component instance has independent state:
 
 ```typescript
-template: html`
-  ${Counter({})}
-  ${Counter({})}
-`
+template: html` ${Counter({})} ${Counter({})} `;
 ```
 
 These two `Counter` instances maintain their own signal values.

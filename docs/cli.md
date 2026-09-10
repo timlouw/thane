@@ -26,6 +26,7 @@ thane build --prod --gzip --analyze
 ```
 
 Production mode (`--prod`) enables:
+
 - Template and selector minification
 - `console.*` call stripping
 - `debugger` statement stripping
@@ -62,32 +63,32 @@ thane types
 
 ## CLI Options
 
-| Flag | Type | Default | Description |
-|:-----|:-----|:--------|:------------|
-| `--prod`, `-p` | boolean | `false` | Production mode |
-| `--gzip` | boolean | `false` | Enable gzip/brotli compression |
-| `--app <name>` | string | `client` | Application name |
-| `--entry <path>` | string | `./src/main.ts` | Entry point file |
-| `--out <dir>` | string | `./dist` | Output directory |
-| `--assets <dir>` | string | `./src/assets` | Static assets directory copied into the output |
-| `--html <path>` | string | `./index.html` | Root HTML file |
-| `--config <path>` | string | `./thane.config.json` | Config file path (see below) |
-| `--port <number>` | number | `4200` | Dev server port |
-| `--open` / `--no-open` | boolean | `false` | Auto-open browser on dev start |
-| `--host <addr>` | string | `localhost` | Dev server host (`0.0.0.0` for LAN access) |
-| `--sourcemap` / `--no-sourcemap` | boolean | `true` (dev) / `false` (prod) | Generate source maps |
-| `--analyze` / `--no-analyze` | boolean | `false` | Write esbuild metafile for bundle analysis |
-| `--target <targets>` | comma-separated | Thane defaults | Override esbuild browser/JS targets (e.g. `es2022,chrome120`) |
-| `--env-prefix <prefix>` | string | `THANE_` | Env var prefix for automatic define injection |
-| `--splitting` / `--no-splitting` | boolean | `true` | Enable code splitting |
-| `--hash-file-names` / `--no-hash-file-names` | boolean | `true` | Content hashes in output filenames |
-| `--drop-console` / `--no-drop-console` | boolean | `true` (prod) / `false` (dev) | Strip `console.*` calls |
-| `--drop-debugger` / `--no-drop-debugger` | boolean | `true` (prod) / `false` (dev) | Strip `debugger` statements |
-| `--base <path>` | string | `/` | Public base path for deployed assets |
-| `--strict-type-check` | boolean | `false` | Fail build on TypeScript type errors |
-| `--empty-out-dir` / `--no-empty-out-dir` | boolean | `true` | Clear output directory before building |
-| `--legal-comments <mode>` | string | `none` | Legal comment handling: `none`, `eof`, `linked`, `external` |
-| `--verbose`, `-V` / `--quiet`, `-q` | boolean | normal | Logging verbosity |
+| Flag                                         | Type            | Default                       | Description                                                   |
+| :------------------------------------------- | :-------------- | :---------------------------- | :------------------------------------------------------------ |
+| `--prod`, `-p`                               | boolean         | `false`                       | Production mode                                               |
+| `--gzip`                                     | boolean         | `false`                       | Enable gzip/brotli compression                                |
+| `--app <name>`                               | string          | `client`                      | Application name                                              |
+| `--entry <path>`                             | string          | `./src/main.ts`               | Entry point file                                              |
+| `--out <dir>`                                | string          | `./dist`                      | Output directory                                              |
+| `--assets <dir>`                             | string          | `./src/assets`                | Static assets directory copied into the output                |
+| `--html <path>`                              | string          | `./index.html`                | Root HTML file                                                |
+| `--config <path>`                            | string          | `./thane.config.json`         | Config file path (see below)                                  |
+| `--port <number>`                            | number          | `4200`                        | Dev server port                                               |
+| `--open` / `--no-open`                       | boolean         | `false`                       | Auto-open browser on dev start                                |
+| `--host <addr>`                              | string          | `localhost`                   | Dev server host (`0.0.0.0` for LAN access)                    |
+| `--sourcemap` / `--no-sourcemap`             | boolean         | `true` (dev) / `false` (prod) | Generate source maps                                          |
+| `--analyze` / `--no-analyze`                 | boolean         | `false`                       | Write esbuild metafile for bundle analysis                    |
+| `--target <targets>`                         | comma-separated | Thane defaults                | Override esbuild browser/JS targets (e.g. `es2022,chrome120`) |
+| `--env-prefix <prefix>`                      | string          | `THANE_`                      | Env var prefix for automatic define injection                 |
+| `--splitting` / `--no-splitting`             | boolean         | `true`                        | Enable code splitting                                         |
+| `--hash-file-names` / `--no-hash-file-names` | boolean         | `true`                        | Content hashes in output filenames                            |
+| `--drop-console` / `--no-drop-console`       | boolean         | `true` (prod) / `false` (dev) | Strip `console.*` calls                                       |
+| `--drop-debugger` / `--no-drop-debugger`     | boolean         | `true` (prod) / `false` (dev) | Strip `debugger` statements                                   |
+| `--base <path>`                              | string          | `/`                           | Public base path for deployed assets                          |
+| `--strict-type-check`                        | boolean         | `false`                       | Fail build on TypeScript type errors                          |
+| `--empty-out-dir` / `--no-empty-out-dir`     | boolean         | `true`                        | Clear output directory before building                        |
+| `--legal-comments <mode>`                    | string          | `none`                        | Legal comment handling: `none`, `eof`, `linked`, `external`   |
+| `--verbose`, `-V` / `--quiet`, `-q`          | boolean         | normal                        | Logging verbosity                                             |
 
 Compile-time constant replacements (`define`) can only be set in the config file.
 
@@ -105,23 +106,23 @@ Create a `thane.config.json` (or `thane.config.jsonc`, which allows comments) in
 
   "commands": {
     "build": { "prod": true, "gzip": true, "analyze": true },
-    "dev": { "port": 4200, "sourcemap": true }
-  }
+    "dev": { "port": 4200, "sourcemap": true },
+  },
 }
 ```
 
 Use `--config <path>` to load a file from somewhere else. Relative paths in the file are resolved against the file's own directory.
 
-| Config key | CLI flag |
-|:-----------|:---------|
-| `entry` | `--entry` |
-| `outDir` | `--out` |
-| `assetsDir` | `--assets` |
-| `html` | `--html` |
-| `app` | `--app` |
+| Config key                                                                                                     | CLI flag                                                           |
+| :------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------- |
+| `entry`                                                                                                        | `--entry`                                                          |
+| `outDir`                                                                                                       | `--out`                                                            |
+| `assetsDir`                                                                                                    | `--assets`                                                         |
+| `html`                                                                                                         | `--html`                                                           |
+| `app`                                                                                                          | `--app`                                                            |
 | `hashFileNames`, `dropConsole`, `dropDebugger`, `strictTypeCheck`, `emptyOutDir`, `legalComments`, `envPrefix` | Same name in kebab-case (`--hash-file-names`, `--drop-console`, …) |
-| `prod`, `gzip`, `port`, `open`, `host`, `base`, `sourcemap`, `analyze`, `splitting`, `target` | Same name |
-| `define` | *(config only)* |
+| `prod`, `gzip`, `port`, `open`, `host`, `base`, `sourcemap`, `analyze`, `splitting`, `target`                  | Same name                                                          |
+| `define`                                                                                                       | _(config only)_                                                    |
 
 ### Precedence
 
@@ -144,8 +145,8 @@ The `commands` object lets you set different options for each CLI command (`buil
   "commands": {
     "build": { "prod": true, "gzip": true },
     "dev": { "port": 3000, "open": true },
-    "serve": { "port": 8080 }
-  }
+    "serve": { "port": 8080 },
+  },
 }
 ```
 

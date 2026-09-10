@@ -48,7 +48,7 @@ styles: css`
     max-width: 800px;
     margin: 0 auto;
   }
-`
+`;
 ```
 
 `:host` is rewritten to the component's selector class (e.g., `.ui-card`). This targets the element that has the component class applied.
@@ -60,7 +60,7 @@ styles: css`
   :host(.active) {
     border-color: blue;
   }
-`
+`;
 ```
 
 Becomes `.ui-card.active { border-color: blue; }`.
@@ -70,8 +70,8 @@ Becomes `.ui-card.active { border-color: blue; }`.
 Thane relies on native CSS Nesting (the `&` selector). This requires modern browsers:
 
 | Chrome | Firefox | Safari | Edge |
-|:------:|:-------:|:------:|:----:|
-| 120+   | 117+    | 17.2+  | 120+ |
+| :----: | :-----: | :----: | :--: |
+|  120+  |  117+   | 17.2+  | 120+ |
 
 Use `&` for nested selectors:
 
@@ -88,7 +88,7 @@ styles: css`
       }
     }
   }
-`
+`;
 ```
 
 ## CSS File Imports
@@ -131,7 +131,9 @@ Use `registerGlobalStyles()` for styles that apply globally — resets, typograp
 import { registerGlobalStyles } from 'thane';
 
 const resetStyles = css`
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
@@ -186,7 +188,7 @@ styles: css`
     background: var(--accent);
     border-radius: var(--radius);
   }
-`
+`;
 ```
 
 ← [Back to Docs](README.md)
