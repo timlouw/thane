@@ -215,7 +215,26 @@ export function createKeyedReconciler<T>(
   };
 
   const managedItems: ManagedItem<T>[] = [];
-  const keyMap = new Map<string | number, ManagedItem<T>>();
+  // Rows are found by key through a Map that is built the first time an operation needs
+  // many lookups and kept in step from then on. Creating rows never pays for it, and the
+  // first few lookups (a selection, a swap) scan the rows instead of building it.
+  let keyMap: Map<string | number, ManagedItem<T>> | null = null;
+  const keys = (): Map<string | number, ManagedItem<T>> => {
+    if (keyMap === null) {
+      keyMap = new Map();
+      for (let i = 0, len = managedItems.length; i < len; i++) keyMap.set(managedItems[i]!.key!, managedItems[i]!);
+    }
+    return keyMap;
+  };
+  let scans = 0;
+  const find = (key: string | number): ManagedItem<T> | undefined => {
+    if (keyMap !== null) return keyMap.get(key);
+    if (++scans > 4) return keys().get(key);
+    for (let i = 0, len = managedItems.length; i < len; i++) {
+      if (managedItems[i]!.key === key) return managedItems[i];
+    }
+    return undefined;
+  };
 
   const removeItem = (managed: ManagedItem<T>) => {
     const cleanups = managed.cleanups;
@@ -238,7 +257,7 @@ export function createKeyedReconciler<T>(
       container.appendChild(anchor);
     }
     managedItems.length = 0;
-    keyMap.clear();
+    keyMap = null;
   };
 
   /**
@@ -280,7 +299,7 @@ export function createKeyedReconciler<T>(
           managed.key = key;
           if (trackIndex) managed.i = i;
           managedItems[write++] = managed;
-          keyMap.set(key, managed);
+          if (keyMap !== null) keyMap.set(key, managed);
           el = el.nextElementSibling!;
         }
         container.insertBefore(rows, anchor);
@@ -294,7 +313,7 @@ export function createKeyedReconciler<T>(
       managed.key = key;
       if (trackIndex) managed.i = i;
       managedItems[write++] = managed;
-      keyMap.set(key, managed);
+      if (keyMap !== null) keyMap.set(key, managed);
     }
 
     if (parent) parent.insertBefore(container, containerNextSibling);
@@ -359,7 +378,7 @@ export function createKeyedReconciler<T>(
 
       if (isActualRemoval) {
         removeItem(removedManaged);
-        keyMap.delete(removedManaged.key!);
+        if (keyMap !== null) keyMap.delete(removedManaged.key!);
         managedItems.splice(removedIdx, 1);
         if (trackIndex) syncIndexes();
         return;
@@ -398,7 +417,7 @@ export function createKeyedReconciler<T>(
         // An identical item at the same index is the same row in the same place: no key to
         // derive and no lookup. A swap of two rows in a long list then costs two lookups.
         if (managed.value === newItem) continue;
-        const existing = keyMap.get(keyFn(newItem, i));
+        const existing = find(keyFn(newItem, i));
         if (!existing) {
           allKeysExist = false;
           break;
@@ -420,7 +439,7 @@ export function createKeyedReconciler<T>(
             m2 = managedItems[mismatch2]!;
           const k1 = keyFn(newItems[mismatch1]!, mismatch1),
             k2 = keyFn(newItems[mismatch2]!, mismatch2);
-          if (keyMap.get(k1) === m2 && keyMap.get(k2) === m1) {
+          if (find(k1) === m2 && find(k2) === m1) {
             const el1 = m1.el,
               el2 = m2.el;
             const next1 = el1.nextSibling,
@@ -439,7 +458,8 @@ export function createKeyedReconciler<T>(
         }
 
         const newManagedItems: ManagedItem<T>[] = new Array(newLength);
-        for (let i = 0; i < newLength; i++) newManagedItems[i] = keyMap.get(keyFn(newItems[i]!, i))!;
+        const byKey = keys();
+        for (let i = 0; i < newLength; i++) newManagedItems[i] = byKey.get(keyFn(newItems[i]!, i))!;
 
         let currentEl: Element | null = managedItems[0]?.el || null;
         for (let i = 0; i < newLength; i++) {
@@ -457,9 +477,9 @@ export function createKeyedReconciler<T>(
     // Fast path: complete replacement (first and last keys both new)
     if (oldLength > 0 && oldLength === newLength) {
       const firstNewKey = keyFn(newItems[0]!, 0);
-      if (!keyMap.has(firstNewKey)) {
+      if (find(firstNewKey) === undefined) {
         const lastNewKey = keyFn(newItems[newLength - 1]!, newLength - 1);
-        if (!keyMap.has(lastNewKey)) {
+        if (find(lastNewKey) === undefined) {
           clearAll();
           bulkCreate(newItems);
           return;
@@ -477,7 +497,7 @@ export function createKeyedReconciler<T>(
       if (retainedKeys.has(managed.key!)) kept.push(managed);
       else {
         removeItem(managed);
-        keyMap.delete(managed.key!);
+        if (keyMap !== null) keyMap.delete(managed.key!);
       }
     }
     managedItems.length = kept.length;
@@ -487,7 +507,7 @@ export function createKeyedReconciler<T>(
     for (let i = 0; i < newLength; i++) {
       const newItem = newItems[i]!;
       const key = keyFn(newItem, i);
-      const existing = keyMap.get(key);
+      const existing = keys().get(key);
       if (existing) {
         if (existing.value !== newItem) updateRow(existing, newItem, i);
         newManagedItems.push(existing);
@@ -496,7 +516,7 @@ export function createKeyedReconciler<T>(
         const managed = createItemFn(newItem, i, refNode);
         managed.key = key;
         if (trackIndex) managed.i = i;
-        keyMap.set(key, managed);
+        if (keyMap !== null) keyMap.set(key, managed);
         newManagedItems.push(managed);
       }
     }
@@ -518,7 +538,7 @@ export function createKeyedReconciler<T>(
    * that knows which keys changed (for example a selection driven by one signal) update
    * those rows directly instead of fanning a subscription out to every row.
    */
-  const get = (key: string | number): ManagedItem<T> | undefined => keyMap.get(key);
+  const get = (key: string | number): ManagedItem<T> | undefined => find(key);
 
   return { reconcile, clearAll, get };
 }
