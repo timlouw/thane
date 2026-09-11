@@ -35,6 +35,10 @@ A third round, measured the same way: swap rows 0.70x (0.60 to 0.41 ms), partial
 - Reordering a list of the same length compares each row with the item at its index before deriving a key, so a swap of two rows in a list of 1,000 costs two lookups instead of a key derivation and a lookup per row.
 - The shared update function of lean rows navigates to a bound element only inside the guard of a binding that changed; an unchanged binding costs one compare.
 
+A fourth round, measured the same way against the build above (30 interleaved iterations on the creation and update benchmarks): every operation "same"; geometric mean 0.98x. The bug fixes above cost nothing on the benchmark app, whose bundle is byte-identical through the fallback removal, developer-id and props changes.
+
+- The keyed reconciler builds its key map lazily: creating rows no longer inserts every row into a Map; the map is built the first time an operation needs many lookups, and a handful of lookups (a selection, a swap) scan the rows instead.
+
 ### Fixed
 
 - `repeat()` rows with an attribute binding on an item element, such as `<tr data-id=${item.id}>` or `<a href=${item.url}>`, compiled to the fallback renderer, which re-renders every row's HTML on each change. They now use the optimised row path, and an attribute that mixes a signal with item data on an element below the row root is written to that element instead of the row element.
@@ -48,6 +52,15 @@ A third round, measured the same way: swap rows 0.70x (0.60 to 0.41 ms), partial
 - `computed()` no longer drops a change notification when another subscriber reads the computed before its deferred notification runs.
 - The HTML parser tracks nested object-literal braces inside template-literal expressions.
 - Template parse diagnostics no longer call an unbound logger method.
+- `when()`, `whenElse()` and nested `repeat()` inside a `repeat()` row now see the row's item and index: conditions, branch templates and inner lists read them through row-scoped signals, so a row updates its nested directives when its item changes. Row event handlers that do not mention the item (a plain function reference, or an arrow that only calls a component function) are attached and called with the event.
+- Form and state attributes (`value`, `checked`, `selected`, `disabled`, `open`, `hidden`, `readonly`, `required`, `multiple`, `indeterminate`, `muted`) are written as DOM properties, so `checked=${false}` unchecks and `value=${name()}` moves the field's live value; the static template ships no attribute for a bound boolean. `null` and `undefined` render as empty text instead of the words.
+- One attribute grammar: static text around an expression is kept (`class="btn ${kind()}"` writes `btn primary`), `style=${expr}` writes `cssText`, `style="color: ${c()}"` binds the property, and a `:`-prefixed attribute is a build error (THANE006) instead of a literal attribute named `:src`.
+- The string fallback row renderer is gone. Every `repeat()` list, including one inside a `when()` or `whenElse()` branch, uses the keyed row path with cloned templates, guarded updates and delegated events. A row template with more than one root element, or none, is a build error (THANE007) that says what to wrap; a row that is only a `whenElse()` is named as such. Rows whose only binding is a component signal were left unbound by the clone-only path; they are bound now.
+- Developer `id` attributes are kept on attribute- and style-bound elements and on `whenElse()` branch roots (previously the compiler's id won, or the branch never hid). Generated code refers to such elements through a derived variable, so an id can neither shadow a component variable nor need to be a valid identifier.
+- `props.count()` read directly in a template is a tracked signal read, as the Components doc shows; `const count = props.count` is no longer needed.
+- `${index}` bindings follow the row: after a reorder or a removal, every row at a new position is refreshed. Lists without an index binding do no extra work.
+- The router mounts the route again when only the query changes (`navigate('/a?x=2')` from `/a?x=1`), so `route.searchParams` is current; a hash-only change keeps the instance. Persisting the scroll position no longer rewrites the history entry's URL to the bare pathname, so browser back returns to the full URL.
+- Compiler exceptions fail the build with the diagnostic instead of shipping the component uncompiled.
 
 ### Changed
 

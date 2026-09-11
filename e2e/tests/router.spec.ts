@@ -123,10 +123,16 @@ test.describe('2. Client-Side Navigation', () => {
     await expect(page.getByTestId('about-page')).toBeVisible();
     await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeLessThan(50);
 
-    await page.evaluate(() => {
-      window.scrollTo(0, 900);
-    });
-    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeGreaterThan(700);
+    // The router resets the scroll position on the next frame after the route mounts; scroll
+    // inside the poll so a late reset cannot leave the page at the top before the check.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          window.scrollTo(0, 900);
+          return Math.round(window.scrollY);
+        }),
+      )
+      .toBeGreaterThan(700);
 
     await page.goBack();
     await expect(page.getByTestId('home-page')).toBeVisible();
