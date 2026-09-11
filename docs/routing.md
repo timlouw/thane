@@ -155,6 +155,8 @@ Every component has access to route context via `ctx.route`:
 | `title`        | `string`                 | Document title from route config           |
 | `state`        | `unknown`                | History state object                       |
 
+The context is captured when the route mounts. A navigation that changes the pathname or the query mounts the route again, so a fresh instance reads the new `params` and `searchParams`; a navigation that changes only the hash keeps the current instance, and `hash` is not updated on it.
+
 ## Code Splitting
 
 Use dynamic `import()` for lazy-loaded route components. Each page becomes a separate chunk:
