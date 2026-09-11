@@ -398,3 +398,128 @@ describe('reorders skip identical rows', () => {
     expect(order()).toEqual(['row:3', 'row:1', 'row:2', 'row:6', 'row:4', 'row:5', 'anchor']);
   });
 });
+
+describe('index tracking', () => {
+  /** Rows whose update records the index it was called with. */
+  const setupIndexed = (trackIndex: boolean) => {
+    const tbody = new FakeNode('tbody');
+    const anchor = new FakeNode('anchor');
+    tbody.appendChild(anchor);
+    const updates: Array<[number, number]> = [];
+    const reconciler = createKeyedReconciler<Row>(
+      tbody as unknown as ParentNode & Element,
+      anchor as unknown as Element,
+      (item, _index, refNode) => {
+        const el = new FakeNode(`row:${item.id}`);
+        tbody.insertBefore(el, refNode as unknown as FakeNode);
+        return {
+          el: el as unknown as Element,
+          cleanups: [],
+          value: item,
+          update: (next: Row, index: number) => updates.push([next.id, index]),
+        };
+      },
+      'id',
+      undefined,
+      trackIndex,
+    );
+    const order = () => tbody.childNodes.map((n) => n.name);
+    return { reconciler, updates, order };
+  };
+
+  test('after a removal every row that moved up is updated with its new index', () => {
+    const { reconciler, updates } = setupIndexed(true);
+    const list = rows(1, 2, 3, 4);
+    reconciler.reconcile(list);
+    reconciler.reconcile([list[0]!, list[2]!, list[3]!]);
+    expect(updates).toEqual([
+      [3, 1],
+      [4, 2],
+    ]);
+  });
+
+  test('after a swap both rows are updated with their new indexes', () => {
+    const { reconciler, updates, order } = setupIndexed(true);
+    const list = rows(1, 2, 3, 4);
+    reconciler.reconcile(list);
+    reconciler.reconcile([list[0]!, list[3]!, list[2]!, list[1]!]);
+    expect(order()).toEqual(['row:1', 'row:4', 'row:3', 'row:2', 'anchor']);
+    expect(updates.sort()).toEqual([
+      [2, 3],
+      [4, 1],
+    ]);
+  });
+
+  test('after a rotation every moved row is updated once with its new index', () => {
+    const { reconciler, updates } = setupIndexed(true);
+    const list = rows(1, 2, 3);
+    reconciler.reconcile(list);
+    reconciler.reconcile([list[2]!, list[0]!, list[1]!]);
+    expect(updates.sort()).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 0],
+    ]);
+  });
+
+  test('a removal through the general path refreshes the rows that shifted', () => {
+    const { reconciler, updates } = setupIndexed(true);
+    const list = rows(1, 2, 3, 4, 5);
+    reconciler.reconcile(list);
+    // two removals at once: not the single-removal fast path
+    reconciler.reconcile([list[0]!, list[3]!, list[4]!]);
+    expect(updates.sort()).toEqual([
+      [4, 1],
+      [5, 2],
+    ]);
+  });
+
+  test('without tracking, moved rows are not updated', () => {
+    const { reconciler, updates } = setupIndexed(false);
+    const list = rows(1, 2, 3, 4);
+    reconciler.reconcile(list);
+    reconciler.reconcile([list[0]!, list[2]!, list[3]!]);
+    reconciler.reconcile([list[3]!, list[2]!, list[0]!]);
+    expect(updates).toEqual([]);
+  });
+});
+
+describe('lazy key map', () => {
+  test('get() finds rows before any keyed operation and after the map is built', () => {
+    const { reconciler, keyCalls, resetKeyCalls } = setupCountingKeys();
+    const list = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(list);
+    resetKeyCalls();
+    // the first lookups scan; later ones build the map, which needs no key derivation either
+    for (let i = 0; i < 8; i++) {
+      expect((reconciler.get(i + 1)!.el as unknown as FakeNode).name).toBe(`row:${i + 1}`);
+    }
+    expect(reconciler.get(999)).toBeUndefined();
+    expect(keyCalls()).toBe(0);
+  });
+
+  test('a map built by lookups stays in step through appends, removals and a clear', () => {
+    const { reconciler, order } = setupCountingKeys();
+    const list = Array.from({ length: 10 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(list);
+    for (let i = 0; i < 6; i++) reconciler.get(1);
+    reconciler.reconcile([...list, { id: 11, label: 'r11' }]);
+    expect((reconciler.get(11)!.el as unknown as FakeNode).name).toBe('row:11');
+    reconciler.reconcile(list.slice(1).concat({ id: 11, label: 'r11' }));
+    expect(reconciler.get(1)).toBeUndefined();
+    expect(order().length).toBe(11);
+    reconciler.reconcile([]);
+    expect(reconciler.get(2)).toBeUndefined();
+    reconciler.reconcile(list.slice(0, 3));
+    expect((reconciler.get(3)!.el as unknown as FakeNode).name).toBe('row:3');
+  });
+
+  test('a general reorder after a swap resolves every row through the map', () => {
+    const { reconciler, order } = setupCountingKeys();
+    const list = Array.from({ length: 6 }, (_, i) => ({ id: i + 1, label: `r${i + 1}` }));
+    reconciler.reconcile(list);
+    reconciler.reconcile([list[1]!, list[0]!, ...list.slice(2)]);
+    reconciler.reconcile([...list].reverse());
+    expect(order()).toEqual(['row:6', 'row:5', 'row:4', 'row:3', 'row:2', 'row:1', 'anchor']);
+  });
+});

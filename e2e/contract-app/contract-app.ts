@@ -679,7 +679,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <u data-testid="scope-ref-click" @click=${bumpRefClicks}>ref</u>
                   <s
                     data-testid="scope-param-click"
-                    @click=${(ev) => setParamText((ev.target as HTMLElement).textContent)}
+                    @click=${(ev: Event) => setParamText((ev.target as HTMLElement).textContent)}
                     >${row.name}-param</s
                   >
                   <ol>

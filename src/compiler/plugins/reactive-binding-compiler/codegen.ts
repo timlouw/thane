@@ -13,7 +13,6 @@ import type {
   SimpleBinding,
   ExpressionBinding,
   EventBinding,
-  ItemBinding,
   ItemEventBinding,
   AccessPattern,
 } from './types.js';
@@ -624,15 +623,13 @@ const compileEventHandler = (evt: EventBinding): string => {
 
 const generateRepeatNestedCondInitFn = (
   nestedBindings: BindingInfo[],
-  nestedItemBindings: ItemBinding[],
   nestedEventBindings: EventBinding[],
   outerItemVar: string,
   ap: AccessPattern,
 ): string => {
   const hasSignalBindings = nestedBindings.length > 0;
-  const hasItemBindings = nestedItemBindings.length > 0;
   const hasEvents = nestedEventBindings.length > 0;
-  if (!hasSignalBindings && !hasItemBindings && !hasEvents) return '() => []';
+  if (!hasSignalBindings && !hasEvents) return '() => []';
 
   const parts: string[] = [];
   parts.push('(_c) => {');
@@ -640,39 +637,22 @@ const generateRepeatNestedCondInitFn = (
   // inside a repeat() every row has a copy of the same ids.
   parts.push(`  const _q = (id) => _c ? (_c.id === id ? _c : _c.querySelector('#' + id)) : _gid(id);`);
   // Build comment marker map for text bindings in this conditional
-  const itemTextIds = new Set(nestedItemBindings.filter((b) => b.type === 'text').map((b) => b.elementId));
   const signalTextIds = new Set([
     ...nestedBindings.filter((b) => b.type === 'text' && isSimpleBinding(b)).map((b) => (b as SimpleBinding).id),
     ...nestedBindings.filter((b) => b.type === 'text' && isExpressionBinding(b)).map((b) => (b as SimpleBinding).id),
   ]);
-  const hasTextMarkers = itemTextIds.size > 0 || signalTextIds.size > 0;
+  const hasTextMarkers = signalTextIds.size > 0;
   if (hasTextMarkers) {
     parts.push(
       `  const _rcm = {}; { const _w = document.createTreeWalker(_c || document, 128); let _n; while (_n = _w.nextNode()) _rcm[_n.data] = _n; }`,
     );
-  }
-  // Item bindings: set once when conditional shows
-  const itemElIds = [...new Set(nestedItemBindings.map((b) => b.elementId))];
-  for (const elId of itemElIds) {
-    parts.push(`  const _n_${elVar(elId)} = ${itemTextIds.has(elId) ? `_rcm['${elId}']` : `_q('${elId}')`};`);
-  }
-  for (const ib of nestedItemBindings) {
-    const expr = renameIdentifierInExpression(ib.expression, outerItemVar, 'item');
-    if (ib.type === 'text') {
-      // Comment marker: nextSibling.data targets the text node after <!--id-->
-      parts.push(`  if (_n_${ib.elementId}) _n_${ib.elementId}.nextSibling.data = (${expr}) ?? '';`);
-    } else if (ib.type === 'attr' && ib.property) {
-      parts.push(`  if (_n_${ib.elementId}) ${attributeWrite(`_n_${ib.elementId}`, ib, expr)};`);
-    }
   }
   // Signal bindings
   const simpleNested = nestedBindings.filter(isSimpleBinding);
   const exprNested = nestedBindings.filter(isExpressionBinding);
   const signalElIds = [...new Set([...simpleNested.map((b) => b.id), ...exprNested.map((b) => b.id)])];
   for (const elId of signalElIds) {
-    if (!itemElIds.includes(elId)) {
-      parts.push(`  const _n_${elVar(elId)} = ${signalTextIds.has(elId) ? `_rcm['${elId}']` : `_q('${elId}')`};`);
-    }
+    parts.push(`  const _n_${elVar(elId)} = ${signalTextIds.has(elId) ? `_rcm['${elId}']` : `_q('${elId}')`};`);
   }
   // Initial values for signal bindings
   for (const sb of simpleNested) {
@@ -1386,7 +1366,6 @@ export const generateInitBindingsFunction = (
           const condTemplate = escapeTemplateLiteral(cond.templateContent);
           const condInitNested = generateRepeatNestedCondInitFn(
             cond.nestedBindings,
-            cond.nestedItemBindings,
             cond.nestedEventBindings,
             rep.itemVar,
             ap,
@@ -1416,8 +1395,8 @@ export const generateInitBindingsFunction = (
           const elseTplWithId = injectIdIntoFirstElement(we.elseTemplate, we.elseId);
           const escapedThen = escapeTemplateLiteral(thenTplWithId);
           const escapedElse = escapeTemplateLiteral(elseTplWithId);
-          const thenInitFn = generateRepeatNestedCondInitFn(we.thenBindings, [], [], rep.itemVar, ap);
-          const elseInitFn = generateRepeatNestedCondInitFn(we.elseBindings, [], [], rep.itemVar, ap);
+          const thenInitFn = generateRepeatNestedCondInitFn(we.thenBindings, [], rep.itemVar, ap);
+          const elseInitFn = generateRepeatNestedCondInitFn(we.elseBindings, [], rep.itemVar, ap);
           const weSignals = we.signalNames.map((s) => ap.signal(s)).join(', ');
           lines.push(
             `        _cleanups.push(${BIND_FN.IF_EXPR}(r, [${weSignals}], () => ${we.jsExpression}, '${we.thenId}', \`${escapedThen}\`, ${thenInitFn}, _cond_${elVar(we.thenId)}));`,

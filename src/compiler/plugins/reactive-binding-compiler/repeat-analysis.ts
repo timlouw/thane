@@ -878,7 +878,6 @@ export const processItemTemplateRecursively = (
   });
   const conditionals = condResult.conditionals;
   signalBindings.push(...condResult.bindings.filter(isSimpleBinding));
-  eventBindings.push(...condResult.eventBindings);
 
   // ── WhenElse ──
   const whenElseBlocks = collectWhenElseBlocks(

@@ -48,7 +48,6 @@ export interface ConditionalBlock {
   startIndex: number; // Position in HTML where the element/block starts
   endIndex: number; // Position where it ends
   nestedBindings: BindingInfo[]; // Signal bindings directly inside this conditional (not inside nested directives)
-  nestedItemBindings: ItemBinding[]; // Item bindings inside this conditional (for conditionals inside repeats)
   nestedConditionals: ConditionalBlock[]; // Nested when blocks inside this conditional
   nestedWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside this conditional
   nestedRepeats: RepeatBlock[]; // Nested repeat blocks inside this conditional

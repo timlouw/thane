@@ -56,7 +56,7 @@ ${Greeter({ name: 'World' })}
 
 ### Signal Props
 
-Props can be signals for reactive references. The child reads the signal and automatically updates when the parent changes it:
+Props can be signals for reactive references. The child reads the signal and automatically updates when the parent changes it. A zero-argument call on a prop in a template, `props.count()`, is compiled as a signal read, so pass a signal (not a plain function) for any prop the template calls:
 
 ```typescript
 import { defineComponent } from 'thane';
