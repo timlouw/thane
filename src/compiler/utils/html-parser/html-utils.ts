@@ -59,6 +59,47 @@ export function getBindingsForElement(element: HtmlElement, bindings: BindingInf
   return bindings.filter((b) => elementIds.has(b.element));
 }
 
+/** Whether the element sits inside an `<svg>` subtree (including the `<svg>` element itself). */
+export function isInsideSvg(element: HtmlElement | null): boolean {
+  for (let el = element; el; el = el.parent) {
+    if (el.tagName.toLowerCase() === 'svg') return true;
+  }
+  return false;
+}
+
+/**
+ * Attributes that a dynamic binding writes as a DOM property on HTML elements. For the boolean
+ * ones (`checked`, `disabled`, …) an attribute write would mean "present" whatever the value;
+ * for `value` the attribute is only the default, not what the field shows. The static
+ * template ships none of these attributes for a bound element (see stripPropertyBoundAttributes).
+ * `class` goes through `className` because it is the cheaper write.
+ */
+const HTML_ATTRIBUTE_PROPERTIES: Record<string, string> = {
+  class: 'className',
+  style: 'style.cssText',
+  value: 'value',
+  checked: 'checked',
+  selected: 'selected',
+  disabled: 'disabled',
+  open: 'open',
+  hidden: 'hidden',
+  readonly: 'readOnly',
+  required: 'required',
+  multiple: 'multiple',
+  indeterminate: 'indeterminate',
+  muted: 'muted',
+};
+
+/**
+ * The DOM property a dynamic attribute is written through instead of `setAttribute`, or
+ * undefined for a plain attribute. SVG elements keep `setAttribute` for everything (their
+ * `className` is a read-only SVGAnimatedString, and the table is about HTML form semantics).
+ */
+export function attributeDomProperty(attrName: string, element: HtmlElement | null): string | undefined {
+  if (isInsideSvg(element)) return undefined;
+  return HTML_ATTRIBUTE_PROPERTIES[attrName.toLowerCase()];
+}
+
 export function isElementInside(element: HtmlElement, container: HtmlElement): boolean {
   let current = element.parent;
   while (current) {
@@ -241,4 +282,10 @@ export function injectIdIntoFirstElement(html: string, id: string): string {
   const tagNameEnd = tagName.length + 1;
 
   return trimmed.substring(0, tagNameEnd) + ` id="${id}"` + trimmed.substring(tagNameEnd);
+}
+
+/** The `id` attribute of a template's first element, if it has one. */
+export function firstElementId(html: string): string | undefined {
+  const firstTagMatch = html.trim().match(/^<(\w+)([^>]*)>/);
+  return firstTagMatch?.[2]?.match(/\sid\s*=\s*['"]([^'"]*)['"]/)?.[1];
 }

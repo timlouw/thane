@@ -9,6 +9,7 @@ export const RUNTIME_HELPER = {
   REGISTER_COMPONENT: '__registerComponent',
   REGISTER_COMPONENT_LEAN: '__registerComponentLean',
   DESTROY_CHILD: '__dc',
+  SIGNAL: '__sig',
 } as const;
 
 export type RuntimeHelperName = (typeof RUNTIME_HELPER)[keyof typeof RUNTIME_HELPER];

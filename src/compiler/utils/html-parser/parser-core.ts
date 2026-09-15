@@ -192,6 +192,12 @@ export function parseHtmlTemplate(html: string, options?: BindingDetectionOption
               pos++;
               continue;
             }
+            if (char === '{' && templateBraceDepth > 0) {
+              templateBraceDepth++;
+              textContent += char;
+              pos++;
+              continue;
+            }
             if (char === '`' && templateBraceDepth === 0) {
               inTemplateBacktick = false;
               textContent += char;

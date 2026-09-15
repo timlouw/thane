@@ -13,17 +13,19 @@ import type {
   ItemEventBinding,
   EventBinding,
   StaticTemplateInfo,
-  RepeatOptimizationSkipReason,
   SimpleBinding,
 } from './types.js';
 import { isSimpleBinding } from './types.js';
-import { REPEAT_OPTIMIZATION_SKIP_REASON } from '../../../contracts/index.js';
+import { ErrorCode } from '../../errors.js';
 import { processSubTemplateWithNesting } from './template-processing.js';
 import {
   parseHtmlTemplate,
   walkElements,
   findElementsWithWhenDirective,
   injectIdIntoFirstElement,
+  attributeDomProperty,
+  findTemplateExpressions,
+  stripTemplateExpressions,
   type HtmlElement,
 } from '../../utils/html-parser/index.js';
 import { renameIdentifierInExpression, expressionReferencesIdentifier } from '../../utils/index.js';
@@ -34,35 +36,68 @@ import {
   buildWhenElseEdits,
   buildElementIdEdits,
   applyTemplateEdits,
+  stripPropertyBoundAttributes,
   type IdState,
   type TemplateEdit,
   type Range,
 } from './template-utils.js';
 
 /**
- * Get a human-readable explanation for why optimization was skipped
+ * Inside a row, nested directives (when/whenElse/repeat) cannot close over the row factory's
+ * `item` and index parameters: their conditions and templates are compiled as sub-templates
+ * whose bindings are driven by signals. So the row factory declares one signal per referenced
+ * variable, `<itemVar>$` and `<indexVar>$`, and every reference inside a nested directive is
+ * rewritten to read it (`row.name` → `row$().name`). The row's update writes the signals, and
+ * the existing signal machinery re-evaluates conditions, branch bindings and nested lists.
+ *
+ * An expression that calls the item variable (`row()`, the Signal<Signal<T>[]> pattern) is left
+ * alone: there the item is itself the signal to subscribe to.
  */
-export const getOptimizationSkipMessage = (reason: RepeatOptimizationSkipReason): string => {
-  switch (reason) {
-    case REPEAT_OPTIMIZATION_SKIP_REASON.NO_BINDINGS:
-      return 'no item bindings found';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.SIGNAL_BINDINGS:
-      return 'contains component signal bindings inside items - move to data model';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.NESTED_REPEAT:
-      return 'contains nested repeat() - not yet supported for optimization';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.NESTED_CONDITIONAL:
-      return 'contains when()/whenElse() inside items - not yet supported for optimization';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.MIXED_BINDINGS:
-      return 'item bindings reference component signals - use pure item data instead';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.MULTI_ROOT:
-      return 'template has multiple root elements - wrap in a single container element';
-    case REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND:
-      return 'element navigation path could not be computed';
-    default: {
-      const exhaustive: never = reason;
-      throw new Error(`Unhandled repeat optimization reason: ${String(exhaustive)}`);
+const createRowRefRewriter = (itemVar: string, indexVar: string | undefined) => {
+  const used = new Set<string>();
+  const itemAccessor = itemVar + '$';
+  const indexAccessor = indexVar ? indexVar + '$' : undefined;
+  const callsItemVar = new RegExp('\\b' + itemVar.replace(/[$]/g, '\\$&') + '\\s*\\(');
+  const expression = (expr: string): { expression: string; extraSignals: string[] } => {
+    let out = expr;
+    const extraSignals: string[] = [];
+    if (expressionReferencesIdentifier(expr, itemVar) && !callsItemVar.test(expr)) {
+      out = renameIdentifierInExpression(out, itemVar, itemAccessor + '()');
+      used.add(itemAccessor);
+      extraSignals.push(itemAccessor);
     }
+    if (indexVar && indexAccessor && expressionReferencesIdentifier(out, indexVar)) {
+      out = renameIdentifierInExpression(out, indexVar, indexAccessor + '()');
+      used.add(indexAccessor);
+      extraSignals.push(indexAccessor);
+    }
+    return { expression: out, extraSignals };
+  };
+  const html = (source: string): string => {
+    let out = '';
+    let last = 0;
+    for (const span of findTemplateExpressions(source)) {
+      out += source.slice(last, span.start) + '${' + expression(span.expression).expression + '}';
+      last = span.end;
+    }
+    return out + source.slice(last);
+  };
+  return { expression, html, used };
+};
+
+/**
+ * The id used to locate a bound element inside a row template. A developer-supplied id is
+ * reused as-is (so it survives in the row and nothing else has to be injected); otherwise a
+ * generated one is assigned. Either way the element is registered in elementIdMap, which is
+ * what gets the id attribute injected and lets generateStaticRepeatTemplate compute its path.
+ */
+const ensureRowElementId = (el: HtmlElement, state: IdState, prefix: 'b' | 'i'): string => {
+  let id = state.elementIdMap.get(el);
+  if (!id) {
+    id = el.attributes.get('id')?.value || `${prefix}${state.idCounter++}`;
+    state.elementIdMap.set(el, id);
   }
+  return id;
 };
 
 /**
@@ -85,14 +120,17 @@ export const generateStaticRepeatTemplate = (
   // Parse the template to get element structure
   const parsed = parseHtmlTemplate(itemTemplate);
 
+  // Rows are cloned from one element and reconciled by that element, so a row template is
+  // exactly one root element; anything else is reported rather than rendered another way.
   if (parsed.roots.length !== 1) {
-    // Multiple root elements - cannot use optimized path
-    return {
-      staticHtml: '',
-      elementBindings: [],
-      canUseOptimized: false,
-      skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.MULTI_ROOT,
-    };
+    // A row that is only a when()/whenElse() parses as its anchor elements.
+    const onlyDirectives = parsed.roots.length > 0 && parsed.roots.every((r) => r.tagName === 'template');
+    throw new Error(
+      `${ErrorCode.REPEAT_ROW_ROOT}: a repeat() row template must have exactly one root element` +
+        (onlyDirectives
+          ? '; this row is only a when()/whenElse() directive. Wrap it in an element such as <li>.'
+          : ` (found ${parsed.roots.length}). Wrap the row's content in a single element.`),
+    );
   }
 
   const rootEl = parsed.roots[0]!;
@@ -150,15 +188,13 @@ export const generateStaticRepeatTemplate = (
     }
   }
 
-  // Check if all bindings have paths
+  // Every bound element has a path; since ids are injected before analysis this can only be
+  // a compiler bug, and an error surfaces it instead of hiding it behind another renderer.
   for (const elementId of bindingsByElement.keys()) {
     if (!elementPaths.has(elementId)) {
-      return {
-        staticHtml: '',
-        elementBindings: [],
-        canUseOptimized: false,
-        skipReason: REPEAT_OPTIMIZATION_SKIP_REASON.PATH_NOT_FOUND,
-      };
+      throw new Error(
+        `${ErrorCode.PLUGIN_ERROR}: internal compiler error — the element path for a bound element in a repeat() row could not be computed. Please report this with the row template.`,
+      );
     }
   }
 
@@ -171,7 +207,9 @@ export const generateStaticRepeatTemplate = (
   // extracted. The only ${...} expressions left are item-variable bindings,
   // which are handled at runtime via the element binding paths — so they must
   // all be removed from the static template.
-  staticHtml = staticHtml.replace(/\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g, '');
+  staticHtml = stripTemplateExpressions(staticHtml);
+  // Property-bound attributes (checked, disabled, value, …) must not ship in the template
+  staticHtml = stripPropertyBoundAttributes(staticHtml, itemBindings);
 
   // Remove inline id attributes that were only added for bindings
   // These follow the pattern id="i0", id="i1", id="b0", id="b1", etc.
@@ -181,7 +219,7 @@ export const generateStaticRepeatTemplate = (
   // - Collapse runs to single space
   // - Remove all inter-element whitespace (><)
   // - Strip trailing whitespace before > in opening tags (<a > → <a>)
-  // Sole-content elements become empty (<td></td>) — textContent handles this at runtime.
+  // Sole-content elements become empty (<td></td>) — the row creates their text node on fill.
   staticHtml = staticHtml.replace(/\s+/g, ' ').replace(/>\s+</g, '><').replace(/\s+>/g, '>').trim();
 
   // Insert comment marker placeholders AFTER stripping (so they survive intact).
@@ -212,7 +250,9 @@ export const generateStaticRepeatTemplate = (
       bindings: bindings.map((b) => ({
         type: b.type as 'text' | 'attr',
         property: b.property,
+        domProperty: b.domProperty,
         expression: b.expression,
+        staticValue: b.staticValue,
       })),
     });
   }
@@ -249,6 +289,8 @@ export const generateStaticRepeatTemplate = (
         signalCommentBindings.push({
           commentId: sb.id,
           signalName: sb.signalName,
+          expression: sb.expression,
+          signalNames: sb.signalNames,
         });
         continue;
       }
@@ -265,6 +307,9 @@ export const generateStaticRepeatTemplate = (
           signalName: sb.signalName,
           type: sb.type,
           property: sb.property,
+          domProperty: sb.domProperty,
+          expression: sb.expression,
+          signalNames: sb.signalNames,
         });
       }
     }
@@ -292,50 +337,24 @@ export const generateStaticRepeatTemplate = (
   if (mixedItemBindings.length > 0) {
     mixedSignalItemBindings = [];
     for (const mb of mixedItemBindings) {
-      // Mixed bindings don't have IDs injected into the HTML (they were excluded
-      // from elementIdMap). Use path-by-position: find the element that owns this
-      // binding. For root-level attributes (e.g., class on <tr>), the root element
-      // itself is the target — path [].
-      // Since the element wasn't assigned an ID, we navigate by position using the
-      // element index assigned during collectItemAttrBindings. For the common case
-      // (attribute on root element), path is [].
+      // The bound element carries an injected id like any other bound element, so its
+      // path resolves the same way.
       const rootId = rootEl.attributes.get('id')?.value;
-      let path: number[] | null = null;
-      if (rootId === mb.elementId) {
-        path = [];
-      } else {
-        path = findElementPath(rootEl, mb.elementId, []);
+      const path = rootId === mb.elementId ? [] : findElementPath(rootEl, mb.elementId, []);
+      if (path === null) {
+        throw new Error(
+          `${ErrorCode.PLUGIN_ERROR}: internal compiler error — the element path for a bound element in a repeat() row could not be computed. Please report this with the row template.`,
+        );
       }
-      // If no ID-based path found, try to find the element by checking if it's
-      // the root (mixed attr bindings on root won't have an injected ID)
-      if (path === null && !rootId) {
-        // No ID on root — this mixed binding is likely targeting the root element.
-        // Check if any other element has this ID; if not, assume root.
-        let foundElsewhere = false;
-        const searchNonRoot = (el: HtmlElement, p: number[]) => {
-          for (let i = 0; i < el.children.length; i++) {
-            const child = el.children[i]!;
-            if (child.attributes.get('id')?.value === mb.elementId) {
-              foundElsewhere = true;
-              path = [...p, i];
-              return;
-            }
-            searchNonRoot(child, [...p, i]);
-          }
-        };
-        searchNonRoot(rootEl, []);
-        if (!foundElsewhere) {
-          // The binding targets the root element — path is []
-          path = [];
-        }
-      }
-      if (path !== null) {
+      {
         mixedSignalItemBindings.push({
           path,
           outerSignalNames: mb.outerSignalNames!,
           type: mb.type,
           property: mb.property,
+          domProperty: mb.domProperty,
           expression: mb.expression,
+          staticValue: mb.staticValue,
         });
       }
     }
@@ -349,7 +368,6 @@ export const generateStaticRepeatTemplate = (
     ...(signalCommentBindings && signalCommentBindings.length > 0 ? { signalCommentBindings } : {}),
     ...(directiveAnchorPaths ? { directiveAnchorPaths } : {}),
     ...(mixedSignalItemBindings && mixedSignalItemBindings.length > 0 ? { mixedSignalItemBindings } : {}),
-    canUseOptimized: true,
   };
 };
 
@@ -552,7 +570,7 @@ const classifyParsedBindings = (
   state: IdState,
   itemEvents: ItemEventBinding[],
   signalBindings: SimpleBinding[],
-  eventBindings: EventBinding[],
+  _eventBindings: EventBinding[],
   elementIdMap: Map<HtmlElement, string>,
   textBindingSpans: Map<number, { spanId: string; exprEnd: number; signalName: string }>,
 ): { itemEventIdCounter: number } => {
@@ -565,38 +583,18 @@ const classifyParsedBindings = (
     const insideRange = allRanges.some((r) => binding.expressionStart >= r.start && binding.expressionStart < r.end);
     if (insideRange) continue;
     if (binding.type === 'event' && binding.eventName && binding.handlerExpression) {
-      const refsItem = expressionReferencesIdentifier(binding.handlerExpression, itemVar);
-      const refsIndex = indexVar ? expressionReferencesIdentifier(binding.handlerExpression, indexVar) : false;
-
-      if (refsItem || refsIndex) {
-        const eventId = `ie${itemEventIdCounter++}`;
-        if (!elementIdMap.has(binding.element)) {
-          elementIdMap.set(binding.element, `b${state.idCounter++}`);
-        }
-        const eventElementId = elementIdMap.get(binding.element)!;
-        itemEvents.push({
-          eventId,
-          elementId: eventElementId,
-          eventName: binding.eventName,
-          modifiers: binding.eventModifiers || [],
-          handlerExpression: binding.handlerExpression,
-        });
-      } else {
-        const eventId = `e${state.eventIdCounter.value++}`;
-        if (!elementIdMap.has(binding.element)) {
-          elementIdMap.set(binding.element, `b${state.idCounter++}`);
-        }
-        const elementId = elementIdMap.get(binding.element)!;
-        eventBindings.push({
-          id: eventId,
-          eventName: binding.eventName,
-          modifiers: binding.eventModifiers || [],
-          handlerExpression: binding.handlerExpression,
-          elementId,
-          startIndex: binding.expressionStart,
-          endIndex: binding.expressionEnd,
-        });
-      }
+      // Every handler on a row element is a row event, whether or not it mentions the item:
+      // rows do not exist when the component binds, so a root-level listener would attach to
+      // nothing. The row's delegated (or per-row) listener calls it with the event.
+      const eventId = `ie${itemEventIdCounter++}`;
+      const eventElementId = ensureRowElementId(binding.element, state, 'b');
+      itemEvents.push({
+        eventId,
+        elementId: eventElementId,
+        eventName: binding.eventName,
+        modifiers: binding.eventModifiers || [],
+        handlerExpression: binding.handlerExpression,
+      });
       continue;
     }
     if (binding.type === 'text' || binding.type === 'style' || binding.type === 'attr') {
@@ -628,11 +626,19 @@ const classifyParsedBindings = (
         binding.type === 'text'
           ? textBindingSpans.get(binding.expressionStart)!.spanId
           : elementIdMap.get(binding.element)!;
+      // Keep the expression when it is more than a bare read, so `user().name` writes the
+      // member and not the object, and subscribe to every signal it reads.
+      // The parser records a bare read as its full ${…} text; strip the braces before deciding
+      const exprText = fullExpr.replace(/^\s*\$\{([\s\S]*)\}\s*$/, '$1').trim();
+      const bareRead = /^[A-Za-z_$][\w$]*\(\)$/.test(exprText);
       signalBindings.push({
         id: bindingId,
         signalName: binding.signalName,
         type: binding.type,
         ...(binding.property ? { property: binding.property } : {}),
+        ...(bareRead || !exprText
+          ? {}
+          : { expression: exprText, signalNames: binding.signalNames ?? [binding.signalName] }),
         isInsideConditional: false,
       });
     }
@@ -709,8 +715,8 @@ const collectItemTextBindings = (
         elementId: id,
         type: 'text',
         expression: expression,
-        // sole-content → textContent on parent; mixed-content → comment marker
-        textBindingMode: context.isSoleContent ? 'textContent' : 'commentMarker',
+        // sole-content → the element's placeholder Text node; mixed-content → comment marker
+        textBindingMode: context.isSoleContent ? 'textNode' : 'commentMarker',
         ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
       });
 
@@ -751,16 +757,24 @@ const collectItemAttrBindings = (
 
     for (const [attrName, attr] of el.attributes) {
       if (attrName.startsWith('@')) continue; // Skip event attrs
-      // Check for ${expr} in attribute values that reference item/index vars
+      // One binding per attribute. With static text around the expression, or several
+      // expressions, the value is the whole attribute as a template literal
+      // (`class="row ${item.kind}"` writes `row a`); otherwise it is the expression itself.
       const attrExprRegex = /\$\{([^}]*(?:\{[^}]*\}[^}]*)*)\}/g;
-      let attrMatch: RegExpExecArray | null;
-      while ((attrMatch = attrExprRegex.exec(attr.value)) !== null) {
-        const innerExpr = attrMatch[1]?.trim() ?? '';
-        const refsItem = expressionReferencesIdentifier(innerExpr, itemVar);
-        const refsIndex = indexVar ? expressionReferencesIdentifier(innerExpr, indexVar) : false;
-        if (!refsItem && !refsIndex) continue;
+      const exprs = [...attr.value.matchAll(attrExprRegex)].map((m) => (m[1] ?? '').trim());
+      const refsRow = (e: string) =>
+        expressionReferencesIdentifier(e, itemVar) || (indexVar ? expressionReferencesIdentifier(e, indexVar) : false);
+      if (exprs.length === 0 || !exprs.some(refsRow)) continue;
+      const staticText = attr.value.replace(attrExprRegex, '');
+      const hasStatic = exprs.length > 1 || staticText.trim() !== '';
+      {
+        const innerExpr = hasStatic ? '`' + attr.value + '`' : exprs[0]!;
 
-        const id = `i${state.idCounter++}`;
+        // One id per element, shared by every item attribute on it and by any event handler
+        // or sole-content text binding already assigned to it. Registering the element in
+        // elementIdMap is what gets `id="…"` injected into the template, which is how
+        // generateStaticRepeatTemplate finds the element's navigation path.
+        const id = ensureRowElementId(el, state, 'i');
 
         // Detect outer signal references in the expression (mixed binding)
         const signalCallRegex = /(?<!\.)\b(\w+)\(\)/g;
@@ -773,12 +787,17 @@ const collectItemAttrBindings = (
           }
         }
 
+        const domProperty = attributeDomProperty(attrName, el);
         itemBindings.push({
           elementId: id,
           type: 'attr',
           property: attrName,
+          domProperty,
           expression: innerExpr,
           ...(outerSignals.length > 0 ? { outerSignalNames: outerSignals } : {}),
+          // What the static template ships for this attribute once every expression is stripped.
+          // Property-bound and mixed attributes ship nothing useful, so the first write always happens.
+          staticValue: (domProperty && domProperty !== 'className') || hasStatic ? undefined : staticText,
         });
 
         itemAttrMatches.push({
@@ -817,6 +836,7 @@ export const processItemTemplateRecursively = (
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
   nestedRepeats: RepeatBlock[];
+  rowSignalVars: string[];
   nextId: number;
 } => {
   const parsed = parseHtmlTemplate(templateContent);
@@ -839,47 +859,33 @@ export const processItemTemplateRecursively = (
     });
   }
 
-  // ── Conditionals (with item binding transformation) ──
+  // ── Nested directives read the row's item and index through row-scoped signals ──
+  const rowRefs = createRowRefRewriter(itemVar, indexVar);
+  const processRowSubTemplate = (template: string, id: string) =>
+    processSubTemplateWithNesting(
+      rowRefs.html(template),
+      signalInitializers,
+      state.idCounter,
+      id,
+      undefined,
+      state.eventIdCounter,
+    );
+
+  // ── Conditionals: compiled as sub-templates, like at component level ──
   const condResult = collectConditionalBlocks(parsed, templateContent, signalInitializers, state, {
-    onConditionalHtml: (html) => {
-      // Find ${...} expressions that reference the item variable using AST check
-      const exprPattern = /\$\{((?:[^{}]|\{[^}]*\})*)\}/g;
-      const condItemBindings: ItemBinding[] = [];
-      let transformedHtml = html;
-      const matches = [...html.matchAll(exprPattern)].filter(
-        (m) => m[1] !== undefined && expressionReferencesIdentifier(m[1].trim(), itemVar),
-      );
-      if (matches.length > 0) {
-        let offset = 0;
-        for (const match of matches) {
-          const innerExpr = match[1]!.trim();
-          const matchStart = match.index! + offset;
-          const matchEnd = matchStart + match[0].length;
-          const itemBindingId = `i${state.idCounter++}`;
-          const transformedExpr = renameIdentifierInExpression(innerExpr, itemVar, `${itemVar}$()`);
-          // Use comment marker instead of span wrapper
-          const replacement = `<!--${itemBindingId}-->\${${transformedExpr}}`;
-          transformedHtml =
-            transformedHtml.substring(0, matchStart) + replacement + transformedHtml.substring(matchEnd);
-          condItemBindings.push({
-            elementId: itemBindingId,
-            expression: innerExpr,
-            type: 'text',
-            textBindingMode: 'commentMarker',
-          });
-          offset += replacement.length - match[0].length;
-        }
-      }
-      return { html: transformedHtml, extraData: condItemBindings };
-    },
+    processSubTemplate: processRowSubTemplate,
+    rewriteExpression: rowRefs.expression,
   });
   const conditionals = condResult.conditionals;
   signalBindings.push(...condResult.bindings.filter(isSimpleBinding));
-  eventBindings.push(...condResult.eventBindings);
 
   // ── WhenElse ──
-  const whenElseBlocks = collectWhenElseBlocks(parsed, signalInitializers, state, (template, id) =>
-    processSubTemplateWithNesting(template, signalInitializers, state.idCounter, id),
+  const whenElseBlocks = collectWhenElseBlocks(
+    parsed,
+    signalInitializers,
+    state,
+    processRowSubTemplate,
+    rowRefs.expression,
   );
 
   // ── Nested repeats ──
@@ -887,10 +893,14 @@ export const processItemTemplateRecursively = (
     if (binding.type !== 'repeat') continue;
     if (!binding.itemsExpression || !binding.itemVar || !binding.itemTemplate) continue;
 
-    const nestedSignalNames = binding.signalNames || [binding.signalName];
+    // The inner list and its rows may read the outer item/index: route them through the row signals
+    const nestedItems = rowRefs.expression(binding.itemsExpression);
+    const nestedSignalNames = [
+      ...new Set([...(binding.signalNames || [binding.signalName]), ...nestedItems.extraSignals]),
+    ].filter((s) => s !== '');
     const nestedRepeatId = `b${state.idCounter++}`;
     const nestedProcessed = processItemTemplateRecursively(
-      binding.itemTemplate,
+      rowRefs.html(binding.itemTemplate),
       binding.itemVar,
       binding.indexVar,
       signalInitializers,
@@ -910,7 +920,7 @@ export const processItemTemplateRecursively = (
       id: nestedRepeatId,
       signalName: nestedSignalNames[0] || '',
       signalNames: nestedSignalNames,
-      itemsExpression: binding.itemsExpression,
+      itemsExpression: nestedItems.expression,
       itemVar: binding.itemVar,
       indexVar: binding.indexVar,
       itemTemplate: nestedProcessed.processedContent,
@@ -925,6 +935,7 @@ export const processItemTemplateRecursively = (
       nestedConditionals: nestedProcessed.nestedConditionals,
       nestedWhenElse: nestedProcessed.nestedWhenElse,
       nestedRepeats: nestedProcessed.nestedRepeats,
+      rowSignalVars: nestedProcessed.rowSignalVars,
     });
   }
 
@@ -1024,73 +1035,25 @@ export const processItemTemplateRecursively = (
     }
   }
 
-  // Add IDs to parent elements for sole-content text bindings
-  // First, build a map of tagStart -> existing elementId from the element ID map
-  const tagStartToExistingId = new Map<number, string>();
-  for (const [element, existingId] of elementIdMap) {
-    tagStartToExistingId.set(element.tagStart, existingId);
-  }
-
+  // The parent of a sole-content text binding is a bound element like any other: register it
+  // so it shares one id with any attribute or event binding on it, and so buildElementIdEdits
+  // injects the id attribute (or leaves a developer-supplied id in place).
+  const elementByTagStart = new Map<number, HtmlElement>();
+  walkElements(parsed.roots, (el) => elementByTagStart.set(el.tagStart, el));
   for (const [tagStart, id] of parentElementIds) {
-    // Check if this element already has an ID assigned (e.g., from event processing)
-    const existingId = tagStartToExistingId.get(tagStart);
-    if (existingId) {
-      // Reuse the existing ID — update the binding to reference it
-      for (const binding of itemBindings) {
-        if (binding.elementId === id) {
-          binding.elementId = existingId;
-        }
-      }
-      // No need to inject an ID — buildElementIdEdits will handle it
-      continue;
-    }
-
-    // Find the end of the tag name to inject the ID attribute
-    let tagNameEnd = tagStart + 1;
-    while (tagNameEnd < templateContent.length && /[\w-]/.test(templateContent[tagNameEnd]!)) {
-      tagNameEnd++;
-    }
-
-    // Check if element already has an id attribute
-    const openTagEnd = templateContent.indexOf('>', tagStart);
-    const tagContent = templateContent.substring(tagStart, openTagEnd + 1);
-    const hasExistingId = /\sid=["']/.test(tagContent);
-
-    if (!hasExistingId) {
-      edits.push({
-        start: tagNameEnd,
-        end: tagNameEnd,
-        replacement: ` id="${id}"`,
-      });
-    }
-    // If element already has a user-defined id, no attribute injection needed —
-    // the optimized codegen uses path-based navigation (children[N] etc.),
-    // and THANE406 linter rule bans user id attributes in templates anyway.
-  }
-  const elementIdByTagStart = new Map<number, string>();
-
-  for (const itemAttr of itemAttrMatches) {
-    let tagStart = itemAttr.start;
-    while (tagStart > 0 && templateContent[tagStart] !== '<') {
-      tagStart--;
-    }
-    if (!elementIdByTagStart.has(tagStart)) {
-      elementIdByTagStart.set(tagStart, itemAttr.id);
+    const parentEl = elementByTagStart.get(tagStart);
+    if (!parentEl) continue;
+    const elementId = elementIdMap.get(parentEl) ?? (parentEl.attributes.get('id')?.value || id);
+    elementIdMap.set(parentEl, elementId);
+    if (elementId === id) continue;
+    for (const binding of itemBindings) {
+      if (binding.elementId === id) binding.elementId = elementId;
     }
   }
-  for (const { start, end, attrName, expr, id } of itemAttrMatches) {
-    let tagStart = start;
-    while (tagStart > 0 && templateContent[tagStart] !== '<') {
-      tagStart--;
-    }
-    const elementId = elementIdByTagStart.get(tagStart) || id;
+  for (const { start, end, attrName, expr } of itemAttrMatches) {
     let transformedExpr = renameIdentifierInExpression(expr, itemVar, `${itemVar}$()`);
     if (indexVar) {
       transformedExpr = renameIdentifierInExpression(transformedExpr, indexVar, indexVar);
-    }
-    const binding = itemBindings.find((b) => b.elementId === id);
-    if (binding) {
-      binding.elementId = elementId;
     }
 
     edits.push({
@@ -1117,6 +1080,7 @@ export const processItemTemplateRecursively = (
     nestedConditionals: conditionals,
     nestedWhenElse: whenElseBlocks,
     nestedRepeats: repeatBlocks,
+    rowSignalVars: [...rowRefs.used],
     nextId: state.idCounter,
   };
 };
@@ -1139,6 +1103,7 @@ export const processItemTemplate = (
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
   nestedRepeats: RepeatBlock[];
+  rowSignalVars: string[];
   nextId: number;
 } => {
   const result = processItemTemplateRecursively(templateContent, itemVar, indexVar, signalInitializers, startingId);
@@ -1151,6 +1116,7 @@ export const processItemTemplate = (
     nestedConditionals: result.nestedConditionals,
     nestedWhenElse: result.nestedWhenElse,
     nestedRepeats: result.nestedRepeats,
+    rowSignalVars: result.rowSignalVars,
     nextId: result.nextId,
   };
 };

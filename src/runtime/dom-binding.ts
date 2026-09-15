@@ -147,15 +147,34 @@ interface ManagedItem<T> {
   el: Element;
   cleanups: (() => void)[];
   /** Direct update function used when available */
-  update?: ((newValue: T) => void) | undefined;
+  update?: ((newValue: T, index: number) => void) | undefined;
   /** Cached value for direct update path (no signal) */
   value?: T | undefined;
   /** Cached key — avoids re-calling keyFn on old items */
   key?: string | number | undefined;
+  /** The row's position; stored only for lists whose bindings read the index */
+  i?: number | undefined;
 }
 
 /** Key function for tracking items in repeat. */
 type KeyFn<T> = (item: T, index: number) => string | number;
+
+/**
+ * How to create rows in batches: `size` rows are cloned from one fragment (built once from
+ * `row`) and bound one by one with `bind`, then inserted together. Only rows that need no
+ * per-row cleanups use it; the reconciler falls back to the single-row factory for the
+ * remainder of a batch and for lists shorter than one batch.
+ */
+export interface BatchRows<T> {
+  size: number;
+  row: Node;
+  bind: (el: Element, item: T, index: number) => ManagedItem<T>;
+  /**
+   * One update function shared by every row, given the managed record (which carries the
+   * row's guard state) and the new item; rows bound this way have no per-row update closure.
+   */
+  update?: (managed: ManagedItem<T>, item: T, index: number) => void;
+}
 
 // ─────────────────────────────────────────────────────────────
 //  createKeyedReconciler — keyed-only, direct-update mode
@@ -166,6 +185,8 @@ export function createKeyedReconciler<T>(
   anchor: Element,
   createItemFn: (item: T, index: number, refNode: Node) => ManagedItem<T>,
   keyFnOrProp: KeyFn<T> | string,
+  batch?: BatchRows<T>,
+  trackIndex?: boolean,
 ) {
   // Resolve key accessor once: string prop → direct access, function → use as-is
   const keyFn: KeyFn<T> =
@@ -174,8 +195,46 @@ export function createKeyedReconciler<T>(
   const containerParent = container.parentNode;
   const containerNextSibling = container.nextSibling;
 
+  // Rows either carry their own update closure or share the one in `batch.update`.
+  const sharedUpdate = batch?.update;
+  const updateRow = (managed: ManagedItem<T>, item: T, index: number) => {
+    managed.value = item;
+    if (trackIndex) managed.i = index;
+    if (sharedUpdate !== undefined) sharedUpdate(managed, item, index);
+    else managed.update!(item, index);
+  };
+
+  // A list whose bindings read the index (trackIndex) refreshes every row that sits at a new
+  // position after a removal or a reorder; the row's guards skip the writes that did not
+  // change. Other lists never store a position.
+  const syncIndexes = () => {
+    for (let i = 0, len = managedItems.length; i < len; i++) {
+      const managed = managedItems[i]!;
+      if (managed.i !== i) updateRow(managed, managed.value as T, i);
+    }
+  };
+
   const managedItems: ManagedItem<T>[] = [];
-  const keyMap = new Map<string | number, ManagedItem<T>>();
+  // Rows are found by key through a Map that is built the first time an operation needs
+  // many lookups and kept in step from then on. Creating rows never pays for it, and the
+  // first few lookups (a selection, a swap) scan the rows instead of building it.
+  let keyMap: Map<string | number, ManagedItem<T>> | null = null;
+  const keys = (): Map<string | number, ManagedItem<T>> => {
+    if (keyMap === null) {
+      keyMap = new Map();
+      for (let i = 0, len = managedItems.length; i < len; i++) keyMap.set(managedItems[i]!.key!, managedItems[i]!);
+    }
+    return keyMap;
+  };
+  let scans = 0;
+  const find = (key: string | number): ManagedItem<T> | undefined => {
+    if (keyMap !== null) return keyMap.get(key);
+    if (++scans > 4) return keys().get(key);
+    for (let i = 0, len = managedItems.length; i < len; i++) {
+      if (managedItems[i]!.key === key) return managedItems[i];
+    }
+    return undefined;
+  };
 
   const removeItem = (managed: ManagedItem<T>) => {
     const cleanups = managed.cleanups;
@@ -198,28 +257,66 @@ export function createKeyedReconciler<T>(
       container.appendChild(anchor);
     }
     managedItems.length = 0;
-    keyMap.clear();
+    keyMap = null;
   };
 
-  const bulkCreate = (items: T[], startIndex: number = 0) => {
-    const count = items.length;
-    if (count === 0) return;
+  /**
+   * Create rows for `items[from..]` and insert them before the anchor. When the list starts
+   * empty the container is detached while the rows go in, so the browser does no style work
+   * per insertion; when rows already exist it stays attached, because removing and re-adding
+   * a large subtree costs more than the incremental inserts it would save.
+   */
+  let batchFragment: Node | null = null;
 
-    if (containerParent) container.remove();
+  const bulkCreate = (items: T[], from = 0) => {
+    const end = items.length;
+    const count = end - from;
+    if (count <= 0) return;
 
     const base = managedItems.length;
+    const parent = base === 0 ? containerParent : null;
+    if (parent) container.remove();
+
     managedItems.length = base + count;
-    for (let i = 0; i < count; i++) {
-      const item = items[i]!;
-      const idx = startIndex + i;
-      const managed = createItemFn(item, idx, anchor);
-      const key = keyFn(item, idx);
-      managed.key = key;
-      managedItems[base + i] = managed;
-      keyMap.set(key, managed);
+    let write = base;
+    let i = from;
+
+    // Whole batches: one clone and one insert per `size` rows instead of one of each per row.
+    if (batch !== undefined && count >= batch.size) {
+      const size = batch.size;
+      const bind = batch.bind;
+      if (batchFragment === null) {
+        batchFragment = batch.row.ownerDocument!.createDocumentFragment();
+        for (let k = 0; k < size; k++) batchFragment.appendChild(batch.row.cloneNode(true));
+      }
+      while (end - i >= size) {
+        const rows = batchFragment.cloneNode(true) as ParentNode & Node;
+        let el = rows.firstElementChild!;
+        for (let k = 0; k < size; k++, i++) {
+          const item = items[i]!;
+          const managed = bind(el, item, i);
+          const key = keyFn(item, i);
+          managed.key = key;
+          if (trackIndex) managed.i = i;
+          managedItems[write++] = managed;
+          if (keyMap !== null) keyMap.set(key, managed);
+          el = el.nextElementSibling!;
+        }
+        container.insertBefore(rows, anchor);
+      }
     }
 
-    if (containerParent) containerParent.insertBefore(container, containerNextSibling);
+    for (; i < end; i++) {
+      const item = items[i]!;
+      const managed = createItemFn(item, i, anchor);
+      const key = keyFn(item, i);
+      managed.key = key;
+      if (trackIndex) managed.i = i;
+      managedItems[write++] = managed;
+      if (keyMap !== null) keyMap.set(key, managed);
+    }
+
+    if (parent) parent.insertBefore(container, containerNextSibling);
   };
 
   const reconcile = (newItems: T[]) => {
@@ -233,6 +330,28 @@ export function createKeyedReconciler<T>(
     if (oldLength === 0) {
       bulkCreate(newItems);
       return;
+    }
+
+    // Fast path: pure append — every existing row keeps its key and position and the new
+    // items follow. Without this, appending walks the general path below: a Set of every
+    // key, a Map lookup per item and a full reorder pass, to do a run of inserts at the end.
+    if (newLength > oldLength) {
+      let isAppend = true;
+      for (let i = 0; i < oldLength; i++) {
+        if (keyFn(newItems[i]!, i) !== managedItems[i]!.key) {
+          isAppend = false;
+          break;
+        }
+      }
+      if (isAppend) {
+        for (let i = 0; i < oldLength; i++) {
+          const managed = managedItems[i]!;
+          const newItem = newItems[i]!;
+          if (managed.value !== newItem) updateRow(managed, newItem, i);
+        }
+        bulkCreate(newItems, oldLength);
+        return;
+      }
     }
 
     // Fast path: single item removed — find missing old key by linear scan
@@ -259,10 +378,30 @@ export function createKeyedReconciler<T>(
 
       if (isActualRemoval) {
         removeItem(removedManaged);
-        keyMap.delete(removedManaged.key!);
+        if (keyMap !== null) keyMap.delete(removedManaged.key!);
         managedItems.splice(removedIdx, 1);
+        if (trackIndex) syncIndexes();
         return;
       }
+    }
+
+    if (oldLength === newLength) {
+      // Identity-first pass. When keys and order are unchanged, which is every immutable
+      // update pattern (`rows.map(...)`, replacing some items in a copied array), each row is
+      // matched by position: an identical item needs nothing, an item whose key matches the
+      // row at that index is updated in place. Neither derives a key for unchanged rows nor
+      // touches the key map. The first position whose key differs means something moved,
+      // and the keyed paths below take over from the start (rows already updated here are
+      // skipped there because their value now matches).
+      let inPlace = 0;
+      for (; inPlace < newLength; inPlace++) {
+        const managed = managedItems[inPlace]!;
+        const newItem = newItems[inPlace]!;
+        if (managed.value === newItem) continue;
+        if (keyFn(newItem, inPlace) !== managed.key) break;
+        updateRow(managed, newItem, inPlace);
+      }
+      if (inPlace === newLength) return;
     }
 
     // Fast path: reorder with same keys (fused allKeysExist + update in single pass)
@@ -274,16 +413,17 @@ export function createKeyedReconciler<T>(
 
       for (let i = 0; i < newLength; i++) {
         const newItem = newItems[i]!;
-        const existing = keyMap.get(keyFn(newItem, i));
+        const managed = managedItems[i]!;
+        // An identical item at the same index is the same row in the same place: no key to
+        // derive and no lookup. A swap of two rows in a long list then costs two lookups.
+        if (managed.value === newItem) continue;
+        const existing = find(keyFn(newItem, i));
         if (!existing) {
           allKeysExist = false;
           break;
         }
-        if (existing.value !== newItem) {
-          existing.value = newItem;
-          existing.update!(newItem);
-        }
-        if (managedItems[i] !== existing) {
+        if (existing.value !== newItem) updateRow(existing, newItem, i);
+        if (managed !== existing) {
           mismatchCount++;
           if (mismatchCount === 1) mismatch1 = i;
           else if (mismatchCount === 2) mismatch2 = i;
@@ -299,7 +439,7 @@ export function createKeyedReconciler<T>(
             m2 = managedItems[mismatch2]!;
           const k1 = keyFn(newItems[mismatch1]!, mismatch1),
             k2 = keyFn(newItems[mismatch2]!, mismatch2);
-          if (keyMap.get(k1) === m2 && keyMap.get(k2) === m1) {
+          if (find(k1) === m2 && find(k2) === m1) {
             const el1 = m1.el,
               el2 = m2.el;
             const next1 = el1.nextSibling,
@@ -312,12 +452,14 @@ export function createKeyedReconciler<T>(
             }
             managedItems[mismatch1] = m2;
             managedItems[mismatch2] = m1;
+            if (trackIndex) syncIndexes();
             return;
           }
         }
 
         const newManagedItems: ManagedItem<T>[] = new Array(newLength);
-        for (let i = 0; i < newLength; i++) newManagedItems[i] = keyMap.get(keyFn(newItems[i]!, i))!;
+        const byKey = keys();
+        for (let i = 0; i < newLength; i++) newManagedItems[i] = byKey.get(keyFn(newItems[i]!, i))!;
 
         let currentEl: Element | null = managedItems[0]?.el || null;
         for (let i = 0; i < newLength; i++) {
@@ -327,6 +469,7 @@ export function createKeyedReconciler<T>(
         }
         managedItems.length = newLength;
         for (let i = 0; i < newLength; i++) managedItems[i] = newManagedItems[i]!;
+        if (trackIndex) syncIndexes();
         return;
       }
     }
@@ -334,9 +477,9 @@ export function createKeyedReconciler<T>(
     // Fast path: complete replacement (first and last keys both new)
     if (oldLength > 0 && oldLength === newLength) {
       const firstNewKey = keyFn(newItems[0]!, 0);
-      if (!keyMap.has(firstNewKey)) {
+      if (find(firstNewKey) === undefined) {
         const lastNewKey = keyFn(newItems[newLength - 1]!, newLength - 1);
-        if (!keyMap.has(lastNewKey)) {
+        if (find(lastNewKey) === undefined) {
           clearAll();
           bulkCreate(newItems);
           return;
@@ -354,7 +497,7 @@ export function createKeyedReconciler<T>(
       if (retainedKeys.has(managed.key!)) kept.push(managed);
       else {
         removeItem(managed);
-        keyMap.delete(managed.key!);
+        if (keyMap !== null) keyMap.delete(managed.key!);
       }
     }
     managedItems.length = kept.length;
@@ -364,18 +507,16 @@ export function createKeyedReconciler<T>(
     for (let i = 0; i < newLength; i++) {
       const newItem = newItems[i]!;
       const key = keyFn(newItem, i);
-      const existing = keyMap.get(key);
+      const existing = keys().get(key);
       if (existing) {
-        if (existing.value !== newItem) {
-          existing.value = newItem;
-          existing.update!(newItem);
-        }
+        if (existing.value !== newItem) updateRow(existing, newItem, i);
         newManagedItems.push(existing);
       } else {
         const refNode = i < managedItems.length ? managedItems[i]!.el : anchor;
         const managed = createItemFn(newItem, i, refNode);
         managed.key = key;
-        keyMap.set(key, managed);
+        if (trackIndex) managed.i = i;
+        if (keyMap !== null) keyMap.set(key, managed);
         newManagedItems.push(managed);
       }
     }
@@ -389,7 +530,15 @@ export function createKeyedReconciler<T>(
     }
     managedItems.length = newLength;
     for (let i = 0; i < newLength; i++) managedItems[i] = newManagedItems[i]!;
+    if (trackIndex) syncIndexes();
   };
 
-  return { reconcile, clearAll };
+  /**
+   * The managed row for a key, or undefined when no row has that key. Lets compiled code
+   * that knows which keys changed (for example a selection driven by one signal) update
+   * those rows directly instead of fanning a subscription out to every row.
+   */
+  const get = (key: string | number): ManagedItem<T> | undefined => find(key);
+
+  return { reconcile, clearAll, get };
 }

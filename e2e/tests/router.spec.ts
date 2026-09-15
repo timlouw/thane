@@ -123,10 +123,16 @@ test.describe('2. Client-Side Navigation', () => {
     await expect(page.getByTestId('about-page')).toBeVisible();
     await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeLessThan(50);
 
-    await page.evaluate(() => {
-      window.scrollTo(0, 900);
-    });
-    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY))).toBeGreaterThan(700);
+    // The router resets the scroll position on the next frame after the route mounts; scroll
+    // inside the poll so a late reset cannot leave the page at the top before the check.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          window.scrollTo(0, 900);
+          return Math.round(window.scrollY);
+        }),
+      )
+      .toBeGreaterThan(700);
 
     await page.goBack();
     await expect(page.getByTestId('home-page')).toBeVisible();
@@ -300,6 +306,32 @@ test.describe('7. Direct URL Access', () => {
 // ─────────────────────────────────────────────────────────────
 //  8. Hash Stability (Code Splitting)
 // ─────────────────────────────────────────────────────────────
+
+test.describe('9. Query Changes', () => {
+  test('a navigation that changes only the query mounts the route again', async ({ page }) => {
+    await page.goto('/');
+    await page.getByTestId('nav-user-tab-a').click();
+    await expect(page.getByTestId('user-id')).toHaveText('42');
+    await expect(page.getByTestId('user-tab')).toHaveText('a');
+    await expect(page.getByTestId('current-path')).toHaveText('/users/42');
+    const visitsAtA = Number(await page.getByTestId('user-visit-count').textContent());
+
+    // Same path, different query: a fresh instance reads the new searchParams
+    await page.getByTestId('nav-user-tab-b').click();
+    await expect(page.getByTestId('user-tab')).toHaveText('b');
+    await expect(page).toHaveURL(/\/users\/42\?tab=b$/);
+    await expect(page.getByTestId('user-visit-count')).toHaveText(String(visitsAtA + 1));
+
+    // Navigating to the current URL again does nothing
+    await page.getByTestId('nav-user-tab-b').click();
+    await expect(page.getByTestId('user-visit-count')).toHaveText(String(visitsAtA + 1));
+
+    // Browser back restores the previous query
+    await page.goBack();
+    await expect(page.getByTestId('user-tab')).toHaveText('a');
+    await expect(page).toHaveURL(/\/users\/42\?tab=a$/);
+  });
+});
 
 test.describe('8. Code Splitting', () => {
   test('lazy page components are loaded as separate chunks while eager routes stay in the main bundle', async ({

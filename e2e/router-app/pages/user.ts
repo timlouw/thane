@@ -12,6 +12,7 @@ export const UserPage = defineComponent('user-page', ({ route }) => {
         <h2 data-testid="page-title">User Profile</h2>
         <div data-testid="user-id">${userId()}</div>
         <div data-testid="user-visit-count">${visitCount()}</div>
+        <div data-testid="user-tab">${route!.searchParams.get('tab') ?? 'none'}</div>
       </section>
     `,
   };

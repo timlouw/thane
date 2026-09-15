@@ -40,7 +40,7 @@ const initialNestedItems = (): NestedItem[] => [
   { id: 102, label: 'Nest-B', visible: false, children: [] },
 ];
 
-const initialFallbackRows = (): Array<{ id: number; label: string }> => [
+const initialMixedRows = (): Array<{ id: number; label: string }> => [
   { id: 201, label: 'FB-A' },
   { id: 202, label: 'FB-B' },
 ];
@@ -55,7 +55,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const complexWhenElseFlag = signal(true);
   const items = signal<Item[]>(initialItems());
   const nestedItems = signal<NestedItem[]>(initialNestedItems());
-  const fallbackRows = signal(initialFallbackRows());
+  const mixedRows = signal(initialMixedRows());
   const parentCount = signal(10);
   const childMounts = signal(0);
   const childToParentEvents = signal(0);
@@ -64,6 +64,7 @@ export const ContractApp = defineComponent('contract-app', () => {
   const rapidValue = signal(0);
   const exprA = signal(1);
   const exprB = signal(2);
+  const exprSum = computed(() => exprA() + exprB());
   const childMountsA = signal(0);
   const childMountsB = signal(0);
   const childEventsA = signal(0);
@@ -80,10 +81,46 @@ export const ContractApp = defineComponent('contract-app', () => {
   ]);
   const orderFlag = signal(true);
   const depthFlag = signal(true);
+  const outerGate = signal(true);
+  const innerGate = signal(true);
+  const localExpressionMode = 'then';
+  const localExpressionMeta = { branch: 'then', label: 'local' };
+  const whenContentGate = signal(true);
+  const whenContentInner = signal(true);
+  const whenClicksA = signal(0);
+  const whenClicksB = signal(0);
+  const whenItems = signal([{ id: 1, name: 'W-1' }]);
+  const pickedWhenItem = signal('none');
+  const devKind = signal('one');
+  const devFlag = signal(true);
   const orderItems = signal([
     { id: 1, name: 'O-1' },
     { id: 2, name: 'O-2' },
   ]);
+  const linkRows = signal([
+    { id: 1, name: 'L-1', url: '/links/1' },
+    { id: 2, name: 'L-2', url: '/links/2' },
+  ]);
+  const batchRows = signal(Array.from({ length: 40 }, (_, i) => ({ id: i + 1, name: `B-${i + 1}` })));
+  const scopeRows = signal([
+    { id: 1, name: 's1', on: true, tags: ['a', 'b'] },
+    { id: 2, name: 's2', on: false, tags: ['c'] },
+    { id: 3, name: 's3', on: true, tags: [] },
+  ]);
+  const scopePicked = signal('');
+  const formOn = signal(false);
+  const formName = signal('alice');
+  const formNote = signal<string | null>(null);
+  const formKind = signal('primary');
+  const formCss = signal('color: rgb(255, 0, 0)');
+  const formRows = signal([
+    { id: 1, on: true, note: 'x' },
+    { id: 2, on: false, note: null as string | null },
+  ]);
+  const refClicks = signal(0);
+  const paramText = signal('');
+  const scopeUser = signal({ name: 'tim' });
+  const pickedBatchRow = signal(0);
 
   const clickCount = () => count(count() + 1);
   const toggleWhen = () => showWhen(!showWhen());
@@ -107,6 +144,19 @@ export const ContractApp = defineComponent('contract-app', () => {
     ]);
   const toggleOrderFlag = () => orderFlag(!orderFlag());
   const toggleDepthFlag = () => depthFlag(!depthFlag());
+  const toggleOuterGate = () => outerGate(!outerGate());
+  const toggleInnerGate = () => innerGate(!innerGate());
+  const toggleWhenContent = () => whenContentGate(!whenContentGate());
+  const toggleWhenContentInner = () => whenContentInner(!whenContentInner());
+  const incWhenA = () => whenClicksA(whenClicksA() + 1);
+  const incWhenB = () => whenClicksB(whenClicksB() + 1);
+  const pickWhenItem = (name: string) => pickedWhenItem(name);
+  const toggleDev = () => devFlag(!devFlag());
+  const bumpDev = () => devKind('two');
+  const addWhenItem = () => {
+    const next = whenItems().length + 1;
+    whenItems([...whenItems(), { id: next, name: `W-${next}` }]);
+  };
   const addOrderItem = () => {
     const next = orderItems().length + 1;
     orderItems([...orderItems(), { id: next, name: `O-${next}` }]);
@@ -116,6 +166,29 @@ export const ContractApp = defineComponent('contract-app', () => {
       { id: 1, name: 'O-1' },
       { id: 2, name: 'O-2' },
     ]);
+  const pickBatchRow = (id: number) => pickedBatchRow(id);
+  const flipScopeRows = () => scopeRows(scopeRows().map((r) => ({ ...r, on: !r.on })));
+  const renameScopeRows = () => scopeRows(scopeRows().map((r) => ({ ...r, name: r.name + '!' })));
+  const tagScopeRow = () => scopeRows(scopeRows().map((r) => (r.id === 1 ? { ...r, tags: [...r.tags, 'z'] } : r)));
+  const pickScopeRow = (id: number) => scopePicked('scope' + id);
+  const toggleFormOn = () => formOn(!formOn());
+  const renameForm = () => formName('bob');
+  const setFormNote = () => formNote('note');
+  const restyleForm = () => {
+    formKind('secondary');
+    formCss('color: rgb(0, 0, 255)');
+  };
+  const flipFormRows = () => formRows(formRows().map((r) => ({ ...r, on: !r.on, note: r.note ? null : 'y' })));
+  const bumpRefClicks = () => refClicks(refClicks() + 1);
+  const setParamText = (text: string | null) => paramText(text ?? '');
+  const renameScopeUser = () => scopeUser({ name: 'bob' });
+  const renameBatchRows = () => batchRows(batchRows().map((row) => ({ ...row, name: `${row.name}!` })));
+  const appendBatchRows = () => {
+    const from = batchRows().length + 1;
+    batchRows([...batchRows(), ...Array.from({ length: 20 }, (_, i) => ({ id: from + i, name: `B-${from + i}` }))]);
+  };
+  const relinkRows = () =>
+    linkRows(linkRows().map((row) => ({ ...row, name: `${row.name} v2`, url: `${row.url}?v=2` })));
   const addItem = () => {
     const next = items().length + 1;
     items([...items(), { id: next, name: `New-${next}`, active: next % 2 === 0, children: [`N${next}`] }]);
@@ -148,12 +221,12 @@ export const ContractApp = defineComponent('contract-app', () => {
   const clearNested = () => nestedItems([]);
   const resetNested = () => nestedItems(initialNestedItems());
 
-  const addFallbackRow = () => {
-    const nextId = fallbackRows().length ? Math.max(...fallbackRows().map((r) => r.id)) + 1 : 201;
-    fallbackRows([...fallbackRows(), { id: nextId, label: `FB-${nextId}` }]);
+  const addMixedRow = () => {
+    const nextId = mixedRows().length ? Math.max(...mixedRows().map((r) => r.id)) + 1 : 201;
+    mixedRows([...mixedRows(), { id: nextId, label: `FB-${nextId}` }]);
   };
-  const clearFallbackRows = () => fallbackRows([]);
-  const resetFallbackRows = () => fallbackRows(initialFallbackRows());
+  const clearMixedRows = () => mixedRows([]);
+  const resetMixedRows = () => mixedRows(initialMixedRows());
 
   const incrementParent = () => parentCount(parentCount() + 1);
   const onChildMount = () => childMounts(childMounts() + 1);
@@ -525,6 +598,117 @@ export const ContractApp = defineComponent('contract-app', () => {
           </div>
         </section>
 
+        <section data-testid="batch-rows-section">
+          <button data-testid="append-batch-rows" @click=${appendBatchRows}>append 20</button>
+          <button data-testid="rename-batch-rows" @click=${renameBatchRows}>rename</button>
+          <span data-testid="picked-batch-row">${pickedBatchRow()}</span>
+          <ul data-testid="batch-list">
+            ${repeat(
+              batchRows(),
+              (item, index) => html`
+                <li data-testid="batch-row" data-index=${index}>
+                  <button data-testid="batch-pick" @click=${() => pickBatchRow(item.id)}>${item.name} #${index}</button>
+                </li>
+              `,
+              html`<li data-testid="batch-empty">batch-empty</li>`,
+              (item) => item.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="form-section">
+          <button data-testid="form-toggle" @click=${toggleFormOn}>toggle</button>
+          <button data-testid="form-rename" @click=${renameForm}>rename</button>
+          <button data-testid="form-note" @click=${setFormNote}>note</button>
+          <button data-testid="form-flip" @click=${flipFormRows}>flip rows</button>
+          <input data-testid="form-check" type="checkbox" checked=${formOn()} />
+          <button data-testid="form-disabled" disabled=${formOn()}>d</button>
+          <input data-testid="form-value" value=${formName()} />
+          <p data-testid="form-null">[${formNote()}]</p>
+          <button data-testid="form-restyle" @click=${restyleForm}>restyle</button>
+          <p data-testid="form-mixed-class" class="static ${formKind()}">mixed</p>
+          <p data-testid="form-css" style=${formCss()}>css</p>
+          <p data-testid="form-prop-style" style="color: ${formKind() === 'primary' ? 'rgb(1, 1, 1)' : 'rgb(2, 2, 2)'}"
+            >prop</p
+          >
+          <ul>
+            ${repeat(
+              formRows(),
+              (row) => html`
+                <li data-testid="form-row">
+                  <input data-testid="form-row-check" type="checkbox" checked=${row.on} />
+                  <button data-testid="form-row-btn" disabled=${!row.on}>b</button>
+                  <b data-testid="form-row-note">${row.note}</b>
+                  <i
+                    data-testid="form-row-class"
+                    class="row ${row.on ? 'on' : 'off'}"
+                    style="color: ${row.on ? 'rgb(3, 3, 3)' : 'rgb(4, 4, 4)'}"
+                    >c</i
+                  >
+                </li>
+              `,
+              null,
+              (row) => row.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="row-scope-section">
+          <button data-testid="scope-flip" @click=${flipScopeRows}>flip</button>
+          <button data-testid="scope-rename" @click=${renameScopeRows}>rename</button>
+          <button data-testid="scope-add-tag" @click=${tagScopeRow}>tag</button>
+          <button data-testid="scope-user" @click=${renameScopeUser}>user</button>
+          <span data-testid="scope-picked">${scopePicked()}</span>
+          <span data-testid="scope-ref-clicks">${refClicks()}</span>
+          <span data-testid="scope-param-text">${paramText()}</span>
+          <ul>
+            ${repeat(
+              scopeRows(),
+              (row, index) => html`
+                <li data-testid="scope-row">
+                  <span data-testid="scope-name">${row.name}</span>
+                  <b data-testid="scope-when" ${when(row.on)} title=${row.name}>
+                    <a data-testid="scope-when-click" @click=${() => pickScopeRow(row.id)}>${row.name}/${index}</a>
+                  </b>
+                  ${whenElse(
+                    row.on,
+                    html`<em data-testid="scope-then">${row.name}-then</em>`,
+                    html`<em data-testid="scope-else">${row.name}-else</em>`,
+                  )}
+                  <i data-testid="scope-user-name">${scopeUser().name}</i>
+                  <u data-testid="scope-ref-click" @click=${bumpRefClicks}>ref</u>
+                  <s
+                    data-testid="scope-param-click"
+                    @click=${(ev: Event) => setParamText((ev.target as HTMLElement).textContent)}
+                    >${row.name}-param</s
+                  >
+                  <ol>
+                    ${repeat(row.tags, (t) => html`<li data-testid="scope-tag">${row.name}:${t}</li>`)}
+                  </ol>
+                </li>
+              `,
+              html`<li data-testid="scope-empty">empty</li>`,
+              (row) => row.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="row-attribute-section">
+          <button data-testid="relink-rows" @click=${relinkRows}>relink rows</button>
+          <ul data-testid="link-list">
+            ${repeat(
+              linkRows(),
+              (item) => html`
+                <li data-testid="link-row" data-row-id=${item.id}>
+                  <a data-testid="link-anchor" href=${item.url} title=${item.name}>${item.name}</a>
+                </li>
+              `,
+              html`<li data-testid="link-empty">link-empty</li>`,
+              (item) => item.id,
+            )}
+          </ul>
+        </section>
+
         <section data-testid="reactivity-section">
           <button data-testid="parent-inc" @click=${incrementParent}>parent++</button>
           <p data-testid="child-mount-count">${childMounts()}</p>
@@ -566,6 +750,112 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="ws-none">${exprA()}${exprB()}</p>
           <p data-testid="ws-multi">${exprA()} ${exprB()}</p>
           <p data-testid="ws-surrounding"> hello ${exprA()} and ${exprB()} world </p>
+        </section>
+
+        <section data-testid="expression-robust-section">
+          <p data-testid="expr-const-text">${'const-7'}</p>
+          <div data-testid="expr-const-attr" data-value="${'fixed-' + 3}">const-attr</div>
+          <div data-testid="expr-const-style" style="border-top-color: ${'rgb(10, 20, 30)'}">const-style</div>
+          <p data-testid="expr-sum">${exprSum()}</p>
+
+          <div
+            data-testid="expr-mixed-attr"
+            data-value="${'A-' + exprA() + '-SUM-' + exprSum() + '-local'}"
+            class="${exprSum() > 4 ? 'sum-high' : 'sum-low'}"
+            >mixed-attr</div
+          >
+          <div data-testid="expr-mixed-style" style="color: ${exprSum() > 4 ? 'rgb(0, 128, 0)' : 'rgb(128, 0, 0)'}"
+            >mixed-style</div
+          >
+
+          <div data-testid="expr-local-when" ${when(localExpressionMode === 'then')}
+            >${'local-when-' + exprA() + '-' + exprSum()}</div
+          >
+
+          ${whenElse(
+            localExpressionMeta.branch === 'then',
+            html`
+              <section data-testid="expr-local-then-shell">
+                <div
+                  data-testid="expr-local-then"
+                  data-value="${localExpressionMeta.label + '-' + exprA() + '-' + exprSum()}"
+                  class="${exprSum() % 2 === 0 ? 'sum-even' : 'sum-odd'}"
+                >
+                  ${localExpressionMeta.label + '-' + exprA() + '-' + exprSum()}
+                </div>
+                <div
+                  data-testid="expr-local-then-style"
+                  style="background-color: ${exprSum() > 4 ? 'rgb(0, 0, 0)' : 'rgb(240, 240, 240)'}"
+                >
+                  styled-local
+                </div>
+                <b data-testid="expr-local-then-nested" ${when(exprSum() % 2 === 0)}>even-${exprSum()}</b>
+              </section>
+            `,
+            html`<div data-testid="expr-local-else">else-local</div>`,
+          )}
+        </section>
+
+        <section data-testid="nested-when-else-section">
+          <button data-testid="toggle-outer-gate" @click=${toggleOuterGate}>toggle outer</button>
+          <button data-testid="toggle-inner-gate" @click=${toggleInnerGate}>toggle inner</button>
+
+          ${whenElse(
+            outerGate(),
+            html`
+              <div data-testid="gate-then">
+                <span data-testid="gate-then-label">outer-then</span>
+                ${whenElse(
+                  innerGate(),
+                  html`<em data-testid="gate-then-inner">inner-then-${exprA()}</em>`,
+                  html`<em data-testid="gate-then-inner">inner-else-${exprA()}</em>`,
+                )}
+              </div>
+            `,
+            html`
+              <div data-testid="gate-else">
+                <span data-testid="gate-else-label">outer-else</span>
+                <i data-testid="gate-else-when" ${when(innerGate())}>else-when-visible</i>
+                ${whenElse(
+                  innerGate(),
+                  html`<u data-testid="gate-else-inner">else-inner-then</u>`,
+                  html`<u data-testid="gate-else-inner">else-inner-else</u>`,
+                )}
+              </div>
+            `,
+          )}
+        </section>
+
+        <section data-testid="when-content-section">
+          <button data-testid="toggle-when-content" @click=${toggleWhenContent}>toggle when content</button>
+          <button data-testid="toggle-when-content-inner" @click=${toggleWhenContentInner}>toggle inner</button>
+          <button data-testid="add-when-item" @click=${addWhenItem}>add when item</button>
+          <div data-testid="when-content" ${when(whenContentGate())}>
+            <button data-testid="when-btn-a" @click=${incWhenA}>A</button>
+            <button data-testid="when-btn-b" @click=${incWhenB}>B</button>
+            <span data-testid="when-clicks">${whenClicksA()}-${whenClicksB()}</span>
+            ${whenElse(
+              whenContentInner(),
+              html`<em data-testid="when-inner">inner-then-${whenClicksA()}</em>`,
+              html`<em data-testid="when-inner">inner-else</em>`,
+            )}
+            <ul data-testid="when-list">
+              ${repeat(
+                whenItems(),
+                (item) => html`
+                  <li data-testid="when-item">
+                    <span>${item.name}</span>
+                    <button data-testid="when-item-btn" @click=${() => pickWhenItem(item.name)}>pick</button>
+                  </li>
+                `,
+                html`<li data-testid="when-empty">empty</li>`,
+                (item) => item.id,
+              )}
+            </ul>
+            <span data-testid="when-picked">${pickedWhenItem()}</span>
+            <i data-testid="when-nested" ${when(whenContentInner())}>nested-${whenClicksB()}</i>
+          </div>
+          <p data-testid="when-content-after">after-when-content</p>
         </section>
 
         <section data-testid="template-injection-section"> ${loadingShell} </section>
@@ -661,20 +951,56 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="multi-child-events-b">${childEventsB()}</p>
         </section>
 
-        <section data-testid="repeat-fallback-section">
-          <button data-testid="fallback-add" @click=${addFallbackRow}>fallback-add</button>
-          <button data-testid="fallback-clear" @click=${clearFallbackRows}>fallback-clear</button>
-          <button data-testid="fallback-reset" @click=${resetFallbackRows}>fallback-reset</button>
+        <section data-testid="repeat-mixed-section">
+          <button data-testid="mixed-add" @click=${addMixedRow}>mixed-add</button>
+          <button data-testid="mixed-clear" @click=${clearMixedRows}>mixed-clear</button>
+          <button data-testid="mixed-reset" @click=${resetMixedRows}>mixed-reset</button>
 
-          <ul data-testid="fallback-list">
+          <ul data-testid="mixed-list">
             ${repeat(
-              fallbackRows(),
+              mixedRows(),
               (row, index) => html`
-                <li data-testid="fallback-row-label">${row.label}</li>
-                <li data-testid="fallback-row-index">${index}</li>
-                <li data-testid="fallback-row-expr">${row.label}-${exprA()}</li>
+                <li data-testid="mixed-row">
+                  <span data-testid="mixed-row-label">${row.label}</span>
+                  <span data-testid="mixed-row-index">${index}</span>
+                  <span data-testid="mixed-row-expr">${row.label}-${exprA()}</span>
+                </li>
               `,
-              html`<li data-testid="fallback-empty">fallback-empty</li>`,
+              html`<li data-testid="mixed-empty">mixed-empty</li>`,
+              (row) => row.id,
+            )}
+          </ul>
+          <ul data-testid="static-list">
+            ${repeat(
+              mixedRows(),
+              (_row) => html`<li data-testid="static-row">static</li>`,
+              html`<li data-testid="static-empty">static-empty</li>`,
+              (row) => row.id,
+            )}
+          </ul>
+        </section>
+
+        <section data-testid="dev-id-section">
+          <button data-testid="dev-toggle" @click=${toggleDev}>toggle</button>
+          <button data-testid="dev-bump" @click=${bumpDev}>bump</button>
+          <p id="dev-attr" title=${devKind()}>attr</p>
+          <p id="dev-style" style="color: ${devKind() === 'one' ? 'rgb(1, 1, 1)' : 'rgb(2, 2, 2)'}">style</p>
+          <label for="dev-input">Dev input</label>
+          <input id="dev-input" value=${devKind()} />
+          ${whenElse(
+            devFlag(),
+            html`<div id="dev-then" data-testid="dev-branch">then-${devKind()}</div>`,
+            html`<div id="dev-else" data-testid="dev-branch">else</div>`,
+          )}
+          <ul>
+            ${repeat(
+              mixedRows(),
+              (row) => html`
+                <li data-testid="dev-row">
+                  ${whenElse(devFlag(), html`<b id="dev-row-then">${row.label}</b>`, html`<i id="dev-row-else">off</i>`)}
+                </li>
+              `,
+              null,
               (row) => row.id,
             )}
           </ul>

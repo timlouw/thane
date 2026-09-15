@@ -195,6 +195,168 @@ test('directive order permutations remain stable across remounts and depth toggl
   await expect(page.getByTestId('order-c-row')).toHaveCount(2);
 });
 
+test('form attributes follow their values as properties and null text renders empty', async ({ page }) => {
+  await gotoApp({ page });
+
+  const check = page.getByTestId('form-check');
+  const disabled = page.getByTestId('form-disabled');
+  const value = page.getByTestId('form-value');
+  await expect(check).not.toBeChecked();
+  await expect(disabled).toBeEnabled();
+  await expect(check).not.toHaveAttribute('checked');
+  await expect(page.getByTestId('form-null')).toHaveText('[]');
+  await expect(page.getByTestId('form-row-check').nth(0)).toBeChecked();
+  await expect(page.getByTestId('form-row-check').nth(1)).not.toBeChecked();
+  await expect(page.getByTestId('form-row-btn').nth(0)).toBeEnabled();
+  await expect(page.getByTestId('form-row-btn').nth(1)).toBeDisabled();
+  await expect(page.getByTestId('form-row-note')).toHaveText(['x', '']);
+
+  await page.getByTestId('form-toggle').click();
+  await expect(check).toBeChecked();
+  await expect(disabled).toBeDisabled();
+  await page.getByTestId('form-toggle').click();
+  await expect(check).not.toBeChecked();
+  await expect(disabled).toBeEnabled();
+
+  // A value binding drives the live value, even after the user typed
+  await expect(value).toHaveValue('alice');
+  await value.fill('typed');
+  await page.getByTestId('form-rename').click();
+  await expect(value).toHaveValue('bob');
+
+  await page.getByTestId('form-note').click();
+  await expect(page.getByTestId('form-null')).toHaveText('[note]');
+
+  // Static text around an expression is kept; style binds as cssText or per property
+  await expect(page.getByTestId('form-mixed-class')).toHaveClass('static primary');
+  await expect(page.getByTestId('form-css')).toHaveCSS('color', 'rgb(255, 0, 0)');
+  await expect(page.getByTestId('form-prop-style')).toHaveCSS('color', 'rgb(1, 1, 1)');
+  await expect(page.getByTestId('form-row-class').nth(0)).toHaveClass('row on');
+  await expect(page.getByTestId('form-row-class').nth(1)).toHaveCSS('color', 'rgb(4, 4, 4)');
+  await page.getByTestId('form-restyle').click();
+  await expect(page.getByTestId('form-mixed-class')).toHaveClass('static secondary');
+  await expect(page.getByTestId('form-css')).toHaveCSS('color', 'rgb(0, 0, 255)');
+  await expect(page.getByTestId('form-prop-style')).toHaveCSS('color', 'rgb(2, 2, 2)');
+
+  await page.getByTestId('form-flip').click();
+  await expect(page.getByTestId('form-row-check').nth(0)).not.toBeChecked();
+  await expect(page.getByTestId('form-row-check').nth(1)).toBeChecked();
+  await expect(page.getByTestId('form-row-btn').nth(0)).toBeDisabled();
+  await expect(page.getByTestId('form-row-btn').nth(1)).toBeEnabled();
+  await expect(page.getByTestId('form-row-note')).toHaveText(['', 'y']);
+  await expect(page.getByTestId('form-row-class').nth(0)).toHaveClass('row off');
+  await expect(page.getByTestId('form-row-class').nth(1)).toHaveCSS('color', 'rgb(3, 3, 3)');
+});
+
+test('nested directives inside rows read the row item and index and follow row updates', async ({ page }) => {
+  await gotoApp({ page });
+
+  const whens = page.getByTestId('scope-when');
+  await expect(page.getByTestId('scope-row')).toHaveCount(3);
+  await expect(whens).toHaveCount(2);
+  await expect(whens.nth(0)).toHaveAttribute('title', 's1');
+  await expect(whens.nth(1)).toHaveAttribute('title', 's3');
+  await expect(page.getByTestId('scope-when-click').nth(1)).toHaveText('s3/2');
+  await expect(page.getByTestId('scope-then')).toHaveText(['s1-then', 's3-then']);
+  await expect(page.getByTestId('scope-else')).toHaveText(['s2-else']);
+  await expect(page.getByTestId('scope-tag')).toHaveText(['s1:a', 's1:b', 's2:c']);
+  await expect(page.getByTestId('scope-user-name')).toHaveText(['tim', 'tim', 'tim']);
+
+  // A handler inside the when() content sees its own row, not the first one
+  await page.getByTestId('scope-when-click').nth(1).click();
+  await expect(page.getByTestId('scope-picked')).toHaveText('scope3');
+
+  await page.getByTestId('scope-flip').click();
+  await expect(whens).toHaveCount(1);
+  await expect(whens.nth(0)).toHaveAttribute('title', 's2');
+  await expect(page.getByTestId('scope-then')).toHaveText(['s2-then']);
+  await expect(page.getByTestId('scope-else')).toHaveText(['s1-else', 's3-else']);
+
+  await page.getByTestId('scope-rename').click();
+  await expect(whens.nth(0)).toHaveAttribute('title', 's2!');
+  await expect(page.getByTestId('scope-then')).toHaveText(['s2!-then']);
+  await expect(page.getByTestId('scope-tag')).toHaveText(['s1!:a', 's1!:b', 's2!:c']);
+
+  await page.getByTestId('scope-add-tag').click();
+  await expect(page.getByTestId('scope-tag')).toHaveText(['s1!:a', 's1!:b', 's1!:z', 's2!:c']);
+
+  await page.getByTestId('scope-user').click();
+  await expect(page.getByTestId('scope-user-name')).toHaveText(['bob', 'bob', 'bob']);
+
+  // Row handlers given as a reference are called; an arrow with its own parameter name sees the event
+  await page.getByTestId('scope-ref-click').nth(0).click();
+  await page.getByTestId('scope-ref-click').nth(2).click();
+  await expect(page.getByTestId('scope-ref-clicks')).toHaveText('2');
+  await page.getByTestId('scope-param-click').nth(1).click();
+  await expect(page.getByTestId('scope-param-text')).toHaveText('s2!-param');
+});
+
+test('rows created in batches carry their own item, index and delegated handler', async ({ page }) => {
+  await gotoApp({ page });
+
+  const rowsLocator = page.getByTestId('batch-row');
+  const buttons = page.getByTestId('batch-pick');
+  await expect(rowsLocator).toHaveCount(40);
+  await expect(buttons.nth(0)).toHaveText('B-1 #0');
+  await expect(buttons.nth(17)).toHaveText('B-18 #17');
+  await expect(buttons.nth(39)).toHaveText('B-40 #39');
+  await expect(rowsLocator.nth(17)).toHaveAttribute('data-index', '17');
+  await expect(rowsLocator.nth(39)).toHaveAttribute('data-index', '39');
+
+  await buttons.nth(24).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('25');
+  await buttons.nth(39).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('40');
+
+  await page.getByTestId('append-batch-rows').click();
+  await expect(rowsLocator).toHaveCount(60);
+  await expect(buttons.nth(59)).toHaveText('B-60 #59');
+  await expect(rowsLocator.nth(59)).toHaveAttribute('data-index', '59');
+  await buttons.nth(50).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('51');
+
+  // Renaming replaces every item: rows created in batches and singly update in place
+  await page.getByTestId('rename-batch-rows').click();
+  await expect(buttons.nth(0)).toHaveText('B-1! #0');
+  await expect(buttons.nth(17)).toHaveText('B-18! #17');
+  await expect(buttons.nth(59)).toHaveText('B-60! #59');
+  await expect(rowsLocator).toHaveCount(60);
+  await buttons.nth(17).click();
+  await expect(page.getByTestId('picked-batch-row')).toHaveText('18');
+});
+
+test('row attribute bindings on and below the row root update the same elements in place', async ({ page }) => {
+  await gotoApp({ page });
+
+  const rows = page.getByTestId('link-row');
+  const anchors = page.getByTestId('link-anchor');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toHaveAttribute('data-row-id', '1');
+  await expect(rows.nth(1)).toHaveAttribute('data-row-id', '2');
+  await expect(anchors.nth(0)).toHaveAttribute('href', '/links/1');
+  await expect(anchors.nth(0)).toHaveAttribute('title', 'L-1');
+  await expect(anchors.nth(0)).toHaveText('L-1');
+  await expect(anchors.nth(1)).toHaveAttribute('href', '/links/2');
+
+  // Tag the live anchors so an in-place update can be told apart from a re-render
+  await page.evaluate(() => {
+    document.querySelectorAll('[data-testid="link-anchor"]').forEach((a, i) => ((a as any).__tag = i + 1));
+  });
+
+  await page.getByTestId('relink-rows').click();
+  await expect(anchors.nth(0)).toHaveAttribute('href', '/links/1?v=2');
+  await expect(anchors.nth(0)).toHaveAttribute('title', 'L-1 v2');
+  await expect(anchors.nth(0)).toHaveText('L-1 v2');
+  await expect(anchors.nth(1)).toHaveAttribute('href', '/links/2?v=2');
+  await expect(rows.nth(1)).toHaveAttribute('data-row-id', '2');
+  await expect(rows).toHaveCount(2);
+
+  const tags = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('[data-testid="link-anchor"]')).map((a) => (a as any).__tag ?? null),
+  );
+  expect(tags).toEqual([1, 2]);
+});
+
 test('nested repeat/when/whenElse keep structure and deep bindings correct', async ({ page }) => {
   await gotoApp({ page });
 
@@ -223,38 +385,76 @@ test('nested repeat/when/whenElse keep structure and deep bindings correct', asy
   await expect(page.getByTestId('nested-row')).toHaveCount(2);
 });
 
-test('repeat safe fallback renders correct rows and content in browser', async ({ page }) => {
+test('rows with an index and mixed signal content render, update and follow the list', async ({ page }) => {
   await gotoApp({ page });
 
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-index')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-expr')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-label').nth(0)).toHaveText('FB-A');
-  await expect(page.getByTestId('fallback-row-label').nth(1)).toHaveText('FB-B');
-  await expect(page.getByTestId('fallback-row-index').nth(0)).toHaveText('0');
-  await expect(page.getByTestId('fallback-row-index').nth(1)).toHaveText('1');
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-1');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-1');
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-index')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-expr')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-label').nth(0)).toHaveText('FB-A');
+  await expect(page.getByTestId('mixed-row-label').nth(1)).toHaveText('FB-B');
+  await expect(page.getByTestId('mixed-row-index').nth(0)).toHaveText('0');
+  await expect(page.getByTestId('mixed-row-index').nth(1)).toHaveText('1');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-1');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-1');
 
   await page.getByTestId('inc-expr-a').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-2');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-2');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-2');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-2');
 
-  await page.getByTestId('fallback-add').click();
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(3);
-  await expect(page.getByTestId('fallback-row-label').nth(2)).toHaveText('FB-203');
-  await expect(page.getByTestId('fallback-row-index').nth(2)).toHaveText('2');
-  await expect(page.getByTestId('fallback-row-expr').nth(2)).toHaveText('FB-203-2');
+  await page.getByTestId('mixed-add').click();
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(3);
+  await expect(page.getByTestId('mixed-row-label').nth(2)).toHaveText('FB-203');
+  await expect(page.getByTestId('mixed-row-index').nth(2)).toHaveText('2');
+  await expect(page.getByTestId('mixed-row-expr').nth(2)).toHaveText('FB-203-2');
 
-  await page.getByTestId('fallback-clear').click();
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(0);
-  await expect(page.getByTestId('fallback-row-expr')).toHaveCount(0);
-  await expect(page.getByTestId('fallback-empty')).toHaveText('fallback-empty');
+  await page.getByTestId('mixed-clear').click();
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(0);
+  await expect(page.getByTestId('mixed-row-expr')).toHaveCount(0);
+  await expect(page.getByTestId('mixed-empty')).toHaveText('mixed-empty');
 
-  await page.getByTestId('fallback-reset').click();
-  await expect(page.getByTestId('fallback-row-label')).toHaveCount(2);
-  await expect(page.getByTestId('fallback-row-label').nth(0)).toHaveText('FB-A');
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-2');
+  await page.getByTestId('mixed-reset').click();
+  await expect(page.getByTestId('mixed-row-label')).toHaveCount(2);
+  await expect(page.getByTestId('mixed-row-label').nth(0)).toHaveText('FB-A');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-2');
+
+  // Rows with no bindings are cloned from the static template and follow the list
+  await expect(page.getByTestId('static-row')).toHaveCount(2);
+  await page.getByTestId('mixed-add').click();
+  await expect(page.getByTestId('static-row')).toHaveCount(3);
+  await page.getByTestId('mixed-clear').click();
+  await expect(page.getByTestId('static-row')).toHaveCount(0);
+  await expect(page.getByTestId('static-empty')).toHaveText('static-empty');
+  await page.getByTestId('mixed-reset').click();
+  await expect(page.getByTestId('static-row')).toHaveCount(2);
+});
+
+test('developer ids are kept on bound elements and whenElse branch roots', async ({ page }) => {
+  await gotoApp({ page });
+
+  await expect(page.locator('#dev-attr')).toHaveAttribute('title', 'one');
+  await expect(page.locator('#dev-style')).toHaveCSS('color', 'rgb(1, 1, 1)');
+  await expect(page.getByLabel('Dev input')).toHaveValue('one');
+  await expect(page.locator('div#dev-then')).toHaveText('then-one');
+  await expect(page.locator('div#dev-else')).toHaveCount(0);
+  await expect(page.getByTestId('dev-row').locator('b#dev-row-then')).toHaveText(['FB-A', 'FB-B']);
+
+  await page.getByTestId('dev-bump').click();
+  await expect(page.locator('#dev-attr')).toHaveAttribute('title', 'two');
+  await expect(page.locator('#dev-style')).toHaveCSS('color', 'rgb(2, 2, 2)');
+  await expect(page.getByLabel('Dev input')).toHaveValue('two');
+  await expect(page.locator('div#dev-then')).toHaveText('then-two');
+
+  // The branch roots' own ids drive the directive
+  await page.getByTestId('dev-toggle').click();
+  await expect(page.locator('div#dev-then')).toHaveCount(0);
+  await expect(page.locator('div#dev-else')).toHaveText('else');
+  await expect(page.getByTestId('dev-branch')).toHaveCount(1);
+  await expect(page.getByTestId('dev-row').locator('i#dev-row-else')).toHaveCount(2);
+  await page.getByTestId('dev-toggle').click();
+  await expect(page.locator('div#dev-then')).toHaveText('then-two');
+  await expect(page.getByTestId('dev-branch')).toHaveCount(1);
+  await expect(page.getByTestId('dev-row').locator('b#dev-row-then')).toHaveText(['FB-A', 'FB-B']);
 });
 
 test('inter-component reactivity and child-parent interaction with remount', async ({ page }) => {
@@ -353,6 +553,145 @@ test('expression bindings handle order, mixed text, ternary, and duplicate reads
   await expect(page.getByTestId('style-expr-target')).toHaveCSS('color', 'rgb(255, 0, 0)');
 });
 
+test('robust expression coverage handles constants, mixed signal/computed values, and local conditional branches', async ({
+  page,
+}) => {
+  await gotoApp({ page });
+
+  await expect(page.getByTestId('expr-const-text')).toHaveText('const-7');
+  await expect(page.getByTestId('expr-const-attr')).toHaveAttribute('data-value', 'fixed-3');
+  await expect(page.getByTestId('expr-const-style')).toHaveCSS('border-top-color', 'rgb(10, 20, 30)');
+  await expect(page.getByTestId('expr-sum')).toHaveText('3');
+
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-1-SUM-3-local');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveClass(/\bsum-low\b/);
+  await expect(page.getByTestId('expr-mixed-style')).toHaveCSS('color', 'rgb(128, 0, 0)');
+
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-1-3');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-1-3');
+  await expect(page.getByTestId('expr-local-then')).toHaveAttribute('data-value', 'local-1-3');
+  await expect(page.getByTestId('expr-local-then')).toHaveClass(/\bsum-odd\b/);
+  await expect(page.getByTestId('expr-local-then-style')).toHaveCSS('background-color', 'rgb(240, 240, 240)');
+  await expect(page.getByTestId('expr-local-then-nested')).toHaveCount(0);
+  await expect(page.getByTestId('expr-local-else')).toHaveCount(0);
+
+  await page.getByTestId('inc-expr-a').click();
+  await expect(page.getByTestId('expr-sum')).toHaveText('4');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-2-SUM-4-local');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveClass(/\bsum-low\b/);
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-2-4');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-2-4');
+  await expect(page.getByTestId('expr-local-then')).toHaveClass(/\bsum-even\b/);
+  await expect(page.getByTestId('expr-local-then-nested')).toHaveText('even-4');
+
+  await page.getByTestId('inc-expr-b').click();
+  await expect(page.getByTestId('expr-sum')).toHaveText('5');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-2-SUM-5-local');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveClass(/\bsum-high\b/);
+  await expect(page.getByTestId('expr-mixed-style')).toHaveCSS('color', 'rgb(0, 128, 0)');
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-2-5');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-2-5');
+  await expect(page.getByTestId('expr-local-then-style')).toHaveCSS('background-color', 'rgb(0, 0, 0)');
+  await expect(page.getByTestId('expr-local-then-nested')).toHaveCount(0);
+  await expect(page.getByTestId('expr-local-else')).toHaveCount(0);
+
+  await page.getByTestId('swap-expr').click();
+  await expect(page.getByTestId('expr-sum')).toHaveText('5');
+  await expect(page.getByTestId('expr-mixed-attr')).toHaveAttribute('data-value', 'A-3-SUM-5-local');
+  await expect(page.getByTestId('expr-local-when')).toHaveText('local-when-3-5');
+  await expect(page.getByTestId('expr-local-then')).toHaveText('local-3-5');
+});
+
+test('nested whenElse and when directives toggle correctly inside both then and else branches', async ({ page }) => {
+  await gotoApp({ page });
+
+  // Initial: outer=true, inner=true — statically pre-rendered then branch with nested then
+  await expect(page.getByTestId('gate-then-label')).toHaveText('outer-then');
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-then-1');
+  await expect(page.getByTestId('gate-else')).toHaveCount(0);
+
+  // Toggle the nested condition while the pre-rendered outer branch is showing.
+  // Regression guard: statically inlined nested branches must stay reactive.
+  await page.getByTestId('toggle-inner-gate').click();
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-else-1');
+  await expect(page.getByTestId('gate-then-inner')).toHaveCount(1);
+
+  // Nested content keeps reacting to unrelated signals
+  await page.getByTestId('inc-expr-a').click();
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-else-2');
+
+  // Switch to the else branch (inner=false): nested when hidden, nested whenElse shows its else
+  await page.getByTestId('toggle-outer-gate').click();
+  await expect(page.getByTestId('gate-then')).toHaveCount(0);
+  await expect(page.getByTestId('gate-else-label')).toHaveText('outer-else');
+  await expect(page.getByTestId('gate-else-when')).toHaveCount(0);
+  await expect(page.getByTestId('gate-else-inner')).toHaveText('else-inner-else');
+
+  // Regression guard: nested directives inside the ELSE branch must be initialized
+  await page.getByTestId('toggle-inner-gate').click();
+  await expect(page.getByTestId('gate-else-when')).toHaveText('else-when-visible');
+  await expect(page.getByTestId('gate-else-inner')).toHaveText('else-inner-then');
+  await expect(page.getByTestId('gate-else-inner')).toHaveCount(1);
+
+  // Round-trip back to the then branch — nested state still consistent (inner=true)
+  await page.getByTestId('toggle-outer-gate').click();
+  await expect(page.getByTestId('gate-else')).toHaveCount(0);
+  await expect(page.getByTestId('gate-then-label')).toHaveText('outer-then');
+  await expect(page.getByTestId('gate-then-inner')).toHaveText('inner-then-2');
+});
+
+test('when() content supports events, nested directives and re-initialises after remount', async ({ page }) => {
+  await gotoApp({ page });
+
+  await expect(page.getByTestId('when-clicks')).toHaveText('0-0');
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-then-0');
+  await expect(page.getByTestId('when-item')).toHaveCount(1);
+  await expect(page.getByTestId('when-nested')).toHaveText('nested-0');
+  // Regression guard: content after the when() block used to be truncated by nested event edits
+  await expect(page.getByTestId('when-content-after')).toHaveText('after-when-content');
+
+  // Events on distinct elements inside the block are bound to their own elements
+  await page.getByTestId('when-btn-a').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('1-0');
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-then-1');
+  await page.getByTestId('when-btn-b').click();
+  await page.getByTestId('when-btn-b').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('1-2');
+  await expect(page.getByTestId('when-nested')).toHaveText('nested-2');
+
+  // Nested whenElse and nested when inside the block react independently
+  await page.getByTestId('toggle-when-content-inner').click();
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-else');
+  await expect(page.getByTestId('when-nested')).toHaveCount(0);
+
+  // Nested repeat inside the block reacts to its source signal
+  await page.getByTestId('add-when-item').click();
+  await expect(page.getByTestId('when-item')).toHaveCount(2);
+
+  // Row events inside the block reach their handler with the row's item
+  await expect(page.getByTestId('when-picked')).toHaveText('none');
+  await page.getByTestId('when-item-btn').nth(1).click();
+  await expect(page.getByTestId('when-picked')).toHaveText('W-2');
+
+  // Hide, then show again: every nested binding must be re-initialised on the fresh DOM
+  await page.getByTestId('toggle-when-content').click();
+  await expect(page.getByTestId('when-content')).toHaveCount(0);
+  await expect(page.getByTestId('when-content-after')).toHaveText('after-when-content');
+  await page.getByTestId('toggle-when-content').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('1-2');
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-else');
+  await expect(page.getByTestId('when-item')).toHaveCount(2);
+  await expect(page.getByTestId('when-nested')).toHaveCount(0);
+  await page.getByTestId('when-item-btn').nth(0).click();
+  await expect(page.getByTestId('when-picked')).toHaveText('W-1');
+
+  await page.getByTestId('when-btn-a').click();
+  await expect(page.getByTestId('when-clicks')).toHaveText('2-2');
+  await page.getByTestId('toggle-when-content-inner').click();
+  await expect(page.getByTestId('when-inner')).toHaveText('inner-then-2');
+  await expect(page.getByTestId('when-nested')).toHaveText('nested-2');
+});
+
 test('whitespace between adjacent template bindings is preserved exactly', async ({ page }) => {
   await gotoApp({ page });
 
@@ -418,23 +757,23 @@ test('comment-marker mixed-content in repeat items renders and updates correctly
   await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Beta-1');
   await expect(page.getByTestId('item-derived').nth(2)).toHaveText('Gamma-2');
 
-  // After reorder (3,1,2), items are DOM-reordered but keyed reconciler
-  // calls update(newItem) — the index was captured at creation time.
-  // Reorder moves items: Gamma(was idx 2), Alpha(was idx 0), Beta(was idx 1)
+  // After reorder (3,1,2) the rows move and every index binding reads the row's new position
   await page.getByTestId('reorder-items').click();
-  await expect(page.getByTestId('item-derived').nth(0)).toHaveText('Gamma-2');
-  await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Alpha-0');
-  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('Beta-1');
+  await expect(page.getByTestId('item-derived').nth(0)).toHaveText('Gamma-0');
+  await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Alpha-1');
+  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('Beta-2');
+  await expect(page.getByTestId('item-index')).toHaveText(['0', '1', '2']);
 
   // After add, the new item also uses comment markers
   await page.getByTestId('add-item').click();
   await expect(page.getByTestId('item-derived').nth(3)).toHaveText('New-4-3');
 
-  // After remove-first (removes Gamma), remaining: [Alpha, Beta, New-4]
+  // After remove-first (removes Gamma), the remaining rows shift down: [Alpha, Beta, New-4]
   await page.getByTestId('remove-first').click();
   await expect(page.getByTestId('item-derived').nth(0)).toHaveText('Alpha-0');
   await expect(page.getByTestId('item-derived').nth(1)).toHaveText('Beta-1');
-  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('New-4-3');
+  await expect(page.getByTestId('item-derived').nth(2)).toHaveText('New-4-2');
+  await expect(page.getByTestId('item-index')).toHaveText(['0', '1', '2']);
 });
 
 test('signal text binding inside repeat reacts to parent signal changes', async ({ page }) => {
@@ -537,31 +876,31 @@ test('boundary comments isolate text nodes in multi-binding expressions', async 
   await expect(page.getByTestId('expr-mixed')).toHaveText('pre-5-post');
 });
 
-test('fallback repeat mixed-content with signal expression in item template', async ({ page }) => {
+test('mixed-content rows react to a component signal after add, clear and reset', async ({ page }) => {
   await gotoApp({ page });
 
-  // fallback-row-expr uses "${row.label}-${exprA()}" — item var + signal, comment markers
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-1');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-1');
+  // mixed-row-expr uses "${row.label}-${exprA()}" — item data and a component signal in one text binding
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-1');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-1');
 
-  // Signal change updates all fallback rows
+  // Signal change updates every row
   await page.getByTestId('inc-expr-a').click();
   await page.getByTestId('inc-expr-a').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-3');
-  await expect(page.getByTestId('fallback-row-expr').nth(1)).toHaveText('FB-B-3');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-3');
+  await expect(page.getByTestId('mixed-row-expr').nth(1)).toHaveText('FB-B-3');
 
   // Add row, then signal update should include new row
-  await page.getByTestId('fallback-add').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(2)).toHaveText('FB-203-3');
+  await page.getByTestId('mixed-add').click();
+  await expect(page.getByTestId('mixed-row-expr').nth(2)).toHaveText('FB-203-3');
   await page.getByTestId('inc-expr-a').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-4');
-  await expect(page.getByTestId('fallback-row-expr').nth(2)).toHaveText('FB-203-4');
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-4');
+  await expect(page.getByTestId('mixed-row-expr').nth(2)).toHaveText('FB-203-4');
 
-  // Clear → empty fallback renders, then reset restores mixed-content
-  await page.getByTestId('fallback-clear').click();
-  await expect(page.getByTestId('fallback-empty')).toBeVisible();
-  await page.getByTestId('fallback-reset').click();
-  await expect(page.getByTestId('fallback-row-expr').nth(0)).toHaveText('FB-A-4');
+  // Clear → empty template renders, then reset restores mixed-content
+  await page.getByTestId('mixed-clear').click();
+  await expect(page.getByTestId('mixed-empty')).toBeVisible();
+  await page.getByTestId('mixed-reset').click();
+  await expect(page.getByTestId('mixed-row-expr').nth(0)).toHaveText('FB-A-4');
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -684,6 +1023,7 @@ test('signal props propagate reactive updates through nested component chain', a
   await expect(section.getByTestId('prop-a-source')).toHaveText('11');
   await expect(section.getByTestId('prop-parent-a')).toHaveText('11');
   await expect(section.getByTestId('prop-grandchild-a')).toHaveText('11');
+  await expect(section.getByTestId('prop-grandchild-a')).toHaveAttribute('data-a', '11');
   // Signal B bindings untouched
   await expect(section.getByTestId('prop-child-b')).toHaveText('20');
 

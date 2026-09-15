@@ -30,6 +30,8 @@ export {
   parseRepeatExpression,
   findBindingsInText,
   findBindingsInAttributes,
+  findTemplateExpressions,
+  stripTemplateExpressions,
 } from './binding-detection.js';
 
 // Utilities
@@ -41,6 +43,8 @@ export {
   getElementHtml,
   getElementInnerHtml,
   getBindingsForElement,
+  isInsideSvg,
+  attributeDomProperty,
   isElementInside,
   applyHtmlEdits,
   createIdInjectionEdit,
@@ -55,6 +59,7 @@ export {
   createIdGenerator,
   normalizeHtmlWhitespace,
   injectIdIntoFirstElement,
+  firstElementId,
   escapeTemplateLiteral,
   escapeRawTemplateLiteral,
 } from './html-utils.js';

@@ -2,11 +2,7 @@
  * Type definitions for the reactive binding compiler
  */
 
-import type {
-  ReactiveBindingKind,
-  RepeatOptimizationSkipReasonKind,
-  TextBindingMode,
-} from '../../../contracts/index.js';
+import type { ReactiveBindingKind, TextBindingMode } from '../../../contracts/index.js';
 
 /**
  * Access pattern abstraction for code generation.
@@ -47,13 +43,14 @@ export interface ConditionalBlock {
   signalName: string; // Primary signal (for simple cases)
   signalNames: string[]; // All signals in the expression
   jsExpression: string; // The full JS expression e.g. "!_loading()" or "_a() && _b()"
-  initialValue: boolean;
+  initialValue: boolean | undefined; // undefined = not resolvable at compile time; runtime decides at mount
   templateContent: string; // HTML to insert when true
   startIndex: number; // Position in HTML where the element/block starts
   endIndex: number; // Position where it ends
-  nestedBindings: BindingInfo[]; // Signal bindings inside this conditional
-  nestedItemBindings: ItemBinding[]; // Item bindings inside this conditional (for conditionals inside repeats)
+  nestedBindings: BindingInfo[]; // Signal bindings directly inside this conditional (not inside nested directives)
   nestedConditionals: ConditionalBlock[]; // Nested when blocks inside this conditional
+  nestedWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside this conditional
+  nestedRepeats: RepeatBlock[]; // Nested repeat blocks inside this conditional
   nestedEventBindings: EventBinding[]; // Event bindings inside this conditional
 }
 
@@ -63,7 +60,7 @@ export interface WhenElseBlock {
   signalName: string; // Primary signal
   signalNames: string[]; // All signals in the expression
   jsExpression: string; // The condition expression
-  initialValue: boolean;
+  initialValue: boolean | undefined; // undefined = not resolvable at compile time; runtime decides at mount
   thenTemplate: string; // HTML to insert when true
   elseTemplate: string; // HTML to insert when false
   startIndex: number; // Position in HTML where ${whenElse starts
@@ -74,11 +71,11 @@ export interface WhenElseBlock {
   elseRepeats: RepeatBlock[]; // Repeat blocks inside else template
   thenEventBindings: EventBinding[]; // Event bindings inside then template
   elseEventBindings: EventBinding[]; // Event bindings inside else template
-  nestedConditionals: ConditionalBlock[]; // Nested when blocks inside then/else
-  nestedWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside then/else
-  nestedRepeats: RepeatBlock[]; // Nested repeat blocks inside then/else
+  thenConditionals: ConditionalBlock[]; // Nested when blocks inside then template
+  elseConditionals: ConditionalBlock[]; // Nested when blocks inside else template
+  thenWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside then template
+  elseWhenElse: WhenElseBlock[]; // Nested whenElse blocks inside else template
 }
-
 export interface RepeatBlock {
   id: string; // ID for the anchor element
   signalName: string; // Primary signal (the array signal)
@@ -98,6 +95,12 @@ export interface RepeatBlock {
   nestedConditionals: ConditionalBlock[];
   nestedWhenElse: WhenElseBlock[];
   nestedRepeats: RepeatBlock[];
+  /**
+   * Row-scoped signals the row factory declares (`<itemVar>$`, `<indexVar>$`) so that nested
+   * directives read the row's item and index through a signal and re-evaluate when the row's
+   * update writes them. Only present when a nested directive references the item or index.
+   */
+  rowSignalVars?: string[] | undefined;
 }
 
 export interface ItemBinding {
@@ -107,12 +110,21 @@ export interface ItemBinding {
   expression: string; // The JS expression (e.g., 'item.label', 'item.count > 0')
   /**
    * For text bindings: how the binding is rendered in the DOM
-   * - 'textContent': Uses parent element's textContent (when binding is only child)
+   * - 'textNode': the binding is the element's only content; the row creates the Text node
+   *   on fill and writes its nodeValue on update
    * - 'commentMarker': Uses <!--id--> comment marker to locate text node (for mixed content)
    */
   textBindingMode?: TextBindingMode;
   /** Outer component signals referenced in this expression (for mixed signal + item bindings) */
   outerSignalNames?: string[];
+  /**
+   * For attr bindings: the attribute value the static template ships with (the source value
+   * with every `${…}` removed). When it is the empty string the first write can be skipped
+   * whenever the expression also evaluates to the empty string.
+   */
+  staticValue?: string | undefined;
+  /** For attr bindings: DOM property to write instead of setAttribute (e.g. `className`), when one applies */
+  domProperty?: string | undefined;
 }
 
 export interface ItemEventBinding {
@@ -147,6 +159,14 @@ export interface SimpleBinding extends BindingBase {
   signalName: string;
   type: ReactiveBindingKind;
   property?: string;
+  /** For attr bindings: DOM property to write instead of setAttribute (e.g. `className`), when one applies */
+  domProperty?: string | undefined;
+  /**
+   * Row signal bindings only: the full expression when it is more than a bare signal read
+   * (`user().name`, `row$().label`), and every signal it reads. Absent for `signal()`.
+   */
+  expression?: string | undefined;
+  signalNames?: string[] | undefined;
 }
 
 /**
@@ -160,6 +180,8 @@ export interface ExpressionBinding extends BindingBase {
   expression: string;
   type: ReactiveBindingKind;
   property?: string;
+  /** For attr bindings: DOM property to write instead of setAttribute (e.g. `className`), when one applies */
+  domProperty?: string | undefined;
 }
 
 /**
@@ -187,20 +209,27 @@ export interface StaticTemplateInfo {
     bindings: Array<{
       type: Exclude<ReactiveBindingKind, 'style'>;
       property?: string | undefined;
+      domProperty?: string | undefined;
       expression: string;
+      staticValue?: string | undefined;
     }>;
   }>;
   /** Navigation paths for event-bound elements (elementId -> path) */
   eventElementPaths?: Map<string, number[]> | undefined;
   /** Navigation paths and binding info for signal-bound elements inside repeat items */
   signalElementBindings?: Array<{
+    expression?: string | undefined;
+    signalNames?: string[] | undefined;
     path: number[];
     signalName: string;
     type: ReactiveBindingKind;
     property?: string | undefined;
+    domProperty?: string | undefined;
   }>;
   /** Signal text bindings that use comment markers (cannot be navigated by element path) */
   signalCommentBindings?: Array<{
+    expression?: string | undefined;
+    signalNames?: string[] | undefined;
     commentId: string;
     signalName: string;
   }>;
@@ -212,13 +241,8 @@ export interface StaticTemplateInfo {
     outerSignalNames: string[];
     type: ReactiveBindingKind;
     property?: string | undefined;
+    domProperty?: string | undefined;
     expression: string;
+    staticValue?: string | undefined;
   }>;
-  /** Whether this template can use the optimized path */
-  canUseOptimized: boolean;
-  /** Reason optimization was skipped (for warnings) */
-  skipReason?: RepeatOptimizationSkipReason;
 }
-
-/** Reasons why a repeat block cannot use the optimized template-based rendering */
-export type RepeatOptimizationSkipReason = RepeatOptimizationSkipReasonKind;

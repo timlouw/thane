@@ -34,21 +34,10 @@ export const REACTIVE_BINDING_KIND = {
 export type ReactiveBindingKind = (typeof REACTIVE_BINDING_KIND)[keyof typeof REACTIVE_BINDING_KIND];
 
 export const TEXT_BINDING_MODE = {
-  TEXT_CONTENT: 'textContent',
+  /** Sole content of its element: the row creates the Text node on fill and writes its nodeValue after */
+  TEXT_NODE: 'textNode',
+  /** Mixed content: located through a `<!--id-->` comment marker, writes the following Text node */
   COMMENT_MARKER: 'commentMarker',
 } as const;
 
 export type TextBindingMode = (typeof TEXT_BINDING_MODE)[keyof typeof TEXT_BINDING_MODE];
-
-export const REPEAT_OPTIMIZATION_SKIP_REASON = {
-  NO_BINDINGS: 'no-bindings',
-  SIGNAL_BINDINGS: 'signal-bindings',
-  NESTED_REPEAT: 'nested-repeat',
-  NESTED_CONDITIONAL: 'nested-conditional',
-  MIXED_BINDINGS: 'mixed-bindings',
-  MULTI_ROOT: 'multi-root',
-  PATH_NOT_FOUND: 'path-not-found',
-} as const;
-
-export type RepeatOptimizationSkipReasonKind =
-  (typeof REPEAT_OPTIMIZATION_SKIP_REASON)[keyof typeof REPEAT_OPTIMIZATION_SKIP_REASON];

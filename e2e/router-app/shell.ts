@@ -37,6 +37,24 @@ export const Shell = defineComponent('router-shell', () => {
             }}
             >User 42</a
           >
+          <a
+            data-testid="nav-user-tab-a"
+            href="/users/42?tab=a"
+            @click=${(e: Event) => {
+              e.preventDefault();
+              navigate('/users/42?tab=a');
+            }}
+            >Tab A</a
+          >
+          <a
+            data-testid="nav-user-tab-b"
+            href="/users/42?tab=b"
+            @click=${(e: Event) => {
+              e.preventDefault();
+              navigate('/users/42?tab=b');
+            }}
+            >Tab B</a
+          >
         </nav>
         <div data-testid="current-path">${currentPath()}</div>
         <div data-testid="shell-visit-count">${visitCount()}</div>

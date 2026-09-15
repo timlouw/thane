@@ -1,6 +1,6 @@
 {
   "name": "thane",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Lightweight compile-time optimized component framework",
   "author": "Tim Louw",
   "license": "MIT",
@@ -77,24 +77,21 @@
     "e2e:ui:trace": "playwright test -c ./e2e/playwright.config.ts --ui --headed --trace on --workers=1",
     "format": "prettier --write \"**/*.{ts,json,html}\"",
     "format:check": "prettier --check \"**/*.{ts,json,html}\"",
-    "types:e2e": "cd e2e && bun ../src/compiler/cli/thane.ts types",
-    "types:benchmark": "cd benchmark && bun ../src/compiler/cli/thane.ts types",
-    "types:example": "cd example-apps/thane-app && bun ../../src/compiler/cli/thane.ts types",
-    "typecheck:e2e": "cd e2e && bun ../src/compiler/cli/thane.ts typecheck",
-    "typecheck:benchmark": "cd benchmark && bun ../src/compiler/cli/thane.ts typecheck",
-    "typecheck:example": "cd example-apps/thane-app && bun ../../src/compiler/cli/thane.ts typecheck",
-    "test:apps": "bun run typecheck:e2e && bun run typecheck:benchmark && bun run typecheck:example",
-    "test:benchmark": "npm pack && cd benchmark && bun install && bun run build",
+    "types:apps": "bun scripts/apps.ts types",
+    "test:apps": "bun scripts/apps.ts typecheck",
+    "test:benchmark": "bun pm pack --filename example-apps/benchmark/thane.tgz && cd example-apps/benchmark && rm -rf bun.lock node_modules/thane && bun install && bun run build",
+    "bench": "bun bench/run.ts",
+    "bench:compare": "bun bench/compare.ts",
     "verify": "bun run format:check && bun run build && bun run test:apps && bun run test:benchmark && bun run test && bun run e2e:test"
   },
   "dependencies": {
-    "esbuild": "^0.27.1",
-    "typescript": "^5.9.3"
+    "esbuild": "^0.28.2",
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.2",
-    "@types/bun": "^1.3.5",
-    "@types/node": "^25.2.1",
-    "prettier": "^3.8.1"
+    "@playwright/test": "^1.63.0",
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.5.0",
+    "prettier": "^3.9.6"
   }
 }

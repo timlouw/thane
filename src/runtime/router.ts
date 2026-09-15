@@ -329,6 +329,9 @@ let _currentRouteTitle = typeof document !== 'undefined' ? document.title : '';
 let _routeParams: Record<string, string> = {};
 let _started = false;
 let _popstateHandler: ((event: PopStateEvent) => void) | null = null;
+/** Path and query of the mounted route; a change in either loads the route again */
+let _loadedUrl: string | null = null;
+const locationUrl = (): string => window.location.pathname + window.location.search;
 let _scrollHandler: (() => void) | null = null;
 let _previousHistoryScrollRestoration: History['scrollRestoration'] | null = null;
 let _pendingScrollAction: 'init' | 'navigate' | 'pop' = 'init';
@@ -423,7 +426,8 @@ const persistCurrentScrollPosition = (): void => {
       [SCROLL_STATE_KEY]: { left: window.scrollX, top: window.scrollY },
     },
     '',
-    window.location.pathname,
+    // the entry keeps its full URL: replacing it with the pathname alone dropped the query and hash
+    window.location.href,
   );
 };
 
@@ -555,9 +559,12 @@ const loadRoute = async (): Promise<void> => {
   if (!_config || !_target) return;
 
   const pathname = window.location.pathname;
+  const url = locationUrl();
 
-  // Skip if already on this path (guard against redundant popstate)
-  if (pathname === _currentPath() && _currentHandle) return;
+  // Skip when this path and query are already mounted (guards against a redundant popstate).
+  // A change in the query alone mounts the route again, so `route.searchParams` is current;
+  // a change in the hash alone does not.
+  if (url === _loadedUrl && _currentHandle) return;
 
   // Tear down current route
   if (_currentHandle) {
@@ -567,6 +574,7 @@ const loadRoute = async (): Promise<void> => {
   }
 
   _currentPath(pathname);
+  _loadedUrl = url;
 
   const match = matchRoute(pathname, _config.routes, _config.notFound);
   if (!match) {
@@ -590,7 +598,7 @@ const loadRoute = async (): Promise<void> => {
     const component = await resolveRouteComponent(match.route);
 
     // Guard: the user may have navigated away while we were loading
-    if (window.location.pathname !== _currentPath()) return;
+    if (locationUrl() !== _loadedUrl) return;
 
     if (component) {
       _currentHandle = mountComponent(component, _target, undefined, { route: createCurrentRouteContext() });
@@ -611,7 +619,9 @@ const loadRoute = async (): Promise<void> => {
  * Type-safe when the Register interface is augmented with `routes`.
  */
 export function navigate(path: RoutePaths): void {
-  if (_currentPath() === path) return;
+  // Nothing to do when the whole URL, query and hash included, is already the current one
+  const target = new URL(path, window.location.href);
+  if (target.pathname + target.search + target.hash === locationUrl() + window.location.hash) return;
   persistCurrentScrollPosition();
   _pendingScrollAction = 'navigate';
   window.history.pushState({ [SCROLL_STATE_KEY]: { left: _scrollConfig.left, top: _scrollConfig.top } }, '', path);
@@ -724,6 +734,7 @@ export function stopRouter(): void {
 
   _config = null;
   _target = null;
+  _loadedUrl = null;
   _currentPath(typeof window !== 'undefined' ? window.location.pathname : '');
   _currentRoutePattern = typeof window !== 'undefined' ? window.location.pathname : '';
   _currentRouteTitle = typeof document !== 'undefined' ? document.title : '';
