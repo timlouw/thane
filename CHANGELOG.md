@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.2.0] - 2026-09-15
+
+The first release after the September 2026 performance spike and bug audit. Breaking changes: a `:`-prefixed attribute is a build error (THANE006) instead of a literal attribute, a `repeat()` row template with more than one root element is a build error (THANE007) instead of a slow fallback, and `whenElse()` branches and `when()` content are compiled as sub-templates, which changes what nested directives inside them can do (more), not the syntax.
+
 ### Added
 
 - `bench/`: a self-contained benchmark harness that builds the js-framework-benchmark app from the working tree, drives it in Chrome, and records the same trace-derived total, script, paint and memory metrics as the official runner. `bun run bench --label <name>` measures a build and `bun run bench:compare <a> <b>` compares saved labels with a significance test; `--interleave` measures two builds in alternating iterations for a fair A/B.
