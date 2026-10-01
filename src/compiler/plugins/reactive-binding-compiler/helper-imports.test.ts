@@ -2,7 +2,8 @@
  * A compiled component imports exactly the runtime helpers its code calls: every
  * helper used in transformDefineComponentSource's output is imported from 'thane/runtime',
  * and nothing else is. Checked before esbuild, which would drop an unused import and hide a
- * missing one until the code runs (P6: `__dc is not defined` when a when() shows child rows).
+ * missing one until the code runs (a when() that showed child-component rows failed with
+ * `__dc is not defined`).
  */
 import { describe, expect, test } from 'bun:test';
 import { RUNTIME_HELPER } from '../../../contracts/index.js';

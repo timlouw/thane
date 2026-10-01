@@ -1,7 +1,7 @@
 /**
  * Characterisation of signal notification order.
  *
- * Each test logs subscriber calls and pins the exact order observed on e4a17f1. The runtime's
+ * Each test logs subscriber calls and pins the exact order they happen in. The runtime's
  * rules, as they show up here:
  * - A setter at rest notifies synchronously. A setter inside a notification (or a batch) only
  *   records the signal in a pending set; the outermost notification drains that set after its

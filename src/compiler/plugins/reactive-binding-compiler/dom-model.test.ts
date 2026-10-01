@@ -1,5 +1,5 @@
 /**
- * The DOM model (A1): the tree the browser's parser builds of a template, which positions are
+ * The DOM model: the tree the browser's parser builds of a template, which positions are
  * computed on. Each row pins one normalisation the model follows, or a shape it reports instead.
  * The serialisation writes elements as `tag(children)`, text as "…" and comments as <!--…-->.
  * Every tree here was checked against Chromium's `template.innerHTML`.

@@ -3,7 +3,7 @@
  * node it binds by path, so no template carries a generated id (`id="b3"`), a placeholder element
  * (`<template id="b3">`), an id in a comment (`<!--b3-->`, `<!--i3-->`, `<!--b3.-->`) or a
  * compile-time mark (`data-thane-ref`). Every e2e app is built here in development and production and
- * its output scanned; lookup-shapes.test.ts scans the A1 template shapes the same way, and the DOM is
+ * its output scanned; lookup-shapes.test.ts scans its template shapes the same way, and the DOM is
  * scanned in a browser by e2e/tests/hardening.spec.ts.
  */
 import { describe, expect, test } from 'bun:test';

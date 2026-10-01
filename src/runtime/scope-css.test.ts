@@ -27,7 +27,7 @@ describe('scopeCssRules: :host', () => {
     [':host:hover { color: red; }', '.sel:hover{ color: red; }'],
     [':host>.x{a:b}', '.sel>.x{a:b}'],
     [':host, :host(.x), .y { a: b }', '.sel, .sel.x, .sel .y{ a: b }'],
-    // The host suffix ends at the parenthesis that matches `:host(` (P26a; until it was fixed
+    // The host suffix ends at the parenthesis that matches `:host(` (until it was fixed
     // it ended at the first `)`, giving `.sel:not(.x.y) .a`)
     [':host(:not(.x).y) .a { b: c }', '.sel:not(.x).y .a{ b: c }'],
     [':host(.a:is(.b,.c)) .d { e: f }', '.sel.a:is(.b,.c) .d{ e: f }'],

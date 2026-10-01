@@ -5,8 +5,8 @@
  *
  * Three sections, raw size and gzip (level 9):
  *  - dist/runtime: the tsc output per file, unminified (needs `bun run build`, which runs first
- *    unless --no-build is given). Raw is the length in characters here, as in the plan's
- *    baseline table (the files hold some non-ASCII comment characters); elsewhere it is bytes;
+ *    unless --no-build is given). Raw is the length in characters here, as in earlier reports
+ *    (the files hold some non-ASCII comment characters); elsewhere it is bytes;
  *  - bundles: esbuild bundles of src/runtime feature sets (ESM, es2022, minified, tree-shaken),
  *    that is, what an app that imports that set pays, built as production builds them (`__THANE_DEV__`
  *    false: no development checks). The router rows define `__THANE_HEAD__`, `__THANE_GUARDS__` and

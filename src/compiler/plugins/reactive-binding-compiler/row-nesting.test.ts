@@ -4,7 +4,7 @@
  *
  * - A row collects only its own directives. A whenElse() or repeat() inside the row's when() /
  *   whenElse() content, or inside a nested list's rows, belongs to that directive, exactly as at
- *   component level (probe P20 collected them twice).
+ *   component level (a row once collected them a second time).
  * - A row's when() / whenElse() content is bound by the branch initializer, like a component-level
  *   branch: events, child components, nested directives and lists, and the Signal<Signal<T>[]> pattern.
  *   A branch pre-rendered in the row is its own template there.
@@ -96,7 +96,7 @@ describe('a row collects only its own directives', () => {
     expect(rep.itemTemplate).toMatch(/^<li><ol><!--b\d+\.--><\/ol><\/li>$/);
   });
 
-  test('the emitted row template of P20 is whole', async () => {
+  test('the row template of a repeat() inside a when() inside a row is emitted whole', async () => {
     const js = await buildAndReadJs(
       `
 import { defineComponent, signal, mount } from 'thane';

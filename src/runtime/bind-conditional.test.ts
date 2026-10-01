@@ -231,7 +231,7 @@ describe('__bindIf: toggling', () => {
     expect(range()).toEqual([]);
   });
 
-  test('content with several roots is inserted and removed whole (M1)', () => {
+  test('content with several roots is inserted and removed whole', () => {
     const { at, initNested, range } = setup();
     const show = signal(false);
     __bindIf(at.start, at.end, show, 'b i', initNested);
@@ -242,7 +242,7 @@ describe('__bindIf: toggling', () => {
     expect(ops).toEqual(['insert b+i', 'init 1 on b', 'remove b', 'remove i', 'cleanup 1a', 'cleanup 1b']);
   });
 
-  test('text-only content that starts hidden is inserted like any other (M1)', () => {
+  test('text-only content that starts hidden is inserted like any other', () => {
     const { at, initNested, range } = setup();
     const show = signal(false);
     __bindIf(at.start, at.end, show, '#text', initNested);

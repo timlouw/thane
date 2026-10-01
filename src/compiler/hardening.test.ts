@@ -1,6 +1,5 @@
 /**
- * Compile-time defects found by probing e4a17f1, each fixed and kept as a regression test asserting the
- * correct behaviour. The runtime defects are in e2e/tests/hardening.spec.ts, the signal ones in
+ * Compile-time defects, each fixed and kept as a regression test asserting the correct behaviour. The runtime defects are in e2e/tests/hardening.spec.ts, the signal ones in
  * src/runtime/hardening.test.ts.
  */
 import { describe, expect, test } from 'bun:test';

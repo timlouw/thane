@@ -1,5 +1,5 @@
 /**
- * The DOM a compiled template becomes, as the browser builds it (A1).
+ * The DOM a compiled template becomes, as the browser builds it.
  *
  * Compiled code reaches the nodes it binds by their position in the template, not by ids, so the
  * compiler has to know the tree the browser's parser makes of the template's HTML, which is not

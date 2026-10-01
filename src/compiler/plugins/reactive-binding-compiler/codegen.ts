@@ -114,7 +114,7 @@ const codeReferences = (statements: string[], name: string): boolean =>
   expressionReferencesIdentifier(`() => {\n${statements.join('\n')}\n}`, name);
 
 // ============================================================================
-// Scopes: where compiled code finds the nodes it binds (A1)
+// Scopes: where compiled code finds the nodes it binds
 // ============================================================================
 
 /**
@@ -132,7 +132,7 @@ interface NavScope {
   head: string[];
 }
 
-/** The tree the browser builds of a template as it is emitted (A1, see dom-model.ts). */
+/** The tree the browser builds of a template as it is emitted (see dom-model.ts). */
 const modelOf = (html: string, emit: EmitOptions): DomModel => buildDomModel(cookTemplateText(emit.html(html)));
 
 function* nodesOf(nodes: DomNode[]): Generator<DomNode> {

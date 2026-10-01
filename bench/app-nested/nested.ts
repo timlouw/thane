@@ -6,8 +6,8 @@ import { defineComponent, signal, html, when, repeat } from 'thane';
  * 1,000 rows. Each row has a text binding, a `when()` on a row property with a text binding
  * inside, and an inner keyed `repeat()` of 3 items with text bindings only. No events and no
  * directives inside the inner rows, and the inner list sits outside the `when()` and below the
- * row's root element: that shape renders correctly both before and after workstream RW, so the
- * same source measures both.
+ * row's root element: that shape also compiled correctly before rows could hold nested directives,
+ * so the same source measures builds from either side of that change.
  */
 
 const adjectives = [

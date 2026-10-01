@@ -1,5 +1,5 @@
 /**
- * Signal defects found by probing e4a17f1 (R1 and R2).
+ * Signal defects, each fixed and kept as a regression test.
  *
  * Each test asserts the correct behaviour. The compile-time defects are in
  * src/compiler/hardening.test.ts, the runtime ones in e2e/tests/hardening.spec.ts.
@@ -11,7 +11,7 @@ import { computed, effect, signal } from './signal.js';
 const liveSubscribers = (sig: unknown): number => (sig as { _s: unknown[] })._s.filter((cb) => cb != null).length;
 
 describe('signal defects', () => {
-  test('R1 an effect that disposes itself during a run keeps no subscription', () => {
+  test('an effect that disposes itself during a run keeps no subscription', () => {
     const source = signal(0);
     let runs = 0;
     let stop: () => void = () => {};
@@ -28,7 +28,7 @@ describe('signal defects', () => {
     expect(liveSubscribers(source)).toBe(0);
   });
 
-  test('R2 a computed disposed inside its own derivation keeps no subscription on its dependency', () => {
+  test('a computed disposed inside its own derivation keeps no subscription on its dependency', () => {
     const source = signal(0);
     let derived: ReturnType<typeof computed<number>> | undefined;
     derived = computed(() => {

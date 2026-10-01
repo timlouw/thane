@@ -3,8 +3,8 @@
  *
  * Each case pins the whole parse result of `parseHtmlTemplate`: the element tree with every
  * recorded position, attributes, `when()` directives and text nodes, then the bindings in the
- * order they are reported, then the diagnostics. The expected lines were captured from the parser
- * on e4a17f1; a line that looks wrong is still the parser's behaviour.
+ * order they are reported, then the diagnostics. The expected lines were captured from the parser;
+ * a line that looks wrong is still the parser's behaviour.
  */
 import { describe, expect, test } from 'bun:test';
 import { parseHtmlTemplate } from './index.js';

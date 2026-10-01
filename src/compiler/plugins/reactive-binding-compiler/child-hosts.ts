@@ -4,8 +4,8 @@
  * The component precompiler leaves a placeholder comment where a child component call was written
  * (`${Card({…})}` → `<!--b3.-->`). The child's host element takes its place in the template
  * (`<x-card data-thane-ref="b3"></x-card>`), so the clone creates it and compiled code reaches it by
- * path and mounts the child into it. That is the element, in the place, that `createElement` and
- * `replaceWith` made before A1, created when the template is cloned instead of when it is bound.
+ * path and mounts the child into it. Compiled code used to create that element when it bound the
+ * template (`createElement` and `replaceWith`); now the clone creates it, in the same place.
  *
  * Where the browser's parser would not keep an element in the placeholder's place (it moves one
  * out of a table, does not keep one inside a `<select>`, makes one an svg or MathML element), the

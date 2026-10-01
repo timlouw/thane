@@ -1,15 +1,17 @@
 /**
- * The template shapes that path-based lookup and anchored directives must keep compiling, built end to end in development and production. Each build must succeed and keep every
- * developer id in the emitted markup, on its own element: A1 moves the compiler's own lookups off
- * ids, and developer ids are left alone. No generated id is left in the output. The runtime behaviour of the same shapes (and of the markup
- * the browser's parser rebuilds) is covered in a browser by e2e/tests/hardening.spec.ts ('lookups and branches').
+ * The template shapes that path-based lookup and anchored directives must keep compiling, built end to
+ * end in development and production. Each build must succeed and keep every developer id in the emitted
+ * markup, on its own element: the compiler's own lookups use no ids, and developer ids are left alone.
+ * No generated id is left in the output. The runtime behaviour of the same shapes (and of the markup the
+ * browser's parser rebuilds) is covered in a browser by e2e/tests/hardening.spec.ts ('lookups and
+ * branches').
  */
 import { describe, expect, test } from 'bun:test';
 import { buildAndReadJs, PROD_BUILD } from '../../testing/build-project.js';
 
 const KID = `import { defineComponent } from 'thane';
 
-export const A1ShapeKid = defineComponent<{ label: string }>('a1-shape-kid', ({ props }) => ({
+export const ShapeKid = defineComponent<{ label: string }>('lookup-shape-kid', ({ props }) => ({
   template: html\`<em class="kid">\${props.label}</em>\`,
   onDestroy: () => {},
 }));
@@ -18,7 +20,7 @@ export const A1ShapeKid = defineComponent<{ label: string }>('a1-shape-kid', ({ 
 /** An entry that mounts one component whose setup declares `signals` and returns `template`. */
 const app = (signals: string, template: string): string => `
 import { defineComponent, signal, mount } from 'thane';
-import { A1ShapeKid } from './kid.js';
+import { ShapeKid } from './kid.js';
 
 export const App = defineComponent('test-app', () => {
 ${signals}
@@ -75,9 +77,9 @@ const shapes: { name: string; template: string; ids: Record<string, number> }[] 
   {
     name: 'when() / whenElse() alone in an element, next to text and three deep, with events and children',
     template:
-      '<div><section><div id="d-only" ${when(show())} title=${t()}>${t()}<button @click=${inc}>+</button>${A1ShapeKid({ label: "only" })}</div></section>' +
-      '<section>before ${whenElse(show(), html`<i title=${t()}>${t()}${A1ShapeKid({ label: "then" })}</i>`, html`<u>${t()}</u>`)} after</section>' +
-      '<div ${when(show())}>L1:${t()}${whenElse(hidden(), html`<div>L2:${t()}<p id="d-l3" ${when(show())} title=${t()}>L3<button @click=${inc}>+</button>${A1ShapeKid({ label: "l3" })}</p></div>`, html`<span>no</span>`)}</div></div>',
+      '<div><section><div id="d-only" ${when(show())} title=${t()}>${t()}<button @click=${inc}>+</button>${ShapeKid({ label: "only" })}</div></section>' +
+      '<section>before ${whenElse(show(), html`<i title=${t()}>${t()}${ShapeKid({ label: "then" })}</i>`, html`<u>${t()}</u>`)} after</section>' +
+      '<div ${when(show())}>L1:${t()}${whenElse(hidden(), html`<div>L2:${t()}<p id="d-l3" ${when(show())} title=${t()}>L3<button @click=${inc}>+</button>${ShapeKid({ label: "l3" })}</p></div>`, html`<span>no</span>`)}</div></div>',
     ids: { 'd-only': 2, 'd-l3': 2 },
   },
   {
@@ -87,21 +89,21 @@ const shapes: { name: string; template: string; ids: Record<string, number> }[] 
     ids: { 'd-static': 1 },
   },
   {
-    name: 'a text-only whenElse() branch that starts hidden (M1)',
+    name: 'a text-only whenElse() branch that starts hidden',
     template: '<section>${whenElse(hidden(), html`text-${t()}`, html`<u id="d-else2">else</u>`)}</section>',
     ids: { 'd-else2': 2 },
   },
   {
     name: 'a row when() of unknown initial value before a child component',
     template:
-      '<ul>${repeat(rows(), (r) => html`<li><b ${when(unknown())}>${t()}</b>${A1ShapeKid({ label: r.g })}</li>`, null, (r) => r.id)}</ul>',
+      '<ul>${repeat(rows(), (r) => html`<li><b ${when(unknown())}>${t()}</b>${ShapeKid({ label: r.g })}</li>`, null, (r) => r.id)}</ul>',
     ids: {},
   },
   {
     name: 'child hosts in a paragraph, a table row, svg and a row of their own',
     template:
-      '<div><p>${A1ShapeKid({ label: "p" })}</p><table><tbody>${repeat(rows(), (r) => html`<tr><td>${r.g}</td>${A1ShapeKid({ label: r.g })}</tr>`, null, (r) => r.id)}</tbody></table>' +
-      '<ul>${repeat(rows(), (r) => html`${A1ShapeKid({ label: r.g })}`, null, (r) => r.id)}</ul><svg>${A1ShapeKid({ label: "svg" })}</svg></div>',
+      '<div><p>${ShapeKid({ label: "p" })}</p><table><tbody>${repeat(rows(), (r) => html`<tr><td>${r.g}</td>${ShapeKid({ label: r.g })}</tr>`, null, (r) => r.id)}</tbody></table>' +
+      '<ul>${repeat(rows(), (r) => html`${ShapeKid({ label: r.g })}`, null, (r) => r.id)}</ul><svg>${ShapeKid({ label: "svg" })}</svg></div>',
     ids: {},
   },
   {

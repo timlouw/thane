@@ -26,7 +26,7 @@ interface EntrySurface {
   types: string[];
 }
 
-/** What each package entry exports after the round. */
+/** What each package entry exports. */
 const KEPT: Record<string, EntrySurface> = {
   'thane': {
     values: [
@@ -104,7 +104,7 @@ const KEPT: Record<string, EntrySurface> = {
   'thane/runtime/dom': { values: ['_cloneNode', '_insertBefore'], types: [] },
 };
 
-/** Names that an entry exported before the round and no longer does. */
+/** Names that an entry exported in 0.2.0 and no longer does: they must stay gone. */
 const REMOVED: Record<string, string[]> = {
   'thane': [
     'mountComponent',
