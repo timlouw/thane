@@ -7,106 +7,106 @@
  * that throws is recorded in `window.__mountErrors`.
  */
 import { mount, type ComponentHTMLSelector } from 'thane';
-import { A1Body } from './probes/a1-body.js';
-import { A1Dirs } from './probes/a1-dirs.js';
-import { A1Ids } from './probes/a1-ids.js';
-import { A1IdsNested } from './probes/a1-ids-nested.js';
-import { A1K12 } from './probes/a1-k12.js';
-import { A1Hosts } from './probes/a1-hosts.js';
-import { A1K14 } from './probes/a1-k14.js';
-import { A1Norm } from './probes/a1-norm.js';
-import { A1RootList } from './probes/a1-rootlist.js';
-import { A1Text } from './probes/a1-text.js';
-import { A1TextHidden } from './probes/a1-text-hidden.js';
-import { A1Top } from './probes/a1-top.js';
-import { H52 } from './probes/h52-row-text-space.js';
-import { H53 } from './probes/h53-text-next-to-elements.js';
-import { I1 } from './probes/i1-index-child-props.js';
-import { K13 } from './probes/k13-component-row-template.js';
-import { L1 } from './probes/l1-destroy-rows.js';
-import { L2 } from './probes/l2-hidden-rows.js';
-import { M1 } from './probes/m1-multi-root-branch.js';
-import { N1 } from './probes/n1-child-rows-in-when.js';
-import { N2 } from './probes/n2-row-when-component-condition.js';
-import { P1 } from './probes/p1-row-method-call.js';
-import { P2 } from './probes/p2-nested-row-event.js';
-import { P3 } from './probes/p3-nested-row-when.js';
-import { P4 } from './probes/p4-row-whenelse-event.js';
-import { P5 } from './probes/p5-nested-whenelse-child.js';
-import { P6 } from './probes/p6-child-rows-in-when.js';
-import { P7 } from './probes/p7-row-when-child.js';
-import { P8 } from './probes/p8-helper-return.js';
-import { P12 } from './probes/p12-pre-whitespace.js';
-import { P13 } from './probes/p13-backslash-escape.js';
-import { P14 } from './probes/p14-hyphenated-tag.js';
-import { P15 } from './probes/p15-nested-list-row-root.js';
-import { P18 } from './probes/p18-static-sibling.js';
-import { P20 } from './probes/p20-row-when-repeat.js';
-import { P26a } from './probes/p26a-host-compound.js';
-import { P26b } from './probes/p26b-host-context.js';
-import { P26c } from './probes/p26c-comment-quote.js';
+import { BackslashEscape } from './probes/backslash-escape.js';
+import { BodyMount } from './probes/body-mount.js';
+import { BranchPositions } from './probes/branch-positions.js';
+import { ChildHosts } from './probes/child-hosts.js';
+import { ChildSameId } from './probes/child-same-id.js';
+import { ComponentRowTemplate } from './probes/component-row-template.js';
+import { ComponentRowsInWhen } from './probes/component-rows-in-when.js';
+import { CssCommentQuote } from './probes/css-comment-quote.js';
 import { CssNamespace } from './probes/css-namespace.js';
-import { Quotes } from './probes/quotes-in-attrs.js';
-import { RW2 } from './probes/rw2-row-directives.js';
-import { RW2Sig } from './probes/rw2-signal-rows.js';
-import { RW3 } from './probes/rw3-nested-lists.js';
-import { R1 } from './probes/r1-reorder-before-anchor.js';
-import { T1 } from './probes/t1-helper-calls.js';
-import { C1 } from './probes/c1-several-components.js';
-import { F1 } from './probes/f1-fragments.js';
-import { F2 } from './probes/f2-shared-fragments.js';
-import { X1 } from './probes/x1-row-when-attribute.js';
+import { DestroyRows } from './probes/destroy-rows.js';
+import { DuplicateIds } from './probes/duplicate-ids.js';
+import { EmptyIdEvent } from './probes/empty-id-event.js';
+import { Fragments } from './probes/fragments.js';
+import { HelperCalls } from './probes/helper-calls.js';
+import { HelperReturn } from './probes/helper-return.js';
+import { HiddenRows } from './probes/hidden-rows.js';
+import { HiddenTextBranch } from './probes/hidden-text-branch.js';
+import { HostCompound } from './probes/host-compound.js';
+import { HostContext } from './probes/host-context.js';
+import { HyphenatedTag } from './probes/hyphenated-tag.js';
+import { ImportedFragments } from './probes/imported-fragments.js';
+import { IndexChildProps } from './probes/index-child-props.js';
+import { MultiRootBranch } from './probes/multi-root-branch.js';
+import { NestedListRowRoot } from './probes/nested-list-row-root.js';
+import { NestedLists } from './probes/nested-lists.js';
+import { NestedRowEvent } from './probes/nested-row-event.js';
+import { NestedRowWhen } from './probes/nested-row-when.js';
+import { NestedWhenElseChild } from './probes/nested-when-else-child.js';
+import { PreWhitespace } from './probes/pre-whitespace.js';
+import { QuotesInAttrs } from './probes/quotes-in-attrs.js';
+import { RebuiltMarkup } from './probes/rebuilt-markup.js';
+import { ReorderBeforeAnchor } from './probes/reorder-before-anchor.js';
+import { RootList } from './probes/root-list.js';
+import { RowChildAfterWhen } from './probes/row-child-after-when.js';
+import { RowChildInWhen } from './probes/row-child-in-when.js';
+import { RowDirectives } from './probes/row-directives.js';
+import { RowMethodCall } from './probes/row-method-call.js';
+import { RowTextSpace } from './probes/row-text-space.js';
+import { RowWhenAttribute } from './probes/row-when-attribute.js';
+import { RowWhenChild } from './probes/row-when-child.js';
+import { RowWhenElseEvent } from './probes/row-when-else-event.js';
+import { RowWhenRepeat } from './probes/row-when-repeat.js';
+import { RowWhenSignal } from './probes/row-when-signal.js';
+import { SeveralComponents } from './probes/several-components.js';
+import { SignalRows } from './probes/signal-rows.js';
+import { StaticSibling } from './probes/static-sibling.js';
+import { TextNextToElements } from './probes/text-next-to-elements.js';
+import { TextPositions } from './probes/text-positions.js';
+import { TopLevelBranches } from './probes/top-level-branches.js';
 
 const probes: Record<string, ComponentHTMLSelector<any>> = {
-  p1: P1,
-  p2: P2,
-  p3: P3,
-  p4: P4,
-  p5: P5,
-  p6: P6,
-  p7: P7,
-  p8: P8,
-  p12: P12,
-  p13: P13,
-  p14: P14,
-  p15: P15,
-  p18: P18,
-  p20: P20,
-  p26a: P26a,
-  p26b: P26b,
-  p26c: P26c,
-  l1: L1,
-  l2: L2,
-  i1: I1,
-  m1: M1,
-  x1: X1,
-  n1: N1,
-  n2: N2,
-  k13: K13,
-  a1ids: A1Ids,
-  a1idsnested: A1IdsNested,
-  a1text: A1Text,
-  a1norm: A1Norm,
-  a1rootlist: A1RootList,
-  a1dirs: A1Dirs,
-  a1top: A1Top,
-  a1body: A1Body,
-  a1texthidden: A1TextHidden,
-  a1k12: A1K12,
-  a1hosts: A1Hosts,
-  a1k14: A1K14,
-  h52: H52,
-  h53: H53,
-  rw2: RW2,
-  rw2sig: RW2Sig,
-  rw3: RW3,
-  quotes: Quotes,
-  cssnamespace: CssNamespace,
-  r1: R1,
-  t1: T1,
-  c1: C1,
-  f1: F1,
-  f2: F2,
+  backslashEscape: BackslashEscape,
+  bodyMount: BodyMount,
+  branchPositions: BranchPositions,
+  childHosts: ChildHosts,
+  childSameId: ChildSameId,
+  componentRowTemplate: ComponentRowTemplate,
+  componentRowsInWhen: ComponentRowsInWhen,
+  cssCommentQuote: CssCommentQuote,
+  cssNamespace: CssNamespace,
+  destroyRows: DestroyRows,
+  duplicateIds: DuplicateIds,
+  emptyIdEvent: EmptyIdEvent,
+  fragments: Fragments,
+  helperCalls: HelperCalls,
+  helperReturn: HelperReturn,
+  hiddenRows: HiddenRows,
+  hiddenTextBranch: HiddenTextBranch,
+  hostCompound: HostCompound,
+  hostContext: HostContext,
+  hyphenatedTag: HyphenatedTag,
+  importedFragments: ImportedFragments,
+  indexChildProps: IndexChildProps,
+  multiRootBranch: MultiRootBranch,
+  nestedListRowRoot: NestedListRowRoot,
+  nestedLists: NestedLists,
+  nestedRowEvent: NestedRowEvent,
+  nestedRowWhen: NestedRowWhen,
+  nestedWhenElseChild: NestedWhenElseChild,
+  preWhitespace: PreWhitespace,
+  quotesInAttrs: QuotesInAttrs,
+  rebuiltMarkup: RebuiltMarkup,
+  reorderBeforeAnchor: ReorderBeforeAnchor,
+  rootList: RootList,
+  rowChildAfterWhen: RowChildAfterWhen,
+  rowChildInWhen: RowChildInWhen,
+  rowDirectives: RowDirectives,
+  rowMethodCall: RowMethodCall,
+  rowTextSpace: RowTextSpace,
+  rowWhenAttribute: RowWhenAttribute,
+  rowWhenChild: RowWhenChild,
+  rowWhenElseEvent: RowWhenElseEvent,
+  rowWhenRepeat: RowWhenRepeat,
+  rowWhenSignal: RowWhenSignal,
+  severalComponents: SeveralComponents,
+  signalRows: SignalRows,
+  staticSibling: StaticSibling,
+  textNextToElements: TextNextToElements,
+  textPositions: TextPositions,
+  topLevelBranches: TopLevelBranches,
 };
 
 const win = window as any;
@@ -116,7 +116,7 @@ win.__mountErrors = [];
 
 win.__mountProbe = (): boolean => {
   const component = probes[probeId];
-  // `&target=body` mounts into document.body, after the nodes the page already has (Mode A)
+  // `&target=body` mounts into document.body, after the nodes the page already has
   const target = params.get('target') === 'body' ? document.body : document.getElementById('app');
   if (!component || !target) {
     win.__mountErrors.push(`unknown probe "${probeId}"`);
