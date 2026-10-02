@@ -350,6 +350,7 @@ These are reported by the compiler while it compiles a template, as build errors
 | THANE012 | A template reads a name that starts with `_`, the prefix of every variable the compiled bindings declare for themselves, so it could read the compiler's value. Rename the variable                                                            |
 | THANE013 | Two components of the build with one selector (declared under one name, each with a derived selector). They share their host class, and the styles of the one registered first apply to both. Rename one, or give it an explicit selector     |
 | THANE014 | A content `when()` that is not a conditional: a condition alone (`when(cond)` goes in an element's tag), more than three arguments, or a branch that is not a template |
+| THANE015 | An event modifier the compiler does not know (`@click.prevnet`), or `.passive` with `.prevent` |
 
 ### THANE007 — one root element per row
 
@@ -383,17 +384,16 @@ ${repeat(items(), (item) => html`<li>${item.name}</li>`, { key: 'id' })}
 ${repeat(items(), (item) => html`<li>${item.name}</li>`, { key: (item) => item.id, empty: html`<li>None</li>` })}
 ```
 
-### THANE014 — a conditional in content has a template
+### THANE011 — the empty template is one static element
 
 ```typescript
-// ❌ BAD — a condition alone in content, and a branch that is not a template
-${when(open())}
-${when(open(), props.label)}
+// ❌ BAD — text alone, two roots, a binding
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`No items` })}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li>No</li><li>items</li>` })}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li>No ${noun()}</li>` })}
 
 // ✅ GOOD
-<p ${when(open())}>Open</p>
-${when(open(), html`<p>Open</p>`)}
-${when(open(), html`<p>${props.label}</p>`)}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li class="empty">No items</li>` })}
 ```
 
 ### THANE012 — names the compiled bindings keep for themselves
@@ -410,16 +410,32 @@ const subscribers = signal(0);
 return { template: html`<p>${subscribers()}</p>` };
 ```
 
-### THANE011 — the empty template is one static element
+### THANE014 — a conditional in content has a template
 
 ```typescript
-// ❌ BAD — text alone, two roots, a binding
-${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`No items` })}
-${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li>No</li><li>items</li>` })}
-${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li>No ${noun()}</li>` })}
+// ❌ BAD — a condition alone in content, and a branch that is not a template
+${when(open())}
+${when(open(), props.label)}
 
 // ✅ GOOD
-${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li class="empty">No items</li>` })}
+<p ${when(open())}>Open</p>
+${when(open(), html`<p>Open</p>`)}
+${when(open(), html`<p>${props.label}</p>`)}
 ```
+
+### THANE015 — an event modifier the compiler knows
+
+```typescript
+// ❌ BAD — 'prevnet' is not an event modifier: did you mean 'prevent'?
+template: html`<form @submit.prevnet=${save}>…</form>`;
+// ❌ BAD — a passive listener cannot prevent the default
+template: html`<div @wheel.passive.prevent=${zoom}>…</div>`;
+
+// ✅ GOOD
+template: html`<form @submit.prevent=${save}>…</form>`;
+```
+
+The modifiers are listed in [Event Handling](event-handling.md#modifiers). An unknown one used to be ignored, so the
+handler ran without the `preventDefault()` it asked for.
 
 ← [Back to Docs](README.md)

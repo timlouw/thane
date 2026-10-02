@@ -9,6 +9,8 @@ import ts from 'typescript';
 import { WHEN_CONTENT_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX } from './types.js';
 import { parseArrowFunction } from '../ast-utils.js';
 import { ErrorCode } from '../../errors.js';
+import { closestName } from '../closest-name.js';
+import { EVENT_MODIFIERS } from '../event-modifiers.js';
 
 /**
  * Shared argument parser for both when() and repeat() expressions.
@@ -63,6 +65,27 @@ function templateContent(arg: string): string | null {
 }
 
 /** What the signal detector knows of the names a component's templates see (see template-scope.ts) */
+/**
+ * Throws THANE015 for an event attribute's modifier the compiler does not know (`@click.prevnet`), with the one
+ * it is close to, and for `.passive` with `.prevent`: a passive listener cannot prevent the default.
+ */
+const checkModifiers = (attribute: string, modifiers: readonly string[]): void => {
+  for (const modifier of modifiers) {
+    if (EVENT_MODIFIERS.includes(modifier)) continue;
+    const near = modifier ? closestName(modifier, EVENT_MODIFIERS) : undefined;
+    throw new Error(
+      `${ErrorCode.EVENT_MODIFIER}: ${attribute} — '${modifier}' is not an event modifier` +
+        (near ? `: did you mean '${near}'?` : '.') +
+        ` The modifiers are ${EVENT_MODIFIERS.join(', ')}.`,
+    );
+  }
+  if (modifiers.includes('passive') && modifiers.includes('prevent')) {
+    throw new Error(
+      `${ErrorCode.EVENT_MODIFIER}: ${attribute} — a passive listener cannot prevent the default: remove .passive or .prevent.`,
+    );
+  }
+};
+
 export interface TemplateScope {
   /** Whether the name is a function the component declares (not a signal) */
   isFunction(name: string): boolean;
@@ -657,6 +680,7 @@ export function findBindingsInAttributes(
       const eventParts = name.slice(1).split('.');
       const eventName = eventParts[0];
       const modifiers = eventParts.slice(1);
+      checkModifiers(name, modifiers);
 
       const eventExprMatch = attr.value.match(/^\$\{(.+)\}$/s);
       if (eventExprMatch && eventExprMatch[1]) {

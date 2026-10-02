@@ -46,6 +46,7 @@ import { RowChildAfterWhen } from './probes/row-child-after-when.js';
 import { RowChildInWhen } from './probes/row-child-in-when.js';
 import { RowChildProps } from './probes/row-child-props.js';
 import { RowClosures } from './probes/row-closures.js';
+import { EventModifiers } from './probes/event-modifiers.js';
 import { RowDirectives } from './probes/row-directives.js';
 import { RowMethodCall } from './probes/row-method-call.js';
 import { RowTextSpace } from './probes/row-text-space.js';
@@ -101,6 +102,7 @@ const probes: Record<string, ComponentHTMLSelector<any>> = {
   rowChildInWhen: RowChildInWhen,
   rowChildProps: RowChildProps,
   rowClosures: RowClosures,
+  eventModifiers: EventModifiers,
   rowDirectives: RowDirectives,
   rowMethodCall: RowMethodCall,
   rowTextSpace: RowTextSpace,

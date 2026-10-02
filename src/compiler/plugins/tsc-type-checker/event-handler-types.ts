@@ -20,6 +20,7 @@
 
 import ts from 'typescript';
 import { FN } from '../../utils/constants.js';
+import { needsOwnListener } from '../../utils/event-modifiers.js';
 
 /** The declaration of `ThaneEventListener`, a global type of the checked program only. */
 export const EVENT_TYPES_DECLARATION =
@@ -55,7 +56,7 @@ interface Insertion {
 }
 
 /** The attribute a substitution is the whole value of: `@click.prevent=` or `@click="`, at the end of the text before it. */
-const EVENT_ATTRIBUTE = /\s@([A-Za-z][\w-]*)(?:\.[\w-]+)*=(["']?)$/;
+const EVENT_ATTRIBUTE = /\s@([A-Za-z][\w-]*)((?:\.[\w-]+)*)=(["']?)$/;
 
 /** What the compiler registers as the listener itself: a function, or a plain or member reference. */
 const isListenerValue = (expression: ts.Expression, sourceFile: ts.SourceFile): boolean => {
@@ -107,13 +108,15 @@ const eventHandlerInsertions = (sourceFile: ts.SourceFile): Insertion[] => {
         if (!match) return;
         // The substitution is the attribute's whole value: a closing quote, if any, then the tag goes on
         const after = rawText(span.literal);
-        const quote = match[2]!;
+        const quote = match[3]!;
         const rest = after.slice(quote.length);
         const ends = /^[\s/>]/.test(rest) || (rest === '' && ts.isTemplateTail(span.literal));
         if (!after.startsWith(quote) || !ends) return;
         if (!isListenerValue(span.expression, sourceFile)) return;
         const handler = { start: span.expression.getStart(sourceFile), end: span.expression.end };
-        const tag = inRow ? '' : openTagName(markup);
+        // A row's handler is delegated to the list container, unless a modifier gives it its element's own listener
+        const ownListener = !inRow || needsOwnListener(match[2]!.split('.').slice(1));
+        const tag = ownListener ? openTagName(markup) : '';
         const type = tag ? `ThaneEventListener<'${match[1]!}', '${tag}'>` : `ThaneEventListener<'${match[1]!}'>`;
         insertions.push(
           { at: handler.start, text: '(', handler },

@@ -36,7 +36,7 @@ template: html`<button @click=${(e: KeyboardEvent) => e.key}>Go</button>`;
 // error TS1360: Type '(e: KeyboardEvent) => string' does not satisfy the expected type 'ThaneEventListener<"click">'.
 ```
 
-Outside a list row the handler is the element's own listener, so `e.currentTarget` is typed as the element: in `<input @input=${(e) => query(e.currentTarget.value)} />` it is an `HTMLInputElement`. A handler in a `repeat()` row is delegated to the list container, so there it stays `EventTarget | null`. An event that lib.dom does not know, such as a custom event, is typed `any`.
+Outside a list row the handler is the element's own listener, so `e.currentTarget` is typed as the element: in `<input @input=${(e) => query(e.currentTarget.value)} />` it is an `HTMLInputElement`. A handler in a `repeat()` row is delegated to the list container, so there it stays `EventTarget | null`, unless a modifier gives the row's element a listener of its own (`.self`, `.once`, `.passive`, `.capture`; see [Modifiers](#modifiers)). An event that lib.dom does not know, such as a custom event, is typed `any`.
 
 ### In the Editor
 
@@ -87,30 +87,48 @@ template: html`
 `;
 ```
 
-## Event Methods
+## Modifiers
 
-Call `.stopPropagation()` or `.preventDefault()` inside the handler:
+Modifiers after the event name do the common work of a handler, written once in the attribute:
 
 ```typescript
-const addCurrentToCart = (event: Event) => {
-  event.stopPropagation(); // prevent click from bubbling to parent
-  addToCart(productId);
-};
-
-template: html`<button @click=${addCurrentToCart}>Add to Cart</button>`;
+template: html`
+  <form @submit.prevent=${save}>…</form>
+  <button @click.stop=${() => addToCart(product.id)}>Add to Cart</button>
+  <input @keydown.enter=${search} @keydown.esc=${() => query('')} />
+  <div class="backdrop" @click.self=${close}>…</div>
+  <button @click.once=${start}>Start</button>
+`;
 ```
 
-This pattern is used in the [e-commerce example app](examples/e-commerce-app.md) where a card click navigates to details, but the "Add to Cart" button inside the card needs to stop propagation.
+| Modifier | What it does |
+|:---------|:-------------|
+| `.prevent` | calls `event.preventDefault()` before the handler |
+| `.stop` | calls `event.stopPropagation()` before the handler |
+| `.self` | runs the handler only when the event's target is the element itself, not one of its children |
+| `.enter`, `.tab`, `.delete` (Backspace or Delete), `.esc` or `.escape`, `.space`, `.up`, `.down`, `.left`, `.right` | runs the handler only for that key; several keys run it for any of them (`@keydown.enter.esc`) |
+| `.once` | runs the handler once: on the first event the other modifiers let through, then the listener is removed |
+| `.passive` | registers a passive listener, which the browser does not wait for (scroll and touch events); it cannot prevent the default |
+| `.capture` | runs the handler in the capture phase, before the handlers of the element the event happened on |
 
-## Prevent Default
+Modifiers combine in any order: `@keydown.enter.prevent`, `@click.self.once`. The guards (`.self` and the keys) are checked
+first, then `.prevent` and `.stop` run, then the handler. An unknown modifier is a build error that names the one it is
+close to (THANE015: `'prevnet' is not an event modifier: did you mean 'prevent'?`), and so is `.passive` with
+`.prevent`.
+
+In a list row, a handler is delegated: the list has one listener on its container for each event. `.self`, `.once`,
+`.passive` and `.capture` give each row's element a listener of its own instead, since each depends on the element
+the listener is on.
+
+The handler can still call the event's methods itself, for a condition the modifiers cannot express:
 
 ```typescript
-const handleSubmit = (event: Event) => {
-  event.preventDefault();
-  // custom form handling
+const onKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 's' && event.ctrlKey) {
+    event.preventDefault();
+    save();
+  }
 };
-
-template: html`<form @submit=${handleSubmit}>...</form>`;
 ```
 
 ## Navigate on Click
@@ -124,15 +142,10 @@ template: html`
 `;
 ```
 
-Or with `preventDefault` for anchor elements:
+On a link with an `href`, add `.prevent` so the browser does not follow it as well:
 
 ```typescript
-const goHome = (event: Event) => {
-  event.preventDefault();
-  navigate('/');
-};
-
-template: html`<a href="/" @click=${goHome}>Home</a>`;
+template: html`<a href="/" @click.prevent=${navigate('/')}>Home</a>`;
 ```
 
 ← [Back to Docs](README.md)

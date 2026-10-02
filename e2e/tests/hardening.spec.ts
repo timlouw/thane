@@ -1668,3 +1668,49 @@ test.describe("a row's code reads its item and index as they are now", () => {
     expect(probe.pageErrors).toEqual([]);
   });
 });
+
+test.describe('event modifiers', () => {
+  const log = (page: Page) => page.evaluate(() => (window as any).__probe.eventModifiers.log());
+  const clear = (page: Page) => page.evaluate(() => (window as any).__probe.eventModifiers.log([]));
+
+  test('.once runs the handler on the first event only: at component level, in a branch and in each row', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'eventModifiers');
+    for (let i = 0; i < 2; i++) {
+      await page.locator('.em-once').click();
+      await page.locator('.em-branch-once').click();
+      await page.locator('.em-rows button').first().click();
+      await page.locator('.em-rows button').nth(1).click();
+    }
+    expect(await log(page)).toEqual(['once', 'branch once', 'row once 1', 'row once 2']);
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('.capture runs before the handlers of the element clicked', async ({ page }) => {
+    await mountProbe(page, 'eventModifiers');
+    await page.locator('.em-capture-inner').click();
+    expect(await log(page)).toEqual(['outer capture', 'inner', 'outer bubble']);
+  });
+
+  test('.passive: the handler cannot prevent the default; .prevent does', async ({ page }) => {
+    await mountProbe(page, 'eventModifiers');
+    await page.locator('.em-passive').click();
+    await page.locator('.em-prevent').click();
+    expect(await log(page)).toEqual(['passive prevented false', 'prevented true']);
+    // The passive link followed its href; the prevented one did not
+    await expect(page).toHaveURL(/#passive$/);
+  });
+
+  test('key modifiers run on their keys only, with .once on the first of them', async ({ page }) => {
+    await mountProbe(page, 'eventModifiers');
+    await page.locator('.em-keys').press('a');
+    await page.locator('.em-keys').press('Enter');
+    await page.locator('.em-keys').press('Escape');
+    await clear(page);
+    await page.locator('.em-key-once').press('a');
+    await page.locator('.em-key-once').press('Enter');
+    await page.locator('.em-key-once').press('Enter');
+    expect(await log(page)).toEqual(['enter once']);
+  });
+});

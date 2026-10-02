@@ -35,6 +35,17 @@ describe('rewriteEventHandlers', () => {
     );
   });
 
+  test("a row's handler with a listener of its element's own (.self, .once, .passive, .capture) is typed with it", () => {
+    for (const modifier of ['self', 'once', 'passive', 'capture']) {
+      expect(
+        rewritten(`<ul>\${repeat(items(), (i) => html\`<li @click.${modifier}=\${(e) => go(i, e)}>x</li>\`)}</ul>`),
+      ).toContain("((e) => go(i, e)) satisfies ThaneEventListener<'click', 'li'>}");
+    }
+    expect(rewritten('<ul>${repeat(items(), (i) => html`<li @click.stop=${(e) => go(i, e)}>x</li>`)}</ul>')).toContain(
+      "((e) => go(i, e)) satisfies ThaneEventListener<'click'>}",
+    );
+  });
+
   test('the element is the tag still open before the attribute, past other substitutions', () => {
     expect(rewritten('<input class=${c} value=${v} @input=${onInput} />')).toContain(
       "satisfies ThaneEventListener<'input', 'input'>",

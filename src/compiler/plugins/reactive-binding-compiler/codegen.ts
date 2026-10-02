@@ -5,6 +5,7 @@
  * imports, and the body of the component's binding function.
  */
 
+import { KEY_MODIFIERS, keyModifiers, listenerOptions, needsOwnListener } from '../../utils/event-modifiers.js';
 import type {
   ConditionalBlock,
   WhenElseBlock,
@@ -511,7 +512,7 @@ const inlineRowHandler = (handlerExpr: string): string => {
 
 /**
  * Partition item events into delegatable (container-level listener) and
- * non-delegatable (.self modifier or missing path) groups.
+ * non-delegatable (a modifier that needs the element's own listener, or a missing path) groups.
  */
 const partitionItemEvents = (
   itemEvents: ItemEventBinding[],
@@ -538,8 +539,8 @@ const partitionItemEvents = (
     }
     handlerExpr = inlineRowHandler(handlerExpr);
 
-    // .self requires currentTarget === target — cannot delegate
-    if (evt.modifiers.includes('self')) {
+    // .self compares the target with the element, and once, passive and capture are options of its own listener
+    if (needsOwnListener(evt.modifiers)) {
       nonDelegatable.push(evt);
       continue;
     }
@@ -592,7 +593,7 @@ const buildDelegatedListenerStatements = (
       const modParts: string[] = [];
       if (evt.modifiers.includes('prevent')) modParts.push('_e.preventDefault()');
       if (evt.modifiers.includes('stop')) modParts.push('_e.stopPropagation()');
-      const keyMods = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
+      const keyMods = keyModifiers(evt.modifiers);
       if (keyMods.length > 0) {
         const guard = compileKeyGuard(keyMods);
         if (guard) modParts.push(`if (${guard}) return`);
@@ -678,17 +679,9 @@ const buildNonDelegatableEventStatements = (
       handlerExpr = replaceReferences(handlerExpr, rep.indexVar, indexVar);
     }
     handlerExpr = inlineRowHandler(handlerExpr);
-    const bodyParts: string[] = [];
-    if (evt.modifiers.includes('prevent')) bodyParts.push('_e.preventDefault()');
-    if (evt.modifiers.includes('stop')) bodyParts.push('_e.stopPropagation()');
-    if (evt.modifiers.includes('self')) bodyParts.push('if (_e.target !== _e.currentTarget) return');
-    const keyMods = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
-    if (keyMods.length > 0) {
-      const guard = compileKeyGuard(keyMods);
-      if (guard) bodyParts.push(`if (${guard}) return`);
-    }
-    bodyParts.push(handlerExpr);
-    addStatements.push(`${elVar}.addEventListener('${evt.eventName}', (_e) => { ${bodyParts.join('; ')}; })`);
+    addStatements.push(
+      `${elVar}.addEventListener('${evt.eventName}', ${listenerWithModifiers(evt.eventName, evt.modifiers, handlerExpr)})`,
+    );
   }
 
   return { navStatements, addStatements };
@@ -697,20 +690,6 @@ const buildNonDelegatableEventStatements = (
 // ============================================================================
 // Key Map & Code Generation
 // ============================================================================
-
-/** Map of event modifier names to their corresponding KeyboardEvent.key values */
-const KEY_MAP: Record<string, string[]> = {
-  enter: ['Enter'],
-  tab: ['Tab'],
-  delete: ['Backspace', 'Delete'],
-  esc: ['Escape'],
-  escape: ['Escape'],
-  space: [' '],
-  up: ['ArrowUp'],
-  down: ['ArrowDown'],
-  left: ['ArrowLeft'],
-  right: ['ArrowRight'],
-};
 
 /**
  * Compile key modifier names into a JS guard expression.
@@ -725,7 +704,7 @@ const KEY_MAP: Record<string, string[]> = {
 const compileKeyGuard = (modifiers: string[]): string | null => {
   const checks = modifiers
     .map((mod) => {
-      const keys = KEY_MAP[mod];
+      const keys = KEY_MODIFIERS[mod];
       if (!keys) return null;
       return keys.length === 1 ? `_e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(_e.key)`;
     })
@@ -809,28 +788,39 @@ const generateConsolidatedSubscription = (signalName: string, bindings: SimpleBi
  */
 const compileEventHandler = (evt: EventBinding): string => {
   const handlerCode = evt.handlerExpression;
-  const hasModifiers = evt.modifiers.length > 0;
-  const hasPrevent = evt.modifiers.includes('prevent');
-  const hasStop = evt.modifiers.includes('stop');
-  const hasSelf = evt.modifiers.includes('self');
-  const keyModifiers = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
   const isFunction = isFunctionExpressionText(handlerCode);
   const isSimpleRef = /^[a-zA-Z_$][a-zA-Z0-9_$.]*$/.test(handlerCode.trim());
   const isFnCall = !isFunction && !isSimpleRef;
+  const { modifiers } = evt;
+  const wrapped =
+    modifiers.some((m) => m === 'prevent' || m === 'stop' || m === 'self') || keyModifiers(modifiers).length > 0;
+  if (wrapped) return listenerWithModifiers(evt.eventName, modifiers, isFnCall ? handlerCode : `(${handlerCode})(_e)`);
+  return (isFnCall ? `() => { ${handlerCode}; }` : handlerCode) + listenerOptions(modifiers);
+};
 
-  if (hasModifiers && (hasPrevent || hasStop || hasSelf || keyModifiers.length > 0)) {
-    const bodyParts: string[] = [];
-    if (hasSelf) bodyParts.push('if (_e.target !== _e.currentTarget) return;');
-    if (keyModifiers.length > 0) {
-      const guard = compileKeyGuard(keyModifiers);
-      if (guard) bodyParts.push(`if (${guard}) return;`);
-    }
-    if (hasPrevent) bodyParts.push('_e.preventDefault();');
-    if (hasStop) bodyParts.push('_e.stopPropagation();');
-    bodyParts.push(isFnCall ? `${handlerCode};` : `(${handlerCode})(_e);`);
-    return `(_e) => { ${bodyParts.join(' ')} }`;
-  }
-  return isFnCall ? `() => { ${handlerCode}; }` : handlerCode;
+/**
+ * The listener of an event attribute with modifiers, and its options, for `addEventListener(type, …)`: `call`
+ * runs on the event once the guards pass (`.self`, the keys), after `.prevent` and `.stop`. `.once` is the
+ * listener option, unless a guard can skip the event: then the listener removes itself when the guards pass,
+ * so the handler runs on the first event they let through.
+ */
+const listenerWithModifiers = (eventName: string, modifiers: readonly string[], call: string): string => {
+  const guards: string[] = [];
+  if (modifiers.includes('self')) guards.push('if (_e.target !== _e.currentTarget) return');
+  const keyGuard = compileKeyGuard(keyModifiers(modifiers));
+  if (keyGuard) guards.push(`if (${keyGuard}) return`);
+  const onceByHand = modifiers.includes('once') && guards.length > 0;
+  const body = [
+    ...guards,
+    ...(onceByHand
+      ? [`this.removeEventListener('${eventName}', _once${modifiers.includes('capture') ? ', true' : ''})`]
+      : []),
+    ...(modifiers.includes('prevent') ? ['_e.preventDefault()'] : []),
+    ...(modifiers.includes('stop') ? ['_e.stopPropagation()'] : []),
+    call,
+  ].join('; ');
+  const options = listenerOptions(onceByHand ? modifiers.filter((m) => m !== 'once') : modifiers);
+  return `${onceByHand ? 'function _once(_e)' : '(_e) =>'} { ${body}; }${options}`;
 };
 
 /** A when() condition that is a bare signal read (`show()`): bound by `__bindIf` on the signal itself. */
