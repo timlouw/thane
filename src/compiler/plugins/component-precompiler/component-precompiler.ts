@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type { OnLoadArgs, OnLoadResult, Plugin } from 'esbuild';
 import ts from 'typescript';
 import type { BuildContext } from '../../types.js';
@@ -25,7 +26,14 @@ import {
   KEYFRAME_SCOPING,
 } from '../minification/css-transform.js';
 import { ErrorCode, createError, createWarning, withConfiguredSeverity } from '../../errors.js';
-import { hotModuleKey, hotRegistration, keepModuleSignals, recordHotModule, trackHotInput } from './hot-modules.js';
+import {
+  hotModuleKey,
+  hotRegistration,
+  keepModuleSignals,
+  packageImports,
+  recordHotModule,
+  trackHotInput,
+} from './hot-modules.js';
 import { createModuleResolver, type ModuleResolver } from '../../utils/module-graph.js';
 import { INTERNAL_RUNTIME_SPECIFIER, RUNTIME_HELPER } from '../../../contracts/index.js';
 
@@ -36,9 +44,13 @@ const EXPORTED_FRAGMENT = /\bexport\s+const\s+[\w$]+\s*=\s*html`/;
 
 /**
  * @param ctx - the build's shared context
- * @param mode - `hotUpdate` for the build of one changed file that `thane dev` sends to the page
+ * @param mode - `hotUpdate` for the build of one module that `thane dev` sends to the page; `packages` receives
+ *   the bindings it reads of each package (packageImports)
  */
-export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate?: boolean } = {}): Plugin => ({
+export const ComponentPrecompilerPlugin = (
+  ctx?: BuildContext,
+  mode: { hotUpdate?: boolean; packages?: Map<string, Map<string, Set<string>>> } = {},
+): Plugin => ({
   name: NAME,
   setup(build) {
     // Which components each file can call; made anew for every build, so it sees the current sources
@@ -344,7 +356,10 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
         typeof result?.contents === 'string'
           ? result.contents
           : keepModuleSignals(cached.source, cached.sourceFile, hotModuleKey(args.path, ctx.projectRoot));
-      if (mode.hotUpdate) return code === cached.source ? result : createLoaderResult(code);
+      if (mode.hotUpdate) {
+        mode.packages?.set(path.resolve(args.path), packageImports(cached.sourceFile, code));
+        return code === cached.source ? result : createLoaderResult(code);
+      }
       trackHotInput(hot, args.path, cached.source);
       if (resolveImport) recordHotModule(hot, args.path, cached.sourceFile, resolveImport);
       return createLoaderResult(hotRegistration(args.path, code, cached.sourceFile, ctx.projectRoot));

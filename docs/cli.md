@@ -53,8 +53,10 @@ The build reruns when a source file changes, and the open pages update in place 
 - The rest of the page keeps its state: its other components, its stores, the route.
 
 The pages reload when a change reaches the entry (the entry itself, or a module it imports other than through a
-component file), when the module to run again is one the page has not loaded yet, and for an asset, `index.html`, or
-a file the compiler does not read (a JSON file).
+component file), when a module to run again is one the page has not loaded yet, or reads a binding of a package
+that no module of the page imports yet (the app's first `untrack`), and for an asset, `index.html`, or a file the
+compiler does not read (a JSON file). A development bundle holds of each package only the bindings the app's modules
+import.
 
 Errors in the browser (`console.error`, uncaught errors and unhandled promise rejections) are printed in the terminal, with their locations in the built files.
 

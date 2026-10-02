@@ -21,12 +21,15 @@ const waitFor = async (predicate: () => boolean, timeoutMs: number): Promise<voi
   }
 };
 
-/** Change a file of the copied app, as an editor saves it */
-const change = (file: string, from: string, to: string): void => {
+/** Change a file of the copied app, as an editor saves it: `from` to `to`, and `also`'s pair in the same save */
+const change = (file: string, from: string, to: string, also?: [string, string]): void => {
   const path = resolve(app, file);
-  const text = readFileSync(path, 'utf8');
-  if (!text.includes(from)) throw new Error(`${file} does not contain ${from}`);
-  writeFileSync(path, text.replace(from, to));
+  let text = readFileSync(path, 'utf8');
+  for (const [a, b] of [[from, to], ...(also ? [also] : [])] as [string, string][]) {
+    if (!text.includes(a)) throw new Error(`${file} does not contain ${a}`);
+    text = text.replace(a, b);
+  }
+  writeFileSync(path, text);
 };
 
 const marker = (page: Page) => page.evaluate(() => (window as unknown as { __hotMarker?: string }).__hotMarker);
@@ -124,7 +127,19 @@ test.describe('hot updates', () => {
       await state('4', '4', '1', '8');
       expect(await marker(page)).toBe('kept');
 
+      // The label now reads a binding of thane that no module of the page imported, which the page does not
+      // have: the page reloads, and starts from the new code
+      change('label.ts', 'css, signal }', 'css, signal, untrack }', [
+        'const taps = signal(0);',
+        'const taps = signal(untrack(() => 0));',
+      ]);
+      await expect(page.locator('.hot-clicks')).toHaveText('0', { timeout: 15_000 });
+      expect(await marker(page)).toBeUndefined();
+      await expect(label).toHaveText('v2 1');
+      await state('0', '0', '0', '0');
+
       // The entry changes: the page reloads, and starts from the new code
+      await page.evaluate(() => ((window as unknown as { __hotMarker: string }).__hotMarker = 'kept'));
       change('main.ts', "'hot 1'", "'hot 2'");
       await expect(page).toHaveTitle('hot 2', { timeout: 15_000 });
       expect(await marker(page)).toBeUndefined();

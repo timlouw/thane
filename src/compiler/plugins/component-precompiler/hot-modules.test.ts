@@ -11,6 +11,7 @@ import {
   createHotState,
   hotRegistration,
   hotUpdatePlan,
+  packageImports,
   isSwappable,
   keepModuleSignals,
   recordHotModule,
@@ -142,23 +143,94 @@ test("a module the compiler leaves as it is keeps its top-level signals, by the 
   expect(keepModuleSignals(plain, parse(plain), 'src/step.ts')).toBe(plain);
 });
 
-test('a module registers its namespace and the packages it imports at run time', () => {
+describe('the package bindings a module reads, and registers in the page', () => {
   const text = [
-    "import { defineComponent, html } from 'thane';",
+    "import { defineComponent, html, type Fragment } from 'thane';",
     "import type { Route } from 'thane/router';",
+    "import { navigate as go, isActive } from 'thane/router';",
+    "import confetti from 'confetti';",
+    "import * as charts from 'charts';",
+    "import 'polyfill';",
     "import { clicks } from './store.js';",
     "export * from 'some-package';",
+    "export { format, type Format } from 'formats';",
+    "const lazy = () => import('lazy-package');",
     '',
   ].join('\n');
-  const code = "import { __registerComponentLean } from 'thane/runtime';\n" + text;
-  expect(hotRegistration('/p/src/label.ts', code, parse(text), '/p').split('\n').slice(-6)).toEqual([
-    'import * as __thane_hot_self from "./label.js";',
-    'import * as __thane_hot_pkg0 from "thane";',
-    'import * as __thane_hot_pkg1 from "some-package";',
-    'import * as __thane_hot_pkg2 from "thane/runtime";',
-    '(globalThis.__thaneModules ??= new Map()).set("src/label.ts", __thane_hot_self).set("pkg:thane", __thane_hot_pkg0).set("pkg:some-package", __thane_hot_pkg1).set("pkg:thane/runtime", __thane_hot_pkg2);',
-    '',
-  ]);
+  // The compiler's imports of its helpers, as it emits them
+  const code =
+    "import { __registerComponentLean, __bindIf } from 'thane/runtime'\n" +
+    "import { _cloneNode, _insertBefore } from 'thane/runtime/dom'\n" +
+    text;
+  const read = (dynamic?: boolean) =>
+    Object.fromEntries(
+      [...packageImports(parse(text), code, dynamic)].map(([specifier, names]) => [specifier, [...names]]),
+    );
+
+  test('the names each import and re-export reads, a whole namespace as *, and no types', () => {
+    expect(read()).toEqual({
+      'thane': ['defineComponent', 'html'],
+      'thane/router': ['navigate', 'isActive'],
+      'confetti': ['default'],
+      'charts': ['*'],
+      'some-package': ['*'],
+      'formats': ['format'],
+      'lazy-package': ['*'],
+      'thane/runtime': ['__registerComponentLean', '__bindIf'],
+      'thane/runtime/dom': ['_cloneNode', '_insertBefore'],
+    });
+    // A package imported with import() alone is not registered
+    expect(read(false)['lazy-package']).toBeUndefined();
+  });
+
+  test("the module registers its namespace, each binding into its package's, and a whole namespace marked", () => {
+    const lines = hotRegistration('/p/src/label.ts', code, parse(text), '/p').split('\n');
+    expect(lines.slice(lines.indexOf('import * as __thane_hot_self from "./label.js";'))).toEqual([
+      'import * as __thane_hot_self from "./label.js";',
+      'import { defineComponent as __thane_hot_0, html as __thane_hot_1 } from "thane";',
+      'import { navigate as __thane_hot_2, isActive as __thane_hot_3 } from "thane/router";',
+      'import { default as __thane_hot_4 } from "confetti";',
+      'import * as __thane_hot_5 from "charts";',
+      'import * as __thane_hot_6 from "some-package";',
+      'import { format as __thane_hot_7 } from "formats";',
+      'import { __registerComponentLean as __thane_hot_8, __bindIf as __thane_hot_9 } from "thane/runtime";',
+      'import { _cloneNode as __thane_hot_10, _insertBefore as __thane_hot_11 } from "thane/runtime/dom";',
+      '{',
+      '  const modules = (globalThis.__thaneModules ??= new Map());',
+      '  const register = (key, bindings) => modules.set(key, Object.assign(modules.get(key) ?? {}, bindings));',
+      '  modules.set("src/label.ts", __thane_hot_self);',
+      '  register("pkg:thane", { defineComponent: __thane_hot_0, html: __thane_hot_1 });',
+      '  register("pkg:thane/router", { navigate: __thane_hot_2, isActive: __thane_hot_3 });',
+      '  register("pkg:confetti", { default: __thane_hot_4 });',
+      '  register("pkg:charts", __thane_hot_5);',
+      '  modules.set("pkg*:charts", true);',
+      '  register("pkg:some-package", __thane_hot_6);',
+      '  modules.set("pkg*:some-package", true);',
+      '  register("pkg:formats", { format: __thane_hot_7 });',
+      '  register("pkg:thane/runtime", { __registerComponentLean: __thane_hot_8, __bindIf: __thane_hot_9 });',
+      '  register("pkg:thane/runtime/dom", { _cloneNode: __thane_hot_10, _insertBefore: __thane_hot_11 });',
+      '}',
+      '',
+    ]);
+  });
+
+  test('the registrations of two modules merge into a package', () => {
+    const run = (registration: string, modules: Map<string, unknown>) => {
+      const body = registration.split('\n').filter((line) => !line.startsWith('import'));
+      (globalThis as { __thaneModules?: Map<string, unknown> }).__thaneModules = modules;
+      try {
+        new Function('__thane_hot_self', '__thane_hot_0', '__thane_hot_1', body.join('\n'))({}, 'a', 'b');
+      } finally {
+        delete (globalThis as { __thaneModules?: unknown }).__thaneModules;
+      }
+    };
+    const modules = new Map<string, unknown>();
+    const of = (names: string) => `import { ${names} } from 'thane';\n`;
+    run(hotRegistration('/p/src/a.ts', of('signal, computed'), parse(of('signal, computed')), '/p'), modules);
+    run(hotRegistration('/p/src/b.ts', of('effect'), parse(of('effect')), '/p'), modules);
+    expect(modules.get('pkg:thane')).toEqual({ signal: 'a', computed: 'b', effect: 'a' });
+    expect([...modules.keys()]).toEqual(['src/a.ts', 'pkg:thane', 'src/b.ts']);
+  });
 });
 
 describe('the updates of a change', () => {
@@ -213,6 +285,12 @@ describe('the updates of a change', () => {
     // Its stylesheet is part of it
     expect(update!.code).toContain('b { color: red; }');
     expect(update!.code).not.toMatch(/__thaneModules|__thane_hot_self/);
+    // The bindings it reads of each package, for the page to check: its source's imports (as every module
+    // registers them), and the compiler's
+    expect(update!.needs).toEqual({
+      'thane': ['defineComponent', 'html'],
+      'thane/runtime': ['__registerComponent', '__enableComponentStyles', '__T'],
+    });
   });
 
   test("a store's runs it again, keeping its signals, then the component file that imports it", async () => {

@@ -278,11 +278,18 @@ export class DevServer {
   if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
   // Components register for hot swapping (runtime/hot.ts); a hot update runs changed modules again, in
   // order, their imports read from the modules the page has loaded, and each one's new exports replace its
-  // old ones for the modules run after it. False: the page reloads instead.
+  // old ones for the modules run after it. Each update names the bindings it reads of each package, which
+  // the page's modules must have registered ('*': the whole namespace). False: the page reloads instead.
   window.__thaneHot = {};
   const applyHotUpdates = (updates) => {
     const modules = window.__thaneModules;
-    if (!Array.isArray(updates) || !modules || updates.some((update) => !modules.has(update.key))) return false;
+    const missing = (update) =>
+      !modules.has(update.key) ||
+      Object.entries(update.needs || {}).some(([specifier, names]) => {
+        const bindings = modules.get('pkg:' + specifier);
+        return !bindings || names.some((name) => (name === '*' ? !modules.has('pkg*:' + specifier) : !(name in bindings)));
+      });
+    if (!Array.isArray(updates) || !modules || updates.some(missing)) return false;
     try {
       for (const update of updates) {
         const require = (id) => {
