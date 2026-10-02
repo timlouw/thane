@@ -21,7 +21,7 @@ export const App = defineComponent('test-app', () => ({
   template: html\`\${ProductGrid({ products: items })}\`,
 }));
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source, {
@@ -41,7 +41,7 @@ type Product = { id: number; title: string };
 export const ProductGrid = defineComponent<{ products: { (): Product[]; subscribe: (fn: (items: Product[]) => void, immediate?: boolean) => () => void } }>('product-grid', ({ props }) => ({
   template: html\`
     <section>
-      \${repeat(props.products(), (product) => ProductCard({ product }), html\`<p>None</p>\`, (product) => product.id)}
+      \${repeat(props.products(), (product) => ProductCard({ product }), { key: "id", empty: html\`<p>None</p>\` })}
     </section>
   \`,
 }));
@@ -51,8 +51,8 @@ export const ProductGrid = defineComponent<{ products: { (): Product[]; subscrib
     expect(js).not.toContain('ProductCard({ product })');
     expect(js).not.toMatch(/[^A-Za-z_]roducts\(\)/);
     expect(js).toContain('document.createElement("div")');
-    // Destroy child helper is used in cleanups (may be minified from __dc)
-    expect(js).toMatch(/cleanups:\[[A-Za-z_$][\w$]*\(/);
+    // The row's child is held in a variable whose `d` destroys it, and whose `u` gives it the row's new item
+    expect(js).toMatch(/cleanups:\[([A-Za-z_$][\w$]*)\.d\][\s\S]*\1\.u\(/);
     // Items getter accesses .products (may be minified from props.products)
     expect(js).toContain('.products');
   });
@@ -66,12 +66,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // The fill writes textContent (through the guard variable) and keeps the Text node it
@@ -90,12 +90,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Template should have empty <li></li>; the text node is created when the row is filled
@@ -117,13 +117,13 @@ export const App = defineComponent('test-app', () => {
               <td>\${item.id}</td>
               <td>\${item.label}</td>
             </tr>
-          \`, null, (item) => item.id)}
+          \`, { key: "id" })}
         </tbody>
       </table>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Both td cells keep the Text node created by the fill and write nodeValue on update
@@ -148,12 +148,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>Name: \${item.name}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>Name: \${item.name}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // The text node after the marker is reached by path once per row, no TreeWalker, and
@@ -173,12 +173,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.first} \${item.last}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.first} \${item.last}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Two comment markers means two text nodes, each written in fill and update; the space between
@@ -200,12 +200,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.a}\${item.b}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.a}\${item.b}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Both bindings need comment markers since they share an element with multiple bindings
@@ -232,12 +232,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <table><tbody>
-        \${repeat(items(), (item) => html\`<tr class=\${selected() === item.id ? 'danger' : ''}><td>\${item.label}</td></tr>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<tr class=\${selected() === item.id ? 'danger' : ''}><td>\${item.label}</td></tr>\`, { key: "id" })}
       </tbody></table>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Update path: `if (_m.p !== (_m.p = expr)) write(_m.p)` — the guard (a field on the row's
@@ -274,7 +274,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Main template should have no "> <" whitespace between elements
@@ -299,13 +299,13 @@ export const App = defineComponent('test-app', () => {
               <td>\${item.id}</td>
               <td>\${item.label}</td>
             </tr>
-          \`, null, (item) => item.id)}
+          \`, { key: "id" })}
         </tbody>
       </table>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Row template should be compact: <tr><td></td><td></td></tr>
@@ -322,12 +322,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li><a @click=\${() => click(item)}>\${item.label}</a></li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li><a @click=\${() => click(item)}>\${item.label}</a></li>\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // After removing @click attribute, the trailing space before > should be stripped
@@ -357,13 +357,13 @@ export const App = defineComponent('test-app', () => {
               <td>\${item.id}</td>
               <td>\${item.label}</td>
             </tr>
-          \`, null, (item) => item.id)}
+          \`, { key: "id" })}
         </tbody>
       </table>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // The second binding should reference the first variable, not navigate from root again
@@ -395,7 +395,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Should compile without errors
@@ -419,12 +419,12 @@ export const App = defineComponent('test-app', () => {
           <li>
             Item: <strong>\${item.label}</strong> (#\${item.id})
           </li>
-        \`, null, (item) => item.id)}
+        \`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Should compile without errors
@@ -456,7 +456,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // The marker and the boundary comment survive in the template, the marker without its id
@@ -480,7 +480,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Should compile without errors — conditional markers must survive stripping
@@ -502,7 +502,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     expect(js).toContain('<!----> <!----></span>');

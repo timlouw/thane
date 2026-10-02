@@ -1,8 +1,8 @@
-import { computed, defineComponent, html, when, whenElse, repeat } from 'thane';
+import { computed, defineComponent, html, when, repeat } from 'thane';
 import styles from './Cart.module.css';
 import { cartCount, products, removeFromCart } from '../../state/global-state.js';
 
-export const CartPage = defineComponent('cart-page', () => {
+export const CartPage = defineComponent(() => {
   const cartProducts = computed(() => products().filter((p) => p().cartCount > 0));
   const totalPrice = computed(() =>
     products()
@@ -10,54 +10,35 @@ export const CartPage = defineComponent('cart-page', () => {
       .toFixed(2),
   );
 
-  const removeItem = (productId: number) => {
-    removeFromCart(productId);
-  };
-
-  const checkout = () => {
-    console.log('Proceeding to checkout...');
-  };
-
-  const goHome = (event: Event) => {
-    event.preventDefault();
-    navigate('/');
-  };
-
   return {
     template: html`
       <div class="cartContainer">
-        ${whenElse(
+        ${when(
           cartCount() === 0,
-          html`<p>
-            Your cart is empty.
-            <a href="/" @click=${goHome}>Select some items first.</a>
-          </p>`,
+          html`<p>Your cart is empty. <a href="/">Select some items first.</a></p>`,
           html`
             <ul class="cartList">
               ${repeat(
                 cartProducts(),
-                (productSignal) => html`
+                (product) => html`
                   <li class="cartItem">
-                    <img src=${productSignal().image} alt=${productSignal().title} class="cartItemImage" />
+                    <img src=${product().image} alt=${product().title} class="cartItemImage" />
                     <div>
-                      <h3>${productSignal().title}</h3>
-                      <p ${when(productSignal().cartCount > 1)}>${'Unit Price: R' + productSignal().price}</p>
-                      <p>Price: R${(productSignal().price * productSignal().cartCount).toFixed(2)}</p>
-                      <button class="removeButton" @click=${() => removeItem(productSignal().id)}>
-                        ${productSignal().cartCount === 1 ? 'Remove from Cart' : 'Remove One Item'}
+                      <h3>${product().title}</h3>
+                      <p ${when(product().cartCount > 1)}>Unit Price: R${product().price}</p>
+                      <p>Price: R${(product().price * product().cartCount).toFixed(2)}</p>
+                      <button class="removeButton" @click=${removeFromCart(product().id)}>
+                        ${product().cartCount === 1 ? 'Remove from Cart' : 'Remove One Item'}
                       </button>
-                      <span class="cartCounter" ${when(productSignal().cartCount > 1)}
-                        >${productSignal().cartCount}</span
-                      >
+                      <span class="cartCounter" ${when(product().cartCount > 1)}>${product().cartCount}</span>
                     </div>
                   </li>
                 `,
-                null,
-                (productSignal) => productSignal().id,
+                { key: (product) => product().id },
               )}
             </ul>
             <h2>Total Price: R${totalPrice()}</h2>
-            <button class="checkoutButton" @click=${checkout}>Checkout</button>
+            <button class="checkoutButton" @click=${console.log('Proceeding to checkout...')}>Checkout</button>
           `,
         )}
       </div>
@@ -65,5 +46,3 @@ export const CartPage = defineComponent('cart-page', () => {
     styles,
   };
 });
-
-export default CartPage;

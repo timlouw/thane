@@ -21,13 +21,13 @@ export const App = defineComponent('test-app', () => {
     template: html\`
       <div class=\${tone()}>
         <table><tbody>
-          \${repeat(items(), (item) => html\`<tr class=\${selected() === item.id ? 'danger' : ''}><td>\${item.label}</td></tr>\`, null, (item) => item.id)}
+          \${repeat(items(), (item) => html\`<tr class=\${selected() === item.id ? 'danger' : ''}><td>\${item.label}</td></tr>\`, { key: "id" })}
         </tbody></table>
       </div>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Component-level signal binding: el.className = tone()
@@ -50,7 +50,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     expect(js).toMatch(/setAttribute\("class"/);
@@ -70,7 +70,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     expect(js).toMatch(/setAttribute\("href"/);

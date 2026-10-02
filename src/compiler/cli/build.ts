@@ -70,6 +70,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
   // Templates, stylesheets and selectors are minified by the compiler as it emits them (see
   // plugins/minification); esbuild minifies the JavaScript. Nothing edits the emitted files.
   buildContext.minify = config.isProd;
+  buildContext.lint = config.lint;
   // `thane dev` swaps a changed component file in the open page instead of reloading it
   if (config.serve && !config.isProd) buildContext.hot = createHotState();
 
@@ -96,7 +97,7 @@ export async function runBuild(config: BuildConfig): Promise<void> {
 
   const plugins = [
     TSCTypeCheckerPlugin({ strict: config.strictTypeCheck, projectRoot }),
-    ThaneLinterPlugin(),
+    ThaneLinterPlugin({ severities: config.lint }),
     ComponentPrecompilerPlugin(buildContext),
     GlobalCSSBundlerPlugin({
       minify: config.isProd,

@@ -4,7 +4,9 @@
 
 export interface CLIOptions {
   /** Command to execute */
-  command: 'build' | 'dev' | 'serve' | 'types' | 'typecheck';
+  command: 'build' | 'dev' | 'serve' | 'types' | 'typecheck' | 'init' | 'generate';
+  /** The words after `init` and `generate`: the folder, or what to generate and its path */
+  positionals?: string[] | undefined;
   /** Production mode */
   prod: boolean;
   /** Enable gzip/brotli compression */
@@ -57,6 +59,8 @@ export interface CLIOptions {
   legalComments?: 'none' | 'eof' | 'linked' | 'external' | undefined;
   /** Write esbuild metafile to dist for bundle analysis (default: false) */
   analyze?: boolean | undefined;
+  /** The severity of each lint rule and compiler warning, by code (config file only) */
+  lint?: import('../errors.js').LintSeverities | undefined;
   /** Set when --help or --version is passed; caller should print and exit */
   exitRequested?: 'help' | 'version' | undefined;
 }
@@ -111,6 +115,11 @@ export interface ThaneBuildOptions {
   legalComments?: 'none' | 'eof' | 'linked' | 'external' | undefined;
   /** Write esbuild metafile to dist for bundle analysis (default: false) */
   analyze?: boolean | undefined;
+  /**
+   * The severity of lint rules and compiler warnings, by code: `"off"`, `"warning"` or `"error"`,
+   * e.g. `{ "THANE405": "off", "THANE411": "error" }`
+   */
+  lint?: import('../errors.js').LintSeverities | undefined;
 }
 
 /**
@@ -192,4 +201,6 @@ export interface BuildConfig {
   legalComments: 'none' | 'eof' | 'linked' | 'external';
   /** Write esbuild metafile to dist for bundle analysis */
   analyze: boolean;
+  /** The severity of lint rules and compiler warnings, by code */
+  lint: import('../errors.js').LintSeverities;
 }

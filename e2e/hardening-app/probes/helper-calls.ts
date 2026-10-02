@@ -12,11 +12,9 @@ export const HelperCalls = defineComponent('hardening-helper-calls', () => {
   const total = () => price() * qty();
   const format = (n: number) => `${n} ${currency()}`;
   expose('helperCalls', { price, qty, currency });
-  return {
-    template: html`<p class="calls">
-      <span class="calls-label">${label()}</span>
-      <span class="calls-total" title=${total()}>${total()}</span>
-      <span class="calls-formatted">${format(price())}</span>
-    </p>`,
-  };
+  return html`<p class="calls">
+    <span class="calls-label">${label()}</span>
+    <span class="calls-total" title=${total()}>${total()}</span>
+    <span class="calls-formatted">${format(price())}</span>
+  </p>`;
 });

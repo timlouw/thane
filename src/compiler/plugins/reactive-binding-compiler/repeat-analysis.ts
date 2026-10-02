@@ -40,6 +40,7 @@ import {
   BOUND_MARK,
   applyTemplateEdits,
   stripPropertyBoundAttributes,
+  quoteEmptiedValues,
   toRepeatBlock,
   type IdState,
   type TemplateEdit,
@@ -122,6 +123,11 @@ const ensureRowElementId = (el: HtmlElement, state: IdState, prefix: 'b' | 'i'):
  *   <tr><td><span></span></td></tr>
  * Plus navigation paths to each dynamic element.
  */
+/** THANE016 for an element ref in a list row: each row has its element, and one ref would name only one of them */
+export const refInRow = (name: string): string =>
+  `${ErrorCode.TAG_VALUE}: \${${name}} in a list row — a ref names one element, and each row has one of its own. ` +
+  'Read the element from the event in a handler (e.currentTarget), or give the row a component that holds the ref.';
+
 export const generateStaticRepeatTemplate = (
   itemTemplate: string,
   itemBindings: ItemBinding[],
@@ -210,9 +216,10 @@ export const generateStaticRepeatTemplate = (
   // extracted. The only ${...} expressions left are item-variable bindings,
   // which are handled at runtime via the element binding paths — so they must
   // all be removed from the static template.
-  staticHtml = stripTemplateExpressions(staticHtml);
-  // Property-bound attributes (checked, disabled, value, …) must not ship in the template
-  staticHtml = stripPropertyBoundAttributes(staticHtml, itemBindings);
+  staticHtml = quoteEmptiedValues(stripTemplateExpressions(staticHtml));
+  // Property-bound attributes (checked, disabled, value, …) must not ship in the template, whether they read
+  // the item or a signal of the component
+  staticHtml = stripPropertyBoundAttributes(staticHtml, [...itemBindings, ...(signalBindings ?? [])]);
 
   // The marks stay: the row's code finds its text markers, anchors and child hosts by them in the
   // template as emitted, which is written without them
@@ -429,6 +436,7 @@ const classifyParsedBindings = (
     if (binding.type === 'when' || binding.type === 'whenElse' || binding.type === 'repeat') continue;
     const insideRange = allRanges.some((r) => binding.expressionStart >= r.start && binding.expressionStart < r.end);
     if (insideRange) continue;
+    if (binding.type === 'ref') throw new Error(refInRow(binding.handlerExpression!));
     if (binding.type === 'event' && binding.eventName && binding.handlerExpression) {
       // Every handler on a row element is a row event, whether or not it mentions the item:
       // rows do not exist when the component binds, so a root-level listener would attach to
@@ -478,11 +486,18 @@ const classifyParsedBindings = (
       // The parser records a bare read as its full ${…} text; strip the braces before deciding
       const exprText = fullExpr.replace(/^\s*\$\{([\s\S]*)\}\s*$/, '$1').trim();
       const bareRead = /^[A-Za-z_$][\w$]*\(\)$/.test(exprText);
+      // A property with the attribute's meaning is written instead (`disabled`, `checked`, `value`), as at a
+      // component's top level: setAttribute('disabled', false) would disable the element
+      const domProperty =
+        binding.type === 'attr' && binding.property
+          ? attributeDomProperty(binding.property, binding.element)
+          : undefined;
       signalBindings.push({
         id: bindingId,
         signalName: binding.signalName,
         type: binding.type,
         ...(binding.property ? { property: binding.property } : {}),
+        ...(domProperty ? { domProperty } : {}),
         ...(bareRead || !exprText
           ? {}
           : { expression: exprText, signalNames: binding.signalNames ?? [binding.signalName] }),
@@ -716,7 +731,7 @@ export const processItemTemplate = (
     isNestedInsideAny(start, end, ranges.conditional);
 
   // ── WhenElse ──
-  const whenElseBlocks = collectWhenElseBlocks(
+  const branches = collectWhenElseBlocks(
     {
       ...parsed,
       bindings: parsed.bindings.filter(
@@ -728,6 +743,8 @@ export const processItemTemplate = (
     processRowSubTemplate,
     rowRefs.expression,
   );
+  const whenElseBlocks = branches.whenElseBlocks;
+  conditionals.push(...branches.conditionals);
 
   // ── Nested repeats ──
   for (const binding of parsed.bindings) {

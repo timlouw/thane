@@ -26,7 +26,7 @@ const compile = async (declaration: string): Promise<Compiled> => {
 const log = (m: string) => console.log(m);
 const flag = Math.random() > 2;
 ${declaration}
-mount({ component: App });
+mount(App);
 `);
   const start = js.indexOf('var App = ');
   const end = js.indexOf(', __tpl);', start);
@@ -38,6 +38,33 @@ mount({ component: App });
     stylesImported: /function __enableComponentStyles\(/.test(js),
   };
 };
+
+describe('setup shapes: the template returned alone', () => {
+  test("a concise body that is a template: lean, the template is the component's", async () => {
+    const r = await compile('export const App = defineComponent(() => html`<p>a</p>`);');
+    expect(r.registration).toBe('var App = __registerComponentLean("app", () => ({}), __tpl);');
+    expect(r.tpl).toBe('<p>a</p>');
+  });
+
+  test('a return of a template in a block body, with bindings: the returned value is the binding object', async () => {
+    const r = await compile(`export const App = defineComponent(() => {
+  const n = signal(1);
+  return html\`<button @click=\${() => n(n() + 1)}>\${n()}</button>\`;
+});`);
+    expect(r.registration).toMatch(
+      /^var App = __registerComponentLean\("app", \(\) => \{\n  const n = signal\(1\);\n  return \{\n    __b: \(_ctx, _ns\) => \{/,
+    );
+    expect(r.tpl).toBe('<button><!---->1<!----></button>');
+  });
+
+  test("a template returned in a nested function is not the setup's", async () => {
+    const r = await compile(`export const App = defineComponent(() => {
+  const make = () => html\`<i>x</i>\`;
+  return { template: html\`<p>a</p>\` };
+});`);
+    expect(r.tpl).toBe('<p>a</p>');
+  });
+});
 
 describe('setup shapes: concise and block bodies', () => {
   test('concise body: lean, template stripped', async () => {
@@ -94,6 +121,17 @@ describe('setup shapes: concise and block bodies', () => {
         '}, __tpl);',
       ].join('\n'),
     );
+  });
+
+  test('a trailing comma after the last argument: the template goes after the argument, before the comma', async () => {
+    const js = await buildAndReadJs(`import { defineComponent, mount } from 'thane';
+export const App = defineComponent(
+  'x-app',
+  () => html\`<p>a</p>\`,
+);
+mount(App);
+`);
+    expect(js).toMatch(/var App = __registerComponentLean\(\s*"x-app",\s*\(\) => \(\{\}\),\s*__tpl\s*\);/);
   });
 
   test('explicit selector: the setup is the second argument', async () => {
@@ -183,6 +221,53 @@ describe('setup shapes: lifecycle hooks', () => {
     );
   });
 
+  test('a method, a function expression, a reference and a shorthand hook: full, each kept', async () => {
+    const method = await compile(`export const App = defineComponent(() => ({
+  template: html\`<p>a</p>\`,
+  onMount() { log('m'); },
+  onDestroy: function () { log('d'); },
+}));`);
+    expect(method.registration).toBe(
+      [
+        'var App = __registerComponent("app", () => ({',
+        '  onMount() {',
+        '    log("m");',
+        '  },',
+        '  onDestroy: function() {',
+        '    log("d");',
+        '  }',
+        '}), __tpl);',
+      ].join('\n'),
+    );
+    const reference = await compile(`const start = () => log('m');
+export const App = defineComponent(() => {
+  const onDestroy = () => log('d');
+  return { template: html\`<p>a</p>\`, onMount: start, onDestroy };
+});`);
+    expect(reference.registration).toContain('__registerComponent("app"');
+    expect(reference.registration).toContain('return { onMount: start, onDestroy };');
+  });
+
+  test('an empty method or function expression hook is stripped like an empty arrow: lean', async () => {
+    const r = await compile(`export const App = defineComponent(() => ({
+  template: html\`<p>a</p>\`,
+  onMount() {},
+  onDestroy: function () {},
+}));`);
+    expect(r.registration).toBe('var App = __registerComponentLean("app", () => ({}), __tpl);');
+  });
+
+  test('properties in any order: styles before the template', async () => {
+    const r = await compile(`export const App = defineComponent(() => ({
+  styles: css\`p { color: red; }\`,
+  onMount: () => log('m'),
+  template: html\`<p>a</p>\`,
+}));`);
+    expect(r.tpl).toBe('<p>a</p>');
+    expect([r.stylesCall, r.stylesImported]).toEqual([true, true]);
+    expect(r.registration).toContain('onMount: () => log("m")');
+  });
+
   test('a concise-body hook counts as non-empty: full', async () => {
     const r = await compile(`export const App = defineComponent(() => ({
   template: html\`<p>a</p>\`,
@@ -207,7 +292,7 @@ describe('setup shapes: several return statements and nested functions', () => {
   return { template: html\`<p>b</p>\` };
 });`),
     ).rejects.toThrow(
-      /main\.ts:6:4: ERROR: \[plugin: thane-linter\] A setup function with more than one return object is not supported/,
+      /main\.ts:6:4: ERROR: \[plugin: thane-linter\] A setup function with more than one return is not supported/,
     );
   });
 
@@ -219,7 +304,7 @@ describe('setup shapes: several return statements and nested functions', () => {
   }
   return { template: html\`<p>b</p>\`, styles: css\`p { color: red; }\` };
 });`),
-    ).rejects.toThrow(/\[plugin: thane-linter\] A setup function with more than one return object/);
+    ).rejects.toThrow(/\[plugin: thane-linter\] A setup function with more than one return/);
   });
 
   test('nested arrow, function expression and function declaration returns are skipped', async () => {

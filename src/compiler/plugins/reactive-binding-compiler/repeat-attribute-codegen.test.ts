@@ -1,5 +1,6 @@
 import { expect, test, describe } from 'bun:test';
 import { buildAndReadJs } from '../../testing/build-project.js';
+import { quoteEmptiedValues } from './template-utils.js';
 
 // Development builds keep identifiers, so the emitted row factory can be asserted directly.
 
@@ -12,12 +13,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(rows(), ${params} => html\`${row}\`, null, (item) => item.id)}
+        \${repeat(rows(), ${params} => html\`${row}\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 /** The static row template the optimised path clones, or null when the list uses the fallback renderer. */
@@ -100,5 +101,51 @@ describe('Developer ids on bound row elements', () => {
     const onRoot = await buildAndReadJs(app('<li id="row">${item.label}</li>'));
     expect(rowTemplate(onRoot)).toBe('<li id="row"></li>');
     expect(onRoot).toMatch(/_e0\.textContent = \(_p\d+ = item\.label\) \?\? ""/);
+  });
+});
+
+describe('Row attributes that read a signal of the component', () => {
+  /** A list of two constant rows in a component with the signals off, note and tone */
+  const signalRows = (row: string): string => `
+import { defineComponent, signal, mount, html, repeat } from 'thane';
+export const App = defineComponent('test-app', () => {
+  const off = signal(false);
+  const note = signal('n');
+  const tone = signal('calm');
+  return html\`\${repeat(['a', 'b'], (label) => html\`${row}\`)}\`;
+});
+mount(App);
+`;
+
+  test('a boolean attribute and a property leave the row template, and are written as properties', async () => {
+    const js = await buildAndReadJs(
+      signalRows('<label><input type="checkbox" disabled=${off()} /><input value="${note()}" />${label}</label>'),
+    );
+    // A disabled= left in the template, with or without a value, would disable every row's input
+    expect(rowTemplate(js)).toMatch(/^<label><input type="checkbox" \/><input \/>/);
+    expect(js).toMatch(/_s\d+\.disabled = off\(\);/);
+    expect(js).toMatch(/_s\d+\.value = note\(\);/);
+    expect(js).not.toMatch(/setAttribute\("(disabled|value)"/);
+  });
+
+  test('an unquoted value the row template is left without is written as "", so it keeps the next attribute', async () => {
+    const js = await buildAndReadJs(
+      signalRows('<label><input class=${tone()} type="checkbox" title="a= b" /><a href=/about>${label}</a></label>'),
+    );
+    expect(rowTemplate(js)).toMatch(/^<label><input class="" type="checkbox" title="a= b" \/><a href=\/about>/);
+    expect(js).toMatch(/_s\d+\.className = tone\(\);/);
+  });
+});
+
+describe('quoteEmptiedValues', () => {
+  test('an empty unquoted value before another attribute, the end of the tag or a self-close', () => {
+    expect(quoteEmptiedValues('<input class= type="checkbox"><b title=>x</b><i id= />')).toBe(
+      '<input class="" type="checkbox"><b title="">x</b><i id="" />',
+    );
+  });
+
+  test("a developer's unquoted value, quoted values, text and comments are left as they are", () => {
+    const html = '<a href=/about title="a= b" data-x=\'c= d\'>x = y</a><!-- a= b --><p>=</p>';
+    expect(quoteEmptiedValues(html)).toBe(html);
   });
 });

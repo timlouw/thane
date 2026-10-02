@@ -23,61 +23,59 @@ Each route consists of:
 
 | Property    | Type                                            | Description                                                                  |
 | :---------- | :---------------------------------------------- | :--------------------------------------------------------------------------- |
-| `component` | `() => Promise<any>` \| `ComponentHTMLSelector` | Lazy loader or eager component                                               |
+| `component` | `() => Promise<any>` \| `ComponentHTMLSelector` | Lazy loader or eager component ([Code Splitting](#code-splitting))           |
 | `meta`      | fields \| `(route) => fields` _(optional)_      | The document head while the route is active: see [Route Heads](#route-heads) |
 
 The `notFound` route is **required** — it renders when no other route matches. An `error` route is optional: it renders when a page cannot be shown (see [The Error Route](#the-error-route)). Route patterns starting with `/:param` (root-level parameters) are rejected at runtime.
 
-## Bootstrap Modes
+## Mounting
 
-Thane supports three ways to mount a routed application:
+An app is mounted in one of three ways:
 
-### Mode A — Component Only (No Router)
+### A Component
 
 ```typescript
 import { mount } from 'thane';
 import { App } from './app.js';
 
-mount({ component: App });
+mount(App);
 ```
 
 No routing. Use this for single-page apps that don't need URL-based navigation.
 
-### Mode B — Shell + Router
+### A Shell With Routes
 
 ```typescript
 import { mount } from 'thane';
 import { App } from './app.js';
 import Routes from './routes.js';
 
-mount({
-  component: App,
-  router: { routes: Routes },
-});
+mount(App, { routes: Routes });
 ```
 
-The shell component (`App`) wraps the router. Its template must contain an element with `id="router-outlet"`:
+The shell component (`App`) wraps the router. Its template has a `<router-outlet>` element, where the pages go:
 
 ```typescript
-export const App = defineComponent('store-app', () => ({
-  template: html`
-    ${Navbar({})}
-    <div id="router-outlet"></div>
+export const App = defineComponent(
+  () => html`
+    ${Navbar()}
+    <router-outlet class="content"></router-outlet>
   `,
-}));
+);
 ```
 
-Page components render inside the outlet. The shell (including Navbar) persists across navigations.
+Page components render inside the outlet. The shell (including Navbar) persists across navigations. The outlet
+is an element like any other, and it is inline until the shell styles it: give it `display: block` when it needs
+a box of its own (padding, a grid area). A shell without a `<router-outlet>` uses the page's own (in
+`index.html`), and when there is none either, `mount()` throws.
 
-### Mode C — Router Only
+### The Routes Alone
 
 ```typescript
 import { mount } from 'thane';
 import Routes from './routes.js';
 
-mount({
-  router: { routes: Routes },
-});
+mount(Routes);
 ```
 
 No shell component. Page components render directly into `document.body` (or a `target` element).
@@ -91,7 +89,7 @@ loaded again, and the link keeps everything a link does (open in a new tab, copy
 follows it).
 
 ```typescript
-template: html`
+html`
   <a href="/">Home</a>
   <a href=${href('/users/:id', { id: user.id })}>${user.name}</a>
 `;
@@ -113,6 +111,8 @@ gzipped.
 Navigate programmatically using HTML5 History pushState:
 
 ```typescript
+import { navigate } from 'thane/router';
+
 navigate('/about');
 navigate('/users/42');
 ```
@@ -120,9 +120,9 @@ navigate('/users/42');
 In templates, a [link](#links) is usually the better choice; to navigate from a click on something else, bind it directly:
 
 ```typescript
-template: html`
-  <a @click=${navigate('/')}>Home</a>
-  <a @click=${navigate('/about')}>About</a>
+html`
+  <button @click=${navigate('/')}>Home</button>
+  <tr @click=${navigate('/users/:id', { id: user.id })}>…</tr>
 `;
 ```
 
@@ -138,7 +138,7 @@ import { href } from 'thane/router';
 
 navigate('/users/:id', { id: user.id });
 
-template: html`<a href=${href('/users/:id', { id: user.id })} @click.prevent=${navigate('/users/:id', { id: user.id })}>${user.name}</a>`;
+html`<a href=${href('/users/:id', { id: user.id })}>${user.name}</a>`; // a link, which the router follows
 ```
 
 `href(pattern, params)` gives the path (`/users/7`) as a value: for an `href` attribute, or to keep in a
@@ -150,16 +150,56 @@ and `params` must give each of its parameters a string or a number and nothing e
 Go back in browser history:
 
 ```typescript
-template: html`<button @click=${navigateBack}>← Back</button>`;
+import { navigateBack } from 'thane/router';
+
+html`<button @click=${navigateBack}>← Back</button>`;
 ```
 
-### `currentPath()`
+### `currentPath` and `isActive()`
 
-A read-only signal containing the current pathname. Use it for active link styling:
+`currentPath` is a read-only signal of the current pathname, and `isActive(pattern)` says whether the current path is a
+route's. Both follow navigation in a template:
 
 ```typescript
-template: html` <a class=${currentPath() === '/' ? 'active' : ''} @click=${navigate('/')}>Home</a> `;
+import { currentPath, isActive } from 'thane/router';
+
+html`
+  <nav>
+    <a href="/" class:active=${isActive('/')}>Home</a>
+    <a href="/work" class:active=${isActive('/work/*')}>Our work</a>
+  </nav>
+  <p>You are at ${currentPath()}</p>
+`;
 ```
+
+`isActive()` takes a route's pattern: `isActive('/about')` is the path itself, `isActive('/users/:id')` any user's path,
+and a pattern ending in `/*` the route and every path below it (`/work`, `/work/sovrin`). A trailing slash on the path
+does not count. Patterns are typed from the routes, like `navigate()`'s.
+
+`navigate`, `navigateBack`, `currentPath` and `isActive` are imported from `thane/router`; none of them is a global.
+
+### `markActiveLinks()`
+
+Called once in the entry, `markActiveLinks()` marks the links to the current path with `aria-current="page"`: each time a
+route's page is on screen, every `<a href>` of the document whose path is the current path gets it, and the others
+lose it. One CSS rule then styles every active link, and assistive technology announces it:
+
+```typescript
+import { mount } from 'thane';
+import { markActiveLinks } from 'thane/router';
+
+markActiveLinks();
+mount(App, { routes: Routes });
+```
+
+```css
+nav a[aria-current='page'] {
+  font-weight: bold;
+}
+```
+
+It matches a link's path exactly (a trailing slash aside); for a link that is active for a whole section, use
+`class:active=${isActive('/work/*')}`. An app that does not call it does not bundle it.
 
 ## Redirects and Guards
 
@@ -204,14 +244,11 @@ Define parameters with `:param` syntax:
 Access parameters via `route.params` in the page component:
 
 ```typescript
-export const UserPage = defineComponent('user-page', ({ route }) => {
-  const userId = route.params.id;
-
-  return {
-    template: html`<h1>User: ${userId}</h1>`,
-  };
-});
+export const UserPage = defineComponent('user-page', ({ route }) => html`<h1>User: ${route!.params.id}</h1>`);
 ```
+
+The page's explicit selector is how the route types find it: with it, `route.params` is typed from the page's
+pattern (`{ id: string }` here). A page whose selector is derived from its name reads them untyped.
 
 Parameters are decoded: `/users/ada%20lovelace` gives `id` the value `ada lovelace`. A segment that is not valid percent-encoding (`/users/100%`) is kept as written.
 
@@ -403,10 +440,13 @@ Use dynamic `import()` for lazy-loaded route components. Each page becomes a sep
 ```typescript
 const Routes = defineRoutes({
   '/': { component: () => import('./pages/home.js') },
-  '/settings': { component: () => import('./pages/settings.js') },
+  '/settings': { component: () => import('./pages/settings.js').then((m) => m.SettingsPage) },
   'notFound': { component: () => import('./pages/404.js') },
 });
 ```
+
+The router shows the module's default export (`export default HomePage;`, next to the page's named export), or what
+the loader picks from the module, as `/settings` does.
 
 For eager loading (bundled with the main chunk), pass the component directly:
 
@@ -438,9 +478,7 @@ error: { component: () => import('./pages/error.js'), meta: { title: 'Something 
 // pages/error.ts
 export const ErrorPage = defineComponent('error-page', ({ route }) => {
   const message = route!.error instanceof Error ? route!.error.message : String(route!.error);
-  return {
-    template: html`<p>${message}</p><button @click=${() => location.reload()}>Reload</button>`,
-  };
+  return html`<p>${message}</p><button @click=${location.reload()}>Reload</button>`;
 });
 ```
 
@@ -456,17 +494,14 @@ The router manages scroll position automatically:
 ### Configuration
 
 ```typescript
-mount({
-  component: App,
-  router: {
-    routes: Routes,
-    scrollRestoration: {
-      resetOnNavigate: true, // scroll to top on navigate() — default: true
-      restoreOnBackForward: true, // restore position on back/forward — default: true
-      behavior: 'auto', // 'auto' | 'smooth' — default: 'auto'
-      top: 0, // reset top offset — default: 0
-      left: 0, // reset left offset — default: 0
-    },
+mount(App, {
+  routes: Routes,
+  scrollRestoration: {
+    resetOnNavigate: true, // scroll to top on navigate() — default: true
+    restoreOnBackForward: true, // restore position on back/forward — default: true
+    behavior: 'auto', // 'auto' | 'smooth' — default: 'auto'
+    top: 0, // reset top offset — default: 0
+    left: 0, // reset left offset — default: 0
   },
 });
 ```
@@ -474,30 +509,8 @@ mount({
 Disable scroll restoration entirely:
 
 ```typescript
-mount({
-  component: App,
-  router: {
-    routes: Routes,
-    scrollRestoration: false,
-  },
-});
+mount(App, { routes: Routes, scrollRestoration: false });
 ```
-
-## Custom Outlet ID
-
-By default, the router looks for `id="router-outlet"`. Customize it with the `outletId` option:
-
-```typescript
-mount({
-  component: App,
-  router: {
-    routes: Routes,
-    outletId: 'router-main',
-  },
-});
-```
-
-The outlet ID must match the pattern `` `router-${string}` ``.
 
 ## Type-Safe Routes
 
@@ -508,12 +521,13 @@ Thane generates type definitions for your routes automatically. After running `t
 3. Reject invalid paths at compile time
 4. Type the patterns and parameters of `href()` and `navigate(pattern, params)`
 
-The types are generated at the start of every build, and by `thane types`, from your `defineRoutes()` call. A project with several route tables, such as two apps that share one `tsconfig.json`, gets one entry per table, keyed by its file: `navigate()` accepts the paths of all of them. Include `.thane/types` in your `tsconfig.json` so your editor sees them (see [Getting Started](getting-started.md#installation)).
+The types are generated at the start of every build, and by `thane types`, from your `defineRoutes()` call. A project with several route tables, such as two apps that share one `tsconfig.json`, gets one entry per table, keyed by its file: `navigate()` accepts the paths of all of them. A `tsconfig.json` that extends `thane/tsconfig.json` includes `.thane/types`, so your editor sees them (see [Getting Started](getting-started.md#installation)).
 
 To type a variable or prop that holds a navigation target, use `RoutePaths`:
 
 ```typescript
 import type { RoutePaths } from 'thane';
+import { navigate } from 'thane/router';
 
 const backTo: RoutePaths = '/my-cart';
 navigate(backTo);
@@ -522,33 +536,31 @@ navigate(backTo);
 ## Full Example — E-Commerce Shell
 
 ```typescript
-// routes.ts
+// routes.ts: pages loaded when their route is first visited
 import { defineRoutes } from 'thane/router';
 
-const Routes = defineRoutes({
-  '/': { component: () => import('./pages/Products/Products.js'), meta: { title: 'Products' } },
-  '/my-cart': { component: () => import('./pages/Cart/Cart.js'), meta: { title: 'My Cart' } },
+export default defineRoutes({
+  '/': { component: () => import('./pages/Products/Products.js').then((m) => m.ProductsPage), meta: { title: 'Products' } },
+  '/my-cart': { component: () => import('./pages/Cart/Cart.js').then((m) => m.CartPage), meta: { title: 'My Cart' } },
   '/product-details/:productID': {
-    component: () => import('./pages/ProductDetails/ProductDetails.js'),
+    component: () => import('./pages/ProductDetails/ProductDetails.js').then((m) => m.ProductDetailsPage),
     meta: { title: 'Product Details' },
   },
-  'notFound': { component: () => import('./pages/NotFound/NotFound.js'), meta: { title: 'Not Found' } },
+  'notFound': { component: () => import('./pages/NotFound/NotFound.js').then((m) => m.NotFound), meta: { title: 'Not Found' } },
 });
-
-export default Routes;
 
 // main.ts
 import { mount } from 'thane';
 import { App } from './app.js';
 import Routes from './routes.js';
 
-mount({ component: App, router: { routes: Routes } });
+mount(App, { routes: Routes });
 
 // app.ts — shell component
-export const App = defineComponent('store-app', () => ({
+export const App = defineComponent(() => ({
   template: html`
-    ${Navbar({})}
-    <div id="router-outlet"></div>
+    ${Navbar()}
+    <router-outlet class="content"></router-outlet>
   `,
   styles: appStyles,
 }));

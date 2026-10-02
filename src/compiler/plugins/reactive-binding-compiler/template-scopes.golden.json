@@ -284,7 +284,7 @@
         "thenTemplate": "<p data-thane-ref=\"b2\"><!--b3--> <!----></p>",
         "elseTemplate": "<p>else</p>",
         "startIndex": 9,
-        "endIndex": 77,
+        "endIndex": 73,
         "thenBindings": [
           {
             "id": "b3",
@@ -323,8 +323,8 @@
         "itemsExpression": "items()",
         "itemVar": "it",
         "itemTemplate": "<li data-thane-ref=\"b5\">${it.name}</li>",
-        "startIndex": 81,
-        "endIndex": 159,
+        "startIndex": 77,
+        "endIndex": 155,
         "itemBindings": [
           {
             "elementId": "b5",
@@ -356,8 +356,8 @@
         "modifiers": [],
         "handlerExpression": "z",
         "elementId": "b8",
-        "startIndex": 168,
-        "endIndex": 179
+        "startIndex": 164,
+        "endIndex": 175
       }
     ],
     "nextId": 9
@@ -622,8 +622,8 @@
         "signalNames": ["g"],
         "jsExpression": "g()",
         "initialValue": true,
-        "startIndex": 75,
-        "endIndex": 115,
+        "startIndex": 71,
+        "endIndex": 111,
         "templateContent": "<em data-thane-ref=\"b1\"><!--b2--> <!----></em>",
         "nestedBindings": [
           {
@@ -661,7 +661,7 @@
         "thenTemplate": "<p data-thane-ref=\"b5\"><!--b6--> <!----></p>",
         "elseTemplate": "<p><!--b7--> <!----></p>",
         "startIndex": 5,
-        "endIndex": 75,
+        "endIndex": 71,
         "thenBindings": [
           {
             "id": "b6",
@@ -708,8 +708,8 @@
         "modifiers": [],
         "handlerExpression": "y",
         "elementId": "b8",
-        "startIndex": 118,
-        "endIndex": 129
+        "startIndex": 114,
+        "endIndex": 125
       }
     ],
     "nextId": 9

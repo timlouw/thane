@@ -10,8 +10,6 @@
 export type { LintRule, LintRuleMeta, LintRuleDefinition } from './types.js';
 
 import { noDefaultExportComponent } from './no-default-export-component.js';
-import { componentPropertyOrder } from './component-property-order.js';
-import { lifecycleArrowFunction } from './lifecycle-arrow-function.js';
 import { requireConstTaggedTemplates } from './require-const-tagged-templates.js';
 import { noNestedHtmlTags } from './no-nested-html-tags.js';
 import { noConditionalTemplateInit } from './no-conditional-template-init.js';
@@ -20,11 +18,12 @@ import { noAliasedComponentExport } from './no-aliased-component-export.js';
 import { duplicateMountTarget } from './duplicate-mount-target.js';
 import { singleReturnObject } from './single-return-object.js';
 import { noAliasedThaneImport } from './no-aliased-thane-import.js';
+import { noUncalledSignal } from './no-uncalled-signal.js';
+import { noUnknownComponentKey } from './no-unknown-component-key.js';
+import { noSignalSnapshotProp } from './no-signal-snapshot-prop.js';
 import type { LintRuleDefinition } from './types.js';
 
 export { noDefaultExportComponent } from './no-default-export-component.js';
-export { componentPropertyOrder } from './component-property-order.js';
-export { lifecycleArrowFunction } from './lifecycle-arrow-function.js';
 export { requireConstTaggedTemplates } from './require-const-tagged-templates.js';
 export { noNestedHtmlTags } from './no-nested-html-tags.js';
 export { noConditionalTemplateInit } from './no-conditional-template-init.js';
@@ -33,6 +32,9 @@ export { noAliasedComponentExport } from './no-aliased-component-export.js';
 export { duplicateMountTarget } from './duplicate-mount-target.js';
 export { singleReturnObject } from './single-return-object.js';
 export { noAliasedThaneImport } from './no-aliased-thane-import.js';
+export { noUncalledSignal } from './no-uncalled-signal.js';
+export { noUnknownComponentKey } from './no-unknown-component-key.js';
+export { noSignalSnapshotProp } from './no-signal-snapshot-prop.js';
 
 /**
  * All built-in lint rules, in registration order.
@@ -40,8 +42,6 @@ export { noAliasedThaneImport } from './no-aliased-thane-import.js';
  */
 export const allRules: readonly LintRuleDefinition[] = [
   noDefaultExportComponent,
-  componentPropertyOrder,
-  lifecycleArrowFunction,
   requireConstTaggedTemplates,
   noNestedHtmlTags,
   noConditionalTemplateInit,
@@ -50,4 +50,7 @@ export const allRules: readonly LintRuleDefinition[] = [
   duplicateMountTarget,
   singleReturnObject,
   noAliasedThaneImport,
+  noUncalledSignal,
+  noUnknownComponentKey,
+  noSignalSnapshotProp,
 ];

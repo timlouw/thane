@@ -2,15 +2,13 @@
  * Router runtime — single-instance client-side router for Thane.
  *
  * Fully tree-shakable: apps that don't import any router symbols pay zero cost.
- * The router supports two bootstrap modes (configured via the `router` option on `mount()`):
+ * The router mounts in one of two ways:
  *
- *   B) Shell mode — mount a shell component whose template contains an element
- *      with `id="router-outlet"` (or a custom `router-${string}` id).  Page
- *      components are rendered inside that outlet.
+ *   mount(Shell, { routes }) — a shell component whose template has a `<router-outlet>` element: page
+ *      components are rendered inside it.
  *
- *   C) Root mode — no shell component; page components are rendered directly
- *      into `document.body` (or a `target` element).  No outlet element is
- *      created or required.
+ *   mount(Routes) — no shell: page components are rendered directly into `document.body` (or the
+ *      `target` element).
  *
  * Hash-stability guarantees:
  *   • navigate / navigateBack are generic functions with zero
@@ -208,7 +206,10 @@ type ResolvedRouteContext<TPattern extends string> = TPattern extends 'notFound'
     : RouteContextBase<TPattern, RouteToPath<TPattern>, RouteParamsObject<TPattern>, RouteSearchValues<TPattern>>;
 
 export interface UntypedRouteContext extends RouteContextBase<string, string, Record<string, string>> {
-  /** @deprecated Run thane dev, thane build, or thane serve once to generate route-aware component types. */
+  /**
+   * The route's parameters, untyped: the component is no route's page, or its route types are not generated yet
+   * (every thane command generates them)
+   */
   readonly params: Record<string, string>;
   /** On the error route: what failed */
   readonly error?: unknown;
@@ -325,25 +326,8 @@ export interface ScrollRestorationConfig {
   restoreOnBackForward?: boolean | undefined;
 }
 
-/**
- * Options for the `router` property of `mount()`.
- *
- * ```ts
- * mount({
- *   component: Shell,
- *   router: { routes: Routes, outletId: 'router-main' },
- * });
- * ```
- */
-export interface RouterConfig {
-  /** Route map from `defineRoutes()`. */
-  routes: RoutesConfig;
-  /**
-   * ID of the outlet element inside a shell component's template.
-   * Only used in Mode B (shell + router).  Defaults to `'router-outlet'`.
-   * Must match the pattern `router-${string}`.
-   */
-  outletId?: `router-${string}` | undefined;
+/** What the router reads from `mount()`'s options */
+interface RouterConfig {
   /** Enable or configure router-managed scroll restoration. Defaults to enabled. */
   scrollRestoration?: boolean | ScrollRestorationConfig | undefined;
 }
@@ -413,23 +397,23 @@ export function defineRoutes<const T extends RoutesConfig, const C extends Custo
   // Register the router mount handler with component.ts so mount() can delegate.
   // This is the entry point that activates routing — if defineRoutes is never called,
   // mount() won't find a router and the entire router module is tree-shaken away.
-  __setRouterMount((options: MountOptions, target: HTMLElement): MountHandle => {
-    const routerConfig = options.router!;
-    const { notFound, error, ...routeMap } = routerConfig.routes;
+  __setRouterMount((shell, routes, options: MountOptions, target: HTMLElement): MountHandle => {
+    const routerConfig: RouterConfig = options;
+    const { notFound, error, ...routeMap } = routes;
 
-    // ── Mode B: shell component + router ──
-    if (options.component) {
-      const shellHandle = mountComponent(options.component, target, options.props);
-      const outletId = routerConfig.outletId ?? 'router-outlet';
-      const outlet = shellHandle.root.querySelector<HTMLElement>(`#${outletId}`) ?? document.getElementById(outletId);
+    // ── A shell component, whose <router-outlet> the pages go into ──
+    if (shell) {
+      const shellHandle = mountComponent(shell, target, options.props);
+      // The shell's own, or one of the page (index.html) when the shell has none
+      const outlet =
+        shellHandle.root.querySelector<HTMLElement>('router-outlet') ??
+        document.querySelector<HTMLElement>('router-outlet');
 
       if (!outlet) {
         // The shell goes again: the app did not start, and must not stay half mounted
         shellHandle.destroy();
         throw new Error(
-          `[thane] Router outlet element with id="${outletId}" not found. ` +
-            "In Mode B (shell + router), your shell component's template must contain " +
-            `an element with id="${outletId}".`,
+          "[thane] The shell's template has no <router-outlet> element: put one where the pages go, or mount the routes alone (mount(Routes)).",
         );
       }
 
@@ -444,7 +428,7 @@ export function defineRoutes<const T extends RoutesConfig, const C extends Custo
       };
     }
 
-    // ── Mode C: router only (no shell) ──
+    // ── The routes alone: pages go into the target ──
     startRouter({ routes: routeMap, notFound, error }, target, routerConfig);
     return {
       root: target as any,
@@ -527,7 +511,57 @@ let _scrollConfig: NormalizedScrollRestorationConfig = normalizeScrollRestoratio
 
 const SCROLL_STATE_KEY = '__thaneScroll';
 
-(globalThis as { currentPath?: ReadonlySignal<string> }).currentPath = _currentPath;
+/** Called once a route's page is on screen; set by markActiveLinks() */
+let _onRouteShown: (() => void) | undefined;
+
+/**
+ * Marks the links to the current path with `aria-current="page"`, from now on: each time a route's page is on screen,
+ * every `<a href>` of the document whose path is the current path gets it, and the others lose it. One CSS rule then
+ * styles the active link (`a[aria-current='page']`), and assistive technology announces it. Call it once, in the
+ * entry; an app that does not call it does not bundle it.
+ */
+export const markActiveLinks = (): void => {
+  const mark = (): void => {
+    for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+      const here = link.origin === location.origin && matchesPath(link.pathname, location.pathname);
+      if (here) link.setAttribute('aria-current', 'page');
+      else if (link.getAttribute('aria-current') === 'page') link.removeAttribute('aria-current');
+    }
+  };
+  _onRouteShown = mark;
+  if (_started) mark();
+};
+
+/** The current path, as a signal: `${currentPath()}` in a template follows it */
+export const currentPath: ReadonlySignal<string> = _currentPath;
+
+/** A pattern for isActive(): a route's, or one ending in `/*`, for the route and every path below it */
+type ActivePattern = [RegisteredRoutePatterns] extends [never]
+  ? string
+  : RegisteredRoutePatterns | `${RegisteredRoutePatterns}/*` | '/*';
+
+/** Whether `path` is the pattern's: each `:param` matches one segment, and a pattern ending in `/*` the paths below it */
+const matchesPath = (pattern: string, path: string): boolean => {
+  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+  const below = pattern.endsWith('/*');
+  if (pattern === '/*') return true;
+  const parts = (below ? pattern.slice(0, -2) : pattern).split('/');
+  const segments = path.split('/');
+  if (below ? segments.length < parts.length : segments.length !== parts.length) return false;
+  return parts.every((part, i) => (part.startsWith(':') ? segments[i] !== '' : part === segments[i]));
+};
+
+/**
+ * Whether the current path is the route's: `isActive('/about')`, `isActive('/users/:id')`, or, ending in `/*`, the
+ * route and every path below it (`isActive('/work/*')`). A template that calls it follows the path:
+ * `<a href="/work" class:active=${isActive('/work/*')}>`.
+ */
+export const isActive: ((pattern: ActivePattern) => boolean) & Pick<ReadonlySignal<string>, 'subscribe'> =
+  Object.assign((pattern: ActivePattern): boolean => matchesPath(pattern, _currentPath()), {
+    // A signal's subscribe reads the signal from `this`
+    subscribe: (callback: (path: string) => void, skipInitial?: boolean) =>
+      _currentPath.subscribe(callback, skipInitial),
+  });
 
 const createCurrentRouteContext = (): UntypedRouteContext => ({
   params: { ..._routeParams },
@@ -881,6 +915,7 @@ const loadRoute = async (): Promise<void> => {
     // A page that navigates while it mounts (a redirect) has started a newer load, which owns the scroll
     if (component && navigationId === _navigationId) {
       applyScrollPosition(pathname, scrollAction, popScrollPosition);
+      _onRouteShown?.();
     }
     return;
   }
@@ -976,15 +1011,6 @@ export function setMeta(meta: AppRouteMeta): void {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Initialise and start the router.
- *
- * @internal — called by `mount()` when the `router` option is provided.
- * Not part of the public API; use `mount({ router: ... })` instead.
- *
- * @param config - Router configuration with routes map and notFound.
- * @param target - The element to render pages into (outlet in Mode B, body/target in Mode C).
- */
-/**
  * A plain click on a link to one of the app's routes navigates in the app instead of loading the page
  * again, so `<a href="/about">` is a router link. The browser keeps a click that is already handled
  * (`@click.prevent`), a modified one (a new tab, a download), a link with a `target`, a `download` or
@@ -1014,6 +1040,12 @@ const followLink = (event: MouseEvent): void => {
   navigate((url.pathname + url.search + url.hash) as RoutePaths);
 };
 
+/**
+ * Start the router: it renders each route's page into `target`, the shell's `<router-outlet>` for
+ * `mount(Shell, { routes })`, or the mount's target for `mount(Routes)`. Only one router runs.
+ *
+ * @internal — called by `mount()`; an app mounts its routes instead.
+ */
 export function startRouter(
   config: { routes: RoutesMap; notFound: Route; error?: Route | undefined },
   target: HTMLElement,
@@ -1029,12 +1061,6 @@ export function startRouter(
   _target = target;
   _pendingPopScrollPosition = readScrollPositionFromHistoryState(window.history.state);
   _pendingScrollAction = _pendingPopScrollPosition ? 'pop' : 'init';
-
-  // Expose the navigation helpers globally, for templates
-  const g = globalThis as any;
-  g.currentPath = _currentPath;
-  g.navigate = navigate;
-  g.navigateBack = navigateBack;
 
   if (_scrollConfig.enabled && 'scrollRestoration' in window.history) {
     _previousHistoryScrollRestoration = window.history.scrollRestoration;
@@ -1096,11 +1122,6 @@ export function stopRouter(): void {
     window.removeEventListener('scroll', _scrollHandler);
     _scrollHandler = null;
   }
-
-  // Remove globals
-  const g = globalThis as any;
-  delete g.navigate;
-  delete g.navigateBack;
 
   _config = null;
   _target = null;

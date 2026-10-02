@@ -7,9 +7,8 @@ export const TextPositions = defineComponent('hardening-text-positions', () => {
   const a = signal('A');
   const b = signal('B');
   expose('textPositions', { a, b });
-  return {
-    // prettier-ignore
-    template: html`top ${a()} level
+  // prettier-ignore
+  return html`top ${a()} level
     <div class="text-positions">
       <p class="text-start">${a()} tail</p>
       <p class="text-mid">head ${a()} tail</p>
@@ -22,6 +21,5 @@ export const TextPositions = defineComponent('hardening-text-positions', () => {
 ${b()}</pre>
       <span class="text-sole">${b()}</span>
     </div>
-    ${b()} end`,
-  };
+    ${b()} end`;
 });

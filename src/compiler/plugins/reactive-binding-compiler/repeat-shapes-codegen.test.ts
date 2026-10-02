@@ -15,25 +15,23 @@ export const App = defineComponent('test-app', () => {
     template: html\`<div>${body}</div>\`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 describe('Every repeat() list uses the keyed row path', () => {
   test('a row template with more than one root element is a build error', async () => {
     await expect(
       buildAndReadJs(
-        app(
-          '<ul>${repeat(rows(), (item) => html`<li>${item.label}</li><li>${item.id}</li>`, null, (item) => item.id)}</ul>',
-        ),
+        app('<ul>${repeat(rows(), (item) => html`<li>${item.label}</li><li>${item.id}</li>`, { key: "id" })}</ul>'),
       ),
     ).rejects.toThrow(/THANE007.*one root element/);
   });
 
-  test('a row that is only a whenElse() is a build error that names the directive', async () => {
+  test('a row that is only a when() is a build error that names the directive', async () => {
     await expect(
       buildAndReadJs(
         app(
-          '<ul>${repeat(rows(), (item) => html`${whenElse(item.id > 1, html`<li>big</li>`, html`<li>small</li>`)}`, null, (item) => item.id)}</ul>',
+          '<ul>${repeat(rows(), (item) => html`${when(item.id > 1, html`<li>big</li>`, html`<li>small</li>`)}`, { key: "id" })}</ul>',
         ),
       ),
     ).rejects.toThrow(/THANE007.*whenElse\(\)/);
@@ -54,17 +52,17 @@ describe('Every repeat() list uses the keyed row path', () => {
 
   test('a row element bound only to a component signal is still bound', async () => {
     const js = await buildAndReadJs(
-      app('<ul>${repeat(rows(), (item) => html`<li class=${kind()}>x</li>`, null, (item) => item.id)}</ul>'),
+      app('<ul>${repeat(rows(), (item) => html`<li class=${kind()}>x</li>`, { key: "id" })}</ul>'),
     );
     expect(js).toMatch(/\.className = /);
     expect(js).toMatch(/kind\.subscribe\(/);
     expect(js).not.toMatch(/_w?ri_b\d+ = /);
   });
 
-  test('a list inside a whenElse() branch uses the keyed row path with delegated events', async () => {
+  test('a list inside a when() branch uses the keyed row path with delegated events', async () => {
     const js = await buildAndReadJs(
       app(
-        '${whenElse(show(), html`<ul>${repeat(rows(), (item) => html`<li @click=${() => pick(item.id)}>${item.label}</li>`, html`<li>none</li>`, (item) => item.id)}</ul>`, html`<p>off</p>`)}',
+        '${when(show(), html`<ul>${repeat(rows(), (item) => html`<li @click=${() => pick(item.id)}>${item.label}</li>`, { key: "id", empty: html`<li>none</li>` })}</ul>`, html`<p>off</p>`)}',
       ),
     );
     expect(js).toMatch(/__tpl_b\d+ = __T\(`<li><\/li>`\)/);
@@ -76,9 +74,7 @@ describe('Every repeat() list uses the keyed row path', () => {
 
   test('a list inside when() content uses the keyed row path', async () => {
     const js = await buildAndReadJs(
-      app(
-        '<ul ${when(show())}>${repeat(rows(), (item) => html`<li>${item.label}</li>`, null, (item) => item.id)}</ul>',
-      ),
+      app('<ul ${when(show())}>${repeat(rows(), (item) => html`<li>${item.label}</li>`, { key: "id" })}</ul>'),
     );
     expect(js).toMatch(/__tpl_b\d+ = __T\(`<li><\/li>`\)/);
     expect(js).toMatch(/const _rsubs_b\d+ = \[\]/);

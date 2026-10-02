@@ -4,6 +4,31 @@ The Thane CLI is the build tool for compiling, serving, and type-checking Thane 
 
 ## Commands
 
+### `thane init`
+
+Create a new project in a folder (the current one when none is given):
+
+```bash
+thane init my-app
+cd my-app && bun install && bun run dev
+```
+
+It writes `package.json` (with the `dev`, `build`, `serve` and `typecheck` scripts), a `tsconfig.json` that extends
+`thane/tsconfig.json`, `.gitignore`, `index.html`, `src/main.ts`, and the app component, `src/app/app.component.ts` with its
+`app.component.css`. It writes over nothing: when one of those files exists, it stops and writes none.
+
+### `thane generate component`
+
+Create a component in a folder of its name, under the current directory:
+
+```bash
+thane generate component user-card        # user-card/user-card.component.ts and .css
+thane generate component ui/user-card     # ui/user-card/user-card.component.ts and .css
+```
+
+The name is lowercase words joined by hyphens; the component is exported as `UserCard`, and its stylesheet is imported
+as its `styles`. It writes over nothing.
+
 ### `thane dev`
 
 Build in watch mode and start a development server.
@@ -14,14 +39,24 @@ thane dev --port 3000 --open
 thane dev --host 0.0.0.0
 ```
 
-Default port: `4200`. Always a development build (`--prod` is ignored). Source maps are enabled. All 13 lint rules are active. `console.*` calls are preserved.
+Default port: `4200`. Always a development build (`--prod` is ignored). Source maps are enabled. All 12 lint rules are active. `console.*` calls are preserved.
 
-The build reruns when a source file changes. When the files that changed are component files, the open pages swap
-those components in place: each instance of a changed component is mounted again with the new code and styles, in
-its place and with its props, and the rest of the page keeps its state (its other components, its stores, the
-route). Any other change reloads the pages: a module that is not a component file (a store, a helper), a component
-file that exports something else too, a stylesheet file, an asset or `index.html`, and a component the page has not
-loaded yet. A swapped component starts again, so its own signals start from their initial values.
+The build reruns when a source file changes, and the open pages update in place where they can:
+
+- A changed component file is swapped: each instance of its components is mounted again with the new code and styles,
+  in its place, with its props and its state. Each `const` signal at the top level of its setup, or of its file,
+  starts from the old one's value, and the children it mounts from the old children's (see
+  [Known Limitations](known-limitations.md#hot-updates-keep-signals-by-name)).
+- A changed store, helper or stylesheet file, or a component file that exports something else too, runs again with
+  every module that imports it, up to the component files, which are swapped. A store keeps the values of its `const`
+  signals; the modules that import it read its new code.
+- The rest of the page keeps its state: its other components, its stores, the route.
+
+The pages reload when a change reaches the entry (the entry itself, or a module it imports other than through a
+component file), when a module to run again is one the page has not loaded yet, or reads a binding of a package
+that no module of the page imports yet (the app's first `untrack`), and for an asset, `index.html`, or a file the
+compiler does not read (a JSON file). A development bundle holds of each package only the bindings the app's modules
+import.
 
 Errors in the browser (`console.error`, uncaught errors and unhandled promise rejections) are printed in the terminal, with their locations in the built files.
 
@@ -154,7 +189,25 @@ A key that is not in the table below prints a warning and is ignored, with the k
 | `html`                                                                                                         | `--html`                                                           |
 | `hashFileNames`, `dropConsole`, `dropDebugger`, `strictTypeCheck`, `emptyOutDir`, `legalComments`, `envPrefix` | Same name in kebab-case (`--hash-file-names`, `--drop-console`, …) |
 | `prod`, `gzip`, `port`, `open`, `host`, `base`, `sourcemap`, `analyze`, `splitting`, `target`                  | Same name                                                          |
-| `define`                                                                                                       | _(config only)_                                                    |
+| `define`, `lint`                                                                                               | _(config only)_                                                    |
+
+### Lint Severities
+
+`lint` sets how each [lint rule](lint-rules.md) and compiler warning is reported, by its code: `"off"` leaves it
+out, `"warning"` shows it without stopping the build, and `"error"` stops the build.
+
+```jsonc
+{
+  "lint": {
+    "THANE405": "off", // a ternary of templates in a const is fine in this project
+    "THANE411": "error", // two mounts on one target stop the build
+  },
+}
+```
+
+A severity other than those three, or a key that is not a code such as `THANE405`, prints a warning and is
+ignored. The compiler's own template errors (THANE006 to THANE012) cannot be turned off: the template they
+report would not be compiled correctly.
 
 ### Precedence
 

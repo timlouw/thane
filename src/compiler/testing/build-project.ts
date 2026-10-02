@@ -77,6 +77,7 @@ export const createTestBuildConfig = (project: TempProject, overrides: Partial<B
   splitting: true,
   legalComments: 'none',
   analyze: false,
+  lint: {},
   ...overrides,
 });
 

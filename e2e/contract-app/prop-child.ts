@@ -10,13 +10,11 @@ export const PropChild = defineComponent<PropChildProps>('prop-child', ({ props 
   const valueA = props.valueA;
   const valueB = props.valueB;
 
-  return {
-    template: html`
-      <div data-testid="prop-child-root">
-        <span data-testid="prop-child-b">${valueB()}</span>
-        <span data-testid="prop-child-static">child-static</span>
-        ${PropGrandchild({ valueA: valueA })}
-      </div>
-    `,
-  };
+  return html`
+    <div data-testid="prop-child-root">
+      <span data-testid="prop-child-b">${valueB()}</span>
+      <span data-testid="prop-child-static">child-static</span>
+      ${PropGrandchild({ valueA: valueA })}
+    </div>
+  `;
 });

@@ -15,38 +15,37 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(rows(), (item) => html\`${row}\`, null, (item) => item.id)}
+        \${repeat(rows(), (item) => html\`${row}\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 describe('Row event handlers of every shape run on the event', () => {
   test('a function reference is called with the event', async () => {
     const js = await buildAndReadJs(app('<li><i @click=${bump}>${item.label}</i></li>'));
-    expect(js).toMatch(/bump\(e\);/);
+    expect(js).toMatch(/bump\(_e\);/);
     expect(js).not.toMatch(/\bbump;/);
   });
 
   test('a member reference is called with the event', async () => {
     const js = await buildAndReadJs(app('<li @click=${nav.go}>${item.label}</li>'));
-    expect(js).toMatch(/nav\.go\(e\);/);
+    expect(js).toMatch(/nav\.go\(_e\);/);
   });
 
-  test('an arrow whose parameter is not named e is aliased', async () => {
+  test("an arrow is inlined, its parameter declared from the listener's event", async () => {
     const js = await buildAndReadJs(app('<li @click=${(ev) => pick(ev.target)}>${item.label}</li>'));
-    expect(js).toMatch(/const ev = e;\s*pick\(ev\.target\);/);
+    expect(js).toMatch(/const ev = _e;\s*pick\(ev\.target\);/);
   });
 
-  test('an arrow with parameter e and a call expression are inlined as before', async () => {
+  test('an arrow with parameter e and a call expression are inlined', async () => {
     const js = await buildAndReadJs(
       app('<li><b @click=${(e) => pick(e.target)}>x</b><i @click=${() => pick(item.id)}>${item.label}</i></li>'),
     );
-    expect(js).toMatch(/pick\(e\.target\);/);
+    expect(js).toMatch(/const e = _e;\s*pick\(e\.target\);/);
     expect(js).toMatch(/pick\(item\.id\);/);
-    expect(js).not.toMatch(/const e = e/);
   });
 });
 
@@ -58,7 +57,7 @@ describe('Only a function or a reference is a listener; any other expression run
 
   test('in a row, a function expression is called with the event', async () => {
     const js = await buildAndReadJs(app('<li @click=${function (ev) { pick(ev); }}>${item.label}</li>'));
-    expect(js).toMatch(/\(function\(ev\) \{\s*pick\(ev\);\s*\}\)\(e\);/);
+    expect(js).toMatch(/\(function\(ev\) \{\s*pick\(ev\);\s*\}\)\(_e\);/);
   });
 
   const component = (button: string): string => `
@@ -70,7 +69,7 @@ export const App = defineComponent('test-app', () => {
   const pick = (id, then) => then(id);
   return { template: html\`${button}\` };
 });
-mount({ component: App });
+mount(App);
 `;
 
   test('in a component, a call with an arrow argument runs on the event, as written', async () => {

@@ -13,7 +13,7 @@ export const App = defineComponent('x-app', ({ props }) => {
 ${setup}
   return { template: html\`${markup}\` };
 });
-mount({ component: App });
+mount(App);
 `;
 
 /** The compiled binding function of the component */

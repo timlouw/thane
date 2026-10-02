@@ -19,7 +19,7 @@ export const FixtureApp = defineComponent('fixture-app', () => ({
   template: html\`<main data-testid="fixture-root">\${shell}</main>\`,
 }));
 
-mount({ component: FixtureApp });
+mount(FixtureApp);
 `;
 
   const project = await createTempProject(source);
@@ -42,21 +42,21 @@ export const FixtureApp = defineComponent('fixture-app', () => {
   return { template: html\`<main>\${html\`<div data-testid="nested">\${n()}</div>\`}</main>\` };
 });
 
-mount({ component: FixtureApp });
+mount(FixtureApp);
 `);
   expect(js).toContain('<main><div data-testid="nested"><!---->1<!----></div></main>');
   expect(js).toMatch(/n\.subscribe\(/);
 });
 
-test('an html`` template in a ternary inside another fails compile (THANE404)', async () => {
+test('an html`` template in a ternary with a template on one side and text on the other fails compile (THANE404)', async () => {
   const source = `
 import { defineComponent, mount } from 'thane';
 
 export const FixtureApp = defineComponent('fixture-app', () => ({
-  template: html\`<main>\${Math.random() > 1 ? html\`<div data-testid="bad-nested">nested</div>\` : ''}</main>\`,
+  template: html\`<main>\${Math.random() > 1 ? html\`<div data-testid="bad-nested">nested</div>\` : 'text'}</main>\`,
 }));
 
-mount({ component: FixtureApp });
+mount(FixtureApp);
 `;
 
   const project = await createTempProject(source);
@@ -68,7 +68,7 @@ mount({ component: FixtureApp });
       errorText = error instanceof Error ? error.message : String(error);
     }
 
-    expect(errorText.length).toBeGreaterThan(0);
+    expect(errorText).toContain('THANE404');
     expect(errorText.includes('Build failed')).toBe(true);
   } finally {
     await removeTempProject(project);

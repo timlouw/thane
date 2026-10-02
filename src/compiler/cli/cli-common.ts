@@ -7,8 +7,12 @@ import { runBuild } from './build.js';
 import { syncProjectTypes } from '../plugins/router-typegen/router-typegen.js';
 import { runProjectTypeCheck } from '../plugins/tsc-type-checker/tsc-type-checker.js';
 import { logger } from '../utils/index.js';
+import { closestName } from '../utils/closest-name.js';
+import { generateComponent, initProject } from './scaffold.js';
 
-const COMMANDS = new Set(['build', 'dev', 'serve', 'types', 'typecheck']);
+/** The commands that build or check, which thane.config.json's `commands` can set options for */
+const BUILD_COMMANDS = new Set(['build', 'dev', 'serve', 'types', 'typecheck']);
+const COMMANDS = new Set([...BUILD_COMMANDS, 'init', 'generate']);
 
 const DEFAULT_OPTIONS: CLIOptions = {
   command: 'build',
@@ -79,6 +83,7 @@ const OPTIONS: OptionSpec[] = [
   toggle('splitting', 'splitting'),
   { key: 'legalComments', flag: '--legal-comments', parse: (v) => v || 'none', config: true },
   toggle('analyze', 'analyze'),
+  { key: 'lint', config: true },
   { key: 'exitRequested', set: { '--help': 'help', '-h': 'help', '--version': 'version', '-v': 'version' } },
 ];
 
@@ -164,28 +169,7 @@ const loadConfigFile = (configPath?: string): { path: string; config: ThaneConfi
   return { path: resolvedPath, config: value as ThaneConfigFile };
 };
 
-/** The known name closest to `name`: the same letters in another case, or one or two edits away. */
-const closestName = (name: string, known: Iterable<string>): string | undefined => {
-  const distance = (a: string, b: string): number => {
-    const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-    for (let i = 1; i <= a.length; i++) {
-      let diagonal = row[0]!;
-      row[0] = i;
-      for (let j = 1; j <= b.length; j++) {
-        const above = row[j]!;
-        row[j] = Math.min(row[j]! + 1, row[j - 1]! + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
-        diagonal = above;
-      }
-    }
-    return row[b.length]!;
-  };
-  let best: { name: string; score: number } | undefined;
-  for (const candidate of known) {
-    const score = candidate.toLowerCase() === name.toLowerCase() ? 0 : distance(name, candidate);
-    if (score <= 2 && (!best || score < best.score)) best = { name: candidate, score };
-  }
-  return best?.name;
-};
+const LINT_SEVERITIES: ReadonlySet<string> = new Set(['off', 'warning', 'error']);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
@@ -205,15 +189,34 @@ const warnAboutUnreadConfig = (config: Record<string, unknown>, file: string): v
       }
     }
   };
+  /** `lint`: an object of codes, each "off", "warning" or "error" */
+  const checkLint = (lint: unknown, where: string) => {
+    if (lint == null) return;
+    if (!isPlainObject(lint)) return warn(`'lint'${where}, which is not an object of codes,`);
+    for (const [code, severity] of Object.entries(lint)) {
+      if (!LINT_SEVERITIES.has(severity as string)) {
+        warn(
+          `The severity ${JSON.stringify(severity)} of '${code}' in 'lint'${where} (use "off", "warning" or "error")`,
+        );
+      } else if (!/^THANE\d{3}$/.test(code)) {
+        warn(`'${code}' in 'lint'${where}, which is not a code such as THANE405,`);
+      }
+    }
+  };
   const { commands, $schema: _schema, ...topLevel } = config;
   checkKeys(topLevel, '');
+  checkLint(topLevel['lint'], '');
   if (commands == null) return;
   if (!isPlainObject(commands)) return warn("'commands', which is not an object of command names,");
   for (const [command, section] of Object.entries(commands)) {
-    if (!COMMANDS.has(command)) warn(`Unknown command '${command}' in 'commands'`, closestName(command, COMMANDS));
+    if (!BUILD_COMMANDS.has(command))
+      warn(`Unknown command '${command}' in 'commands'`, closestName(command, BUILD_COMMANDS));
     else if (section == null) continue;
     else if (!isPlainObject(section)) warn(`'commands.${command}', which is not an object,`);
-    else checkKeys(section, ` in 'commands.${command}'`);
+    else {
+      checkKeys(section, ` in 'commands.${command}'`);
+      checkLint(section['lint'], ` in 'commands.${command}'`);
+    }
   }
 };
 
@@ -227,7 +230,11 @@ const mergeCLIAndConfig = (args: string[], parsedCLI: CLIOptions): CLIOptions =>
   const cfgDir = dirname(loaded.path);
   const topLevel = absolutizeConfigPaths(coerceConfigToCLIOptions(loaded.config), cfgDir);
   const perCommand = absolutizeConfigPaths(
-    coerceConfigToCLIOptions(loaded.config.commands?.[parsedCLI.command]),
+    coerceConfigToCLIOptions(
+      parsedCLI.command === 'init' || parsedCLI.command === 'generate'
+        ? undefined
+        : loaded.config.commands?.[parsedCLI.command],
+    ),
     cfgDir,
   );
 
@@ -260,6 +267,9 @@ export function parseArgs(args: string[]): CLIOptions {
     options.command = commandArg;
   }
 
+  // The command's own position: the words after init and generate are theirs
+  const commandAt = commandArg ? args.indexOf(commandArg) : -1;
+  const takesWords = options.command === 'init' || options.command === 'generate';
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? '';
     const flag = FLAGS.get(arg);
@@ -271,6 +281,8 @@ export function parseArgs(args: string[]): CLIOptions {
       setOption(options, flag.key, flag.value);
     } else if (arg.startsWith('--') || (arg.startsWith('-') && arg.length === 2)) {
       console.warn(`Warning: Unknown flag '${arg}'. Run 'thane --help' to see available options.`);
+    } else if (takesWords && i > commandAt && arg !== '' && !arg.startsWith('-')) {
+      (options.positionals ??= []).push(arg);
     } else if (arg !== '' && !arg.startsWith('-') && !COMMANDS.has(arg)) {
       console.warn(`Warning: Unknown command '${arg}'. Run 'thane --help' to see available commands.`);
     }
@@ -292,6 +304,9 @@ Commands:
   serve       Build and serve the application
   types       Generate hidden .thane types without building
   typecheck   Run Thane-aware TypeScript checking without building
+  init [dir]  Create a new project in dir (default: the current directory)
+  generate component <name>
+              Create name/name.component.ts and .css (<folder>/<name> puts it in folder)
 
 Options:
   --prod, -p          Production build (default: development)
@@ -337,6 +352,9 @@ Examples:
   thane types                  Generate hidden project types only
   thane typecheck              Run typecheck with generated .thane types included
   thane build --verbose        Build with detailed logging
+  thane init my-app            Create a project in ./my-app
+  thane generate component ui/user-card
+                               Create ui/user-card/user-card.component.ts and .css
 `);
 }
 
@@ -400,6 +418,10 @@ export function createBuildConfig(options: CLIOptions): BuildConfig {
     splitting: options.splitting ?? true,
     legalComments: options.legalComments ?? 'none',
     analyze: options.analyze ?? false,
+    // Only the codes the config sets to a known severity: anything else was warned about
+    lint: Object.fromEntries(
+      Object.entries(options.lint ?? {}).filter(([, severity]) => LINT_SEVERITIES.has(severity)),
+    ) as BuildConfig['lint'],
   };
 }
 
@@ -424,6 +446,27 @@ export async function cliMain(): Promise<void> {
 
   // Wire log level from CLI flags
   logger.setLevel(cliOptions.logLevel);
+
+  if (cliOptions.command === 'init') {
+    const dir = cliOptions.positionals?.[0] ?? '.';
+    const written = initProject(dir);
+    console.log(
+      `Created ${written.length} files in ${dir}:\n  ${written.join('\n  ')}\nNext: bun install, then bun run dev.`,
+    );
+    return;
+  }
+
+  if (cliOptions.command === 'generate') {
+    const [kind, path] = cliOptions.positionals ?? [];
+    if (kind !== 'component' || !path) {
+      throw new Error(
+        '[thane] Usage: thane generate component <name>, or <folder>/<name>: thane generate component ui/user-card',
+      );
+    }
+    const written = generateComponent(path, process.cwd());
+    console.log(`Created ${written.join(' and ')}`);
+    return;
+  }
 
   if (cliOptions.command === 'types') {
     const generatedCount = await syncProjectTypes(process.cwd());

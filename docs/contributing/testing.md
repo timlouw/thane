@@ -26,7 +26,7 @@ bun run e2e:test:headed
 bun run e2e:ui
 ```
 
-E2E tests live in `e2e/tests/` and cover rendering, directives, routing, component lifecycle, and the cart example app.
+E2E tests live in `e2e/tests/` and cover rendering, directives, routing, route heads, component lifecycle, the hardening probes (one per fixed defect), the dev server's error relay and hot updates, and the cart example app. The hot update and error relay tests run in Chromium only.
 
 ## Performance Benchmarks
 

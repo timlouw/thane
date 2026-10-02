@@ -55,9 +55,6 @@
   background-color: var(--primary);
 }
 
-.pending {
-  color: var(--light);
-}
 
 .cartCounter {
   position: absolute;

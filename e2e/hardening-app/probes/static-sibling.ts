@@ -5,10 +5,8 @@ import { expose } from '../shared/expose.js';
 export const StaticSibling = defineComponent('hardening-static-sibling', () => {
   const items = signal(['a', 'b']);
   expose('staticSibling', { items });
-  return {
-    template: html`<ul class="static-sibling">
-      <li class="static-sibling-head">H</li>
-      ${repeat(items(), (i) => html`<li class="static-sibling-item">${i}</li>`)}
-    </ul>`,
-  };
+  return html`<ul class="static-sibling">
+    <li class="static-sibling-head">H</li>
+    ${repeat(items(), (i) => html`<li class="static-sibling-item">${i}</li>`)}
+  </ul>`;
 });

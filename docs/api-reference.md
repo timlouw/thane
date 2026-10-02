@@ -1,13 +1,13 @@
 # API Reference
 
-Complete API surface for the Thane framework, covering all public exports, the template markers, the router globals, and types.
+Complete API surface for the Thane framework, covering all public exports, the template markers, the router, and types.
 
 ## Package Exports
 
 | Entry           | What it holds                                                                                              |
 | :-------------- | :--------------------------------------------------------------------------------------------------------- |
 | `thane`         | Signals, components, mounting, global styles, the template markers, and the types an app writes in its own code |
-| `thane/router`  | `defineRoutes`, `navigate`, `navigateBack`, `href`, `setMeta`, and the head-field helpers `metaName`, `metaProperty`, `linkTag` |
+| `thane/router`  | `defineRoutes`, `navigate`, `navigateBack`, `href`, `currentPath`, `isActive`, `markActiveLinks`, `setMeta`, the search parsers, and the head-field helpers `metaName`, `metaProperty`, `linkTag` |
 | `thane/client`  | Type declarations for `.css` imports, which `thane` includes (see below)                                   |
 | `thane/runtime` | The helpers that compiled code calls. Only the compiler imports it: never import it in an app. It is not an API and changes with every version |
 | `thane/runtime/dom` | Node's `cloneNode` and `insertBefore`, for compiled lists. Only compiled code imports it |
@@ -20,8 +20,9 @@ Complete API surface for the Thane framework, covering all public exports, the t
 | Export     | Signature                                                                 | Description                                                                      |
 | :--------- | :------------------------------------------------------------------------ | :------------------------------------------------------------------------------- |
 | `signal`   | `<T>(initialValue: T) => Signal<T>`                                       | Create a reactive signal                                                         |
-| `computed` | `<T>(derivation: () => T) => ReadonlySignal<T> & { dispose: () => void }` | Create a derived signal that auto-tracks dependencies                            |
-| `effect`   | `(fn: () => void) => () => void`                                          | Create a side-effect that re-runs on dependency change. Returns dispose function |
+| `computed` | `<T>(derivation: () => T) => ReadonlySignal<T> & { dispose: () => void }` | Create a derived signal that auto-tracks dependencies; one created in a setup is disposed with its component |
+| `effect`   | `(fn: () => void \| (() => void)) => () => void`                         | Create a side-effect that re-runs on dependency change. Returns dispose function; `fn` may return a cleanup, run before each re-run and on dispose |
+| `onCleanup` | `(fn: () => void) => void`                                               | Run `fn` when what is running ends: the component whose setup or `onMount` calls it, when it is destroyed; the effect whose run calls it, before its next run |
 | `batch`    | `(fn: () => void) => void`                                                | Batch multiple signal updates — each changed signal notifies once, after `fn`    |
 | `untrack`  | `<T>(fn: () => T) => T`                                                   | Read signals without creating dependencies                                       |
 
@@ -29,37 +30,42 @@ Complete API surface for the Thane framework, covering all public exports, the t
 
 | Export                 | Signature                                                          | Description                               |
 | :--------------------- | :----------------------------------------------------------------- | :---------------------------------------- |
-| `defineComponent`      | `<P>(setup: (ctx: ComponentContext<P>) => ComponentReturnType) => ComponentHTMLSelector<P>`                   | Define a component                        |
-| `defineComponent`      | `<P>(selector: string, setup: (ctx: ComponentContext<P>) => ComponentReturnType) => ComponentHTMLSelector<P>` | Define a component with explicit selector |
-| `mount`                | `(options: MountOptions) => MountHandle`                           | Mount a component to the DOM              |
+| `defineComponent`      | `<P>(setup: (ctx: ComponentContext<P>) => ComponentReturnType \| Fragment) => ComponentHTMLSelector<P>`                   | Define a component: its setup returns its object, or its template alone |
+| `defineComponent`      | `<P>(selector: string, setup: (ctx: ComponentContext<P>) => ComponentReturnType \| Fragment) => ComponentHTMLSelector<P>` | Define a component with explicit selector |
+| `mount`                | `(component, options?: MountOptions) => MountHandle`, `(routes, options?) => MountHandle` | Mount a component (with `routes`, the app's shell), or the routes alone |
 | `unmount`              | `(handle: MountHandle) => void`                                    | Destroy a mounted component               |
 | `registerGlobalStyles` | `(...styles: string[]) => void`                                    | Register global styles (deduplicated)     |
+| `ref`                  | `<T extends Element = HTMLElement>() => Ref<T>`                    | A ref to an element of the template, put in its tag: `<input ${input}>`; `input.el` is the element from `onMount` on ([Element Refs](templates.md#element-refs)) |
 
 `ComponentReturnType` and `MountOptions` are described under [Shapes You Pass In](#shapes-you-pass-in).
 
 #### Template Markers
 
-`import { html, css, when, whenElse, repeat } from 'thane'`. The compiler turns each use into DOM code at build time, so none of them reaches the bundle. It finds them by name: import them under their own names (THANE413). Called at run time, outside a compiled template, each one throws.
+`import { html, css, when, repeat } from 'thane'`. The compiler turns each use into DOM code at build time, so none of them reaches the bundle. It finds them by name: import them under their own names (THANE413). Called at run time, outside a compiled template, each one throws.
 
 | Export     | Signature                                                                                                                                                                         | Description                                  |
 | :--------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------- |
 | `html`     | `(strings: TemplateStringsArray, ...values: any[]) => Fragment`                                                                                                                   | Tagged template for HTML content             |
-| `css`      | `(strings: TemplateStringsArray, ...values: any[]) => any`                                                                                                                        | Tagged template for CSS content              |
-| `when`     | `(condition: boolean \| (() => boolean)) => string`                                                                                                                               | Conditional rendering — show/hide an element |
-| `whenElse` | `(condition: boolean \| (() => boolean), thenTemplate: Fragment \| string, elseTemplate: Fragment \| string) => Fragment`                                                        | If/else conditional rendering                |
-| `repeat`   | `<T>(items: T[] \| (() => T[]), templateFn: (item: T, index: number) => Fragment \| string, emptyTemplate?: Fragment \| string \| null, trackBy?: (item: T, index: number) => string \| number) => Fragment` | List rendering with keyed reconciliation     |
+| `css`      | `(strings: TemplateStringsArray, ...values: any[]) => string`                                                                                                                     | Tagged template for CSS content              |
+| `when`     | `<T>(condition: T) => string`: in an element's tag, `<p ${when(open())}>`                                                                                                        | Show the element while the condition is truthy |
+| `when`     | `<T>(value: T, then: Fragment \| ((value: Truthy<T>) => Fragment), otherwise?: Fragment) => Fragment`: in content                                                                 | Show `then` while the value is truthy, `otherwise` (or nothing) while it is not |
+| `repeat`   | `<T>(items: readonly T[], row: (item: T, index: number) => Fragment, options?: { key?: keyof T \| ((item: T, index: number) => string \| number); empty?: Fragment }) => Fragment` | List rendering with keyed reconciliation     |
 
-`repeat()`'s third argument is the empty template (an `html` template, or `null`); the key function goes fourth: `repeat(items(), row, null, (item) => item.id)`. A function in third place is a build error (THANE010). A directive's templates may also be plain template literals of markup; a component's `template` is an `html` template.
+A condition is not a value that is always a function: pass a signal's value, `when(open())`, not the signal. A value that
+may be missing is a condition, a `Signal | undefined` among them, and the narrowed branch reads it. `repeat()`'s options are written in the call (THANE010); its key is the name of a property whose values are strings or numbers, or a function of the item. A directive's templates may also be plain template literals of markup; a component's `template` is an `html` template.
 
 ### `thane/router` (subpath export)
 
 | Export         | Signature                                               | Description                                                              |
 | :------------- | :------------------------------------------------------ | :----------------------------------------------------------------------- |
-| `defineRoutes` | `(routes: { [pattern: string]: Route; notFound: Route; error?: Route }, options?: RouterOptions) => typeof routes` | Define the route map with type-safe keys; required before `mount()` with a `router` option. `options` gives the site's head and the app's own head fields ([Route Heads](routing.md#route-heads)) |
-| `navigate`     | `(path: RoutePaths) => void`, `(pattern, params) => void` | Navigate to a path, or to a route pattern with its parameters filled in (also available as a global) |
+| `defineRoutes` | `(routes: { [pattern: string]: Route; notFound: Route; error?: Route }, options?: RouterOptions) => typeof routes` | Define the route map with type-safe keys, which `mount()` takes. `options` gives the site's head and the app's own head fields ([Route Heads](routing.md#route-heads)) |
+| `navigate`     | `(path: RoutePaths) => void`, `(pattern, params) => void` | Navigate to a path, or to a route pattern with its parameters filled in |
 | `href`         | `(pattern, params) => RoutePaths`                       | A route pattern's path with its parameters filled in, URL-encoded: `href('/users/:id', { id: 7 })` is `/users/7`; the route's search values go into the query |
 | `searchString`, `searchNumber`, `searchFlag`, `searchOneOf` | `(…) => SearchParser<T>` | Parsers for a route's `search` schema ([Search Parameters](routing.md#search-parameters)) |
-| `navigateBack` | `() => void`                                            | Navigate back in browser history (also available as a global)            |
+| `navigateBack` | `() => void`                                            | Navigate back in browser history                                         |
+| `currentPath`  | `ReadonlySignal<string>`                                | The current pathname, as a signal                                        |
+| `markActiveLinks` | `() => void`                                         | From now on, each time a route is on screen, the links to the current path get `aria-current="page"` |
+| `isActive`     | `(pattern) => boolean`                                  | Whether the current path is a route's (`'/users/:id'`), or below one (`'/work/*'`); a template that calls it follows the path |
 | `setMeta`      | `(meta: AppRouteMeta) => void`                          | Set head fields of the page on screen, until the next route loads         |
 | `metaName`     | `(name: string) => CustomMetaField<string>`             | A custom head field for `<meta name="…">`                                |
 | `metaProperty` | `(property: string) => CustomMetaField<string>`         | A custom head field for `<meta property="…">`                            |
@@ -74,18 +80,6 @@ The entry that compiled code imports its helpers from (`__registerComponent`, `_
 
 ---
 
-## Router Globals
-
-The router installs these as globals when it starts, so a template calls them without an import. `navigate` and `navigateBack` are also exported from `thane/router`.
-
-| Global         | Signature                | Description                                               |
-| :------------- | :----------------------- | :-------------------------------------------------------- |
-| `navigate`     | `(path: RoutePaths) => void`, `(pattern, params) => void` | Navigate to a path, or to a route pattern with its parameters (type-safe when routes are registered) |
-| `navigateBack` | `() => void`             | Navigate back in browser history                          |
-| `currentPath`  | `ReadonlySignal<string>` | Read-only signal with the current pathname                |
-
----
-
 ## Types
 
 `thane` exports these types for an app to write in its own code:
@@ -93,10 +87,11 @@ The router installs these as globals when it starts, so a template calls them wi
 | Type                       | Use it for                                                                                  |
 | :------------------------- | :------------------------------------------------------------------------------------------ |
 | `Signal<T>`                | A read/write signal: component fields, signal props, service state                          |
-| `ReadonlySignal<T>`        | A signal that others may only read, such as state a service owns and exposes                |
+| `ReadonlySignal<T>`        | A signal that others may only read, such as state a service owns and exposes; a `computed()` is one, and is not a `Signal<T>` |
 | `ComponentContext<P>`      | The setup function's parameter, for example in a helper shared by several setup functions  |
 | `ComponentHTMLSelector<P>` | What `defineComponent()` returns: a parameter that receives a component to `mount()`        |
-| `Fragment`                 | An `html` template as a value: a fragment a module exports, a prop that holds one           |
+| `Fragment`                 | An `html` template as a value: a fragment a module exports, a prop that holds one (a slot)  |
+| `Ref<T>`                   | What `ref<T>()` gives: `el`, the element of the tag that holds it                              |
 | `MountHandle`              | The result of `mount()`, kept to destroy the component later                                |
 | `RoutePaths`               | A variable or prop that holds a navigation target                                           |
 
@@ -108,6 +103,7 @@ import type {
   ComponentHTMLSelector,
   Fragment,
   MountHandle,
+  Ref,
   RoutePaths,
 } from 'thane';
 ```
@@ -122,6 +118,7 @@ type ReadonlySignal<T> = {
 
 type Signal<T> = ReadonlySignal<T> & {
   (newValue: T): T; // Write
+  readonly [writable]: true; // A brand a ReadonlySignal lacks: a computed() is not a Signal
 };
 ```
 
@@ -135,7 +132,8 @@ interface ComponentContext<P = {}, S extends string = string> {
 }
 
 // Calling a component in a template gives a Fragment
-type ComponentHTMLSelector<P> = (props: P) => Fragment;
+// Called without props when they are all optional: Nav()
+type ComponentHTMLSelector<P> = {} extends P ? (props?: P) => Fragment : (props: P) => Fragment;
 
 // An html template, a child component call or a directive: it has no members
 interface Fragment {}
@@ -172,16 +170,17 @@ type ComponentReturnType = {
 };
 ```
 
-A setup function returns one such object (THANE412).
+A setup function returns one such object, or its template alone (THANE412).
 
 ### Mount Options (`MountOptions`)
 
 ```typescript
+// mount(App, options), mount(Shell, { routes, … }), mount(Routes, { target, scrollRestoration })
 interface MountOptions {
-  component?: ComponentHTMLSelector<any>; // Component to mount
   target?: HTMLElement; // Default: document.body
-  props?: Record<string, any>; // Root component props
-  router?: RouterConfig; // Router configuration
+  props?: Record<string, any>; // The component's props
+  routes?: RoutesConfig; // From defineRoutes(): the component is the shell, pages go into its <router-outlet>
+  scrollRestoration?: boolean | ScrollRestorationConfig; // With routes. Default: enabled
 }
 ```
 
@@ -196,12 +195,6 @@ interface Route {
 interface RouterOptions {
   meta?: SiteMeta; // siteUrl, titleTemplate, and the default of every head field
   customMeta?: Record<string, CustomMetaField>; // The app's own head fields
-}
-
-interface RouterConfig {
-  routes: { [pattern: string]: Route; notFound: Route; error?: Route }; // From defineRoutes()
-  outletId?: `router-${string}`; // Default: 'router-outlet'
-  scrollRestoration?: boolean | ScrollRestorationConfig; // Default: enabled
 }
 
 interface ScrollRestorationConfig {
@@ -223,9 +216,11 @@ interface UntypedRouteContext {
   readonly pattern: string;
   readonly params: Record<string, string>;
   readonly searchParams: URLSearchParams;
+  readonly search: Record<string, unknown>; // The route's search values, parsed (typed from its schema)
   readonly hash: string;
   readonly title: string;
   readonly state: unknown;
+  readonly error?: unknown; // On the error route: what failed
 }
 ```
 

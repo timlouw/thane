@@ -17,7 +17,7 @@
  * The compiler resolves template variable values at compile time via AST
  * analysis. A conditional initializer is opaque — the compiler cannot
  * determine which branch is taken, so the template cannot be inlined.
- * Use `whenElse()` for conditional template rendering instead.
+ * Use `when()` for conditional template rendering instead.
  */
 
 import ts from 'typescript';
@@ -56,7 +56,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
           report(
             node,
             'Conditional assignment of tagged templates is not supported. ' +
-              "The compiler cannot determine which template to use at compile time. Use 'whenElse()' instead.",
+              "The compiler cannot determine which template to use at compile time. Use 'when()' in the template instead.",
           );
         }
       }
@@ -72,7 +72,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
           report(
             node,
             'Logical expression assignment of tagged templates is not supported. ' +
-              "The compiler cannot resolve the template value at compile time. Use 'whenElse()' instead.",
+              "The compiler cannot resolve the template value at compile time. Use 'when()' in the template instead.",
           );
         }
       }

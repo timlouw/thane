@@ -14,12 +14,19 @@ export default function Navbar() {
         <img className={styles.logo} src={logo} alt="Store logo" />
       </Link>
       <div className={styles.navigationButtonsContainer}>
-        <NavLink className={({ isActive }) => (isActive ? `${styles.navigationButton} ${styles.active}` : styles.navigationButton)} to="/">
+        <NavLink
+          className={({ isActive }) =>
+            isActive ? `${styles.navigationButton} ${styles.active}` : styles.navigationButton
+          }
+          to="/"
+        >
           <span className={styles.navigationText}>Home</span>
           <img className={styles.navigationIcon} src={homeIcon} alt="Home Icon" />
         </NavLink>
         <NavLink
-          className={({ isActive }) => (isActive ? `${styles.navigationButton} ${styles.active}` : styles.navigationButton)}
+          className={({ isActive }) =>
+            isActive ? `${styles.navigationButton} ${styles.active}` : styles.navigationButton
+          }
           to="/my-cart"
         >
           <span className={styles.navigationText}>My Cart</span>

@@ -1,7 +1,7 @@
 /**
  * Lint rule unit tests
  *
- * Tests the Thane lint rules THANE400–THANE411 (THANE406, THANE407 and THANE410 are retired) by parsing
+ * Tests the Thane lint rules THANE400–THANE411 (THANE401, THANE402, THANE406, THANE407 and THANE410 are retired) by parsing
  * source strings into TS ASTs and running each rule's check function.
  */
 
@@ -13,10 +13,10 @@ import ts from 'typescript';
 import { ErrorCode } from '../../errors.js';
 import type { Diagnostic } from '../../types.js';
 import { createBuildConfig, resolveCLIOptions } from '../../cli/cli-common.js';
+import { buildAndReadJs } from '../../testing/build-project.js';
+import { logger } from '../../utils/index.js';
 import {
   noDefaultExportComponent,
-  componentPropertyOrder,
-  lifecycleArrowFunction,
   requireConstTaggedTemplates,
   noNestedHtmlTags,
   noConditionalTemplateInit,
@@ -50,96 +50,6 @@ describe('THANE400 — no-default-export-component', () => {
   test('ignores non-component default exports', () => {
     const src = `export default { foo: 'bar' };`;
     expect(noDefaultExportComponent.check(parse(src), 'test.ts')).toEqual([]);
-  });
-});
-
-// ============================================================================
-// THANE401 — component-property-order
-// ============================================================================
-
-describe('THANE401 — component-property-order', () => {
-  test('passes with correct order: template → styles → onMount → onDestroy', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      styles: css\`:host { color: red }\`,
-      onMount: () => {},
-      onDestroy: () => {},
-    }));`;
-    expect(componentPropertyOrder.check(parse(src), 'test.ts')).toEqual([]);
-  });
-
-  test('passes with partial properties in order', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onDestroy: () => {},
-    }));`;
-    expect(componentPropertyOrder.check(parse(src), 'test.ts')).toEqual([]);
-  });
-
-  test('fails when styles comes before template', () => {
-    const src = `export const A = defineComponent(() => ({
-      styles: css\`:host { color: red }\`,
-      template: html\`<div/>\`,
-    }));`;
-    const d = componentPropertyOrder.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.COMPONENT_PROPERTY_ORDER]);
-  });
-
-  test('fails when onMount comes before template', () => {
-    const src = `export const A = defineComponent(() => ({
-      onMount: () => {},
-      template: html\`<div/>\`,
-    }));`;
-    const d = componentPropertyOrder.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.COMPONENT_PROPERTY_ORDER]);
-  });
-});
-
-// ============================================================================
-// THANE402 — lifecycle-arrow-function
-// ============================================================================
-
-describe('THANE402 — lifecycle-arrow-function', () => {
-  test('passes with arrow function lifecycle hooks', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onMount: () => {},
-      onDestroy: () => {},
-    }));`;
-    expect(lifecycleArrowFunction.check(parse(src), 'test.ts')).toEqual([]);
-  });
-
-  test('fails on method shorthand onMount', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onMount() { console.log('hi'); },
-    }));`;
-    const d = lifecycleArrowFunction.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.LIFECYCLE_ARROW_FUNCTION]);
-  });
-
-  test('fails on function expression onDestroy', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onDestroy: function() {},
-    }));`;
-    const d = lifecycleArrowFunction.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.LIFECYCLE_ARROW_FUNCTION]);
-  });
-
-  test('reports both lifecycle hooks if both are wrong', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onMount() {},
-      onDestroy: function() {},
-    }));`;
-    const d = lifecycleArrowFunction.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(2);
-    expect(codes(d)).toEqual([ErrorCode.LIFECYCLE_ARROW_FUNCTION, ErrorCode.LIFECYCLE_ARROW_FUNCTION]);
   });
 });
 
@@ -192,7 +102,7 @@ describe('THANE404 — no-nested-html-tags', () => {
 
   test('passes with html inside whenElse (directive exemption)', () => {
     const src = `export const A = defineComponent(() => ({
-      template: html\`<div>\${whenElse(show(), html\`<p>Yes</p>\`, html\`<p>No</p>\`)}</div>\`,
+      template: html\`<div>\${when(show(), html\`<p>Yes</p>\`, html\`<p>No</p>\`)}</div>\`,
     }));`;
     expect(noNestedHtmlTags.check(parse(src), 'test.ts')).toEqual([]);
   });
@@ -204,12 +114,18 @@ describe('THANE404 — no-nested-html-tags', () => {
     expect(noNestedHtmlTags.check(parse(src), 'test.ts')).toEqual([]);
   });
 
-  test('fails with an html template in a ternary', () => {
+  test('passes with an html template in a ternary in content', () => {
     const src = `export const A = defineComponent(() => ({
       template: html\`<div>\${show() ? html\`<span>nested</span>\` : ''}</div>\`,
     }));`;
+    expect(noNestedHtmlTags.check(parse(src), 'test.ts')).toEqual([]);
+  });
+
+  test('fails with an html template passed to a function', () => {
+    const src = `export const A = defineComponent(() => ({
+      template: html\`<div>\${wrap(html\`<span>nested</span>\`)}</div>\`,
+    }));`;
     const d = noNestedHtmlTags.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
     expect(codes(d)).toEqual([ErrorCode.NO_NESTED_HTML_TAGS]);
   });
 });
@@ -289,11 +205,9 @@ describe('THANE409 — no-aliased-component-export', () => {
     expect(codes(d)).toEqual([ErrorCode.NO_ALIASED_COMPONENT_EXPORT]);
   });
 
-  test('fails with re-export from another module', () => {
+  test('passes with a re-export from another module (a barrel)', () => {
     const src = `export { MyCounter } from './counter.js';`;
-    const d = noAliasedComponentExport.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.NO_ALIASED_COMPONENT_EXPORT]);
+    expect(noAliasedComponentExport.check(parse(src), 'test.ts')).toEqual([]);
   });
 
   test('passes with non-PascalCase re-export', () => {
@@ -327,7 +241,7 @@ describe('THANE411 — duplicate-mount-target', () => {
     const src = `
       import { mount } from 'thane';
       import { App } from './app.js';
-      mount({ component: App });
+      mount(App);
     `;
     expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
   });
@@ -337,8 +251,8 @@ describe('THANE411 — duplicate-mount-target', () => {
       import { mount } from 'thane';
       import { App } from './app.js';
       import { Other } from './other.js';
-      mount({ component: App });
-      mount({ component: Other });
+      mount(App);
+      mount(Other);
     `;
     const d = duplicateMountTarget.check(parse(src), 'test.ts');
     expect(d).toHaveLength(1);
@@ -350,8 +264,8 @@ describe('THANE411 — duplicate-mount-target', () => {
       import { mount } from 'thane';
       import { App } from './app.js';
       import { Nav } from './nav.js';
-      mount({ component: App, target: document.getElementById('app') });
-      mount({ component: Nav, target: document.getElementById('nav') });
+      mount(App, { target: document.getElementById('app') });
+      mount(Nav, { target: document.getElementById('nav') });
     `;
     expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
   });
@@ -360,8 +274,8 @@ describe('THANE411 — duplicate-mount-target', () => {
     const src = `
       import { mount } from 'thane';
       const el = document.getElementById('root')!;
-      mount({ component: App, target: el });
-      mount({ component: Other, target: el });
+      mount(App, { target: el });
+      mount(Other, { target: el });
     `;
     const d = duplicateMountTarget.check(parse(src), 'test.ts');
     expect(d).toHaveLength(1);
@@ -379,15 +293,15 @@ describe('THANE411 — duplicate-mount-target', () => {
       const win = window;
       win.__mountA = () => {
         const t = document.createElement('div');
-        return mount({ component: AppA, target: t });
+        return mount(AppA, { target: t });
       };
       win.__mountB = () => {
         const t = document.createElement('div');
-        return mount({ component: AppB, target: t });
+        return mount(AppB, { target: t });
       };
       win.__mountC = () => {
         const t = document.createElement('div');
-        return mount({ component: AppC, target: t });
+        return mount(AppC, { target: t });
       };
     `;
     expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
@@ -398,8 +312,8 @@ describe('THANE411 — duplicate-mount-target', () => {
       import { mount } from 'thane';
       const setup = () => {
         const el = document.getElementById('root')!;
-        mount({ component: AppA, target: el });
-        mount({ component: AppB, target: el });
+        mount(AppA, { target: el });
+        mount(AppB, { target: el });
       };
     `;
     const d = duplicateMountTarget.check(parse(src), 'test.ts');
@@ -506,5 +420,41 @@ describe('CLI defaults and config precedence', () => {
     expect(options.command).toBe('dev');
     expect(options.serve).toBe(true);
     expect(options.prod).toBe(false);
+  });
+});
+
+// ============================================================================
+// lint in thane.config.json: the severity of each rule
+// ============================================================================
+
+describe('a build follows the severities lint sets', () => {
+  const app = `import { defineComponent, html, mount } from 'thane';
+const flag = Math.random() > 2;
+const tpl = flag ? html\`<p>a</p>\` : html\`<p>b</p>\`;
+export const App = defineComponent(() => ({ template: html\`<div>\${tpl}</div>\` }));
+mount(App);
+`;
+  const reported = async (lint: Record<string, 'off' | 'warning' | 'error'>): Promise<string[]> => {
+    const codes: string[] = [];
+    const original = logger.diagnostics.bind(logger);
+    logger.diagnostics = (diagnostics) => {
+      codes.push(...diagnostics.map((d) => `${d.code} ${d.severity}`));
+      original(diagnostics);
+    };
+    try {
+      await buildAndReadJs(app, { config: { lint, strictTypeCheck: false } });
+    } finally {
+      logger.diagnostics = original;
+    }
+    return codes;
+  };
+
+  test('THANE405 is a warning by default, nothing when off', async () => {
+    expect(await reported({})).toEqual(['THANE405 warning']);
+    expect(await reported({ THANE405: 'off' })).toEqual([]);
+  });
+
+  test('a warning set to error fails the build', async () => {
+    await expect(reported({ THANE405: 'error' })).rejects.toThrow('Conditional assignment of tagged templates');
   });
 });

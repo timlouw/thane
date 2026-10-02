@@ -2,25 +2,23 @@
 
 Thane is a **compile-time component framework** for TypeScript. Templates are compiled to optimized vanilla JavaScript at build time — static template cloning, direct DOM navigation, and fine-grained signal subscriptions — so the browser does the absolute minimum work at runtime.
 
-**~3 KB gzip** · Zero virtual DOM · TypeScript-first · 13 compile-time lint rules
+**About 1 KB gzipped for a counter app** · Zero virtual DOM · TypeScript-first · Lint rules and build errors for silent failures
 
 ---
 
 ## Getting Started
 
-Install Thane, scaffold your first component, and run the dev server.
+Create a project with `thane init`, add components with `thane generate component`, and run the dev server.
 
 ```typescript
 import { defineComponent, signal, mount, html } from 'thane';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
-  return {
-    template: html`<button @click=${() => count(count() + 1)}>Clicks: ${count()}</button>`,
-  };
+  return html`<button @click=${count(count() + 1)}>Clicks: ${count()}</button>`;
 });
 
-mount({ component: Counter });
+mount(Counter);
 ```
 
 **→ [Getting Started](getting-started.md)**
@@ -29,7 +27,7 @@ mount({ component: Counter });
 
 ## Signals
 
-Reactive primitives — `signal()`, `computed()`, `effect()`, `batch()`, `untrack()`.
+Reactive primitives — `signal()`, `computed()`, `effect()`, `batch()`, `untrack()`, `onCleanup()`.
 
 ```typescript
 const name = signal('world');
@@ -44,7 +42,8 @@ name('Thane');                          // logs: "Hello, Thane!"
 
 ## Components
 
-Define components with `defineComponent()`, receive typed props, use lifecycle hooks, and mount to the DOM.
+Define components with `defineComponent()`, receive typed props, pass templates as slots, use lifecycle hooks and
+`onCleanup()`, and mount to the DOM.
 
 ```typescript
 export const Greeter = defineComponent<{ name: string }>('app-greeter', ({ props }) => ({
@@ -60,7 +59,8 @@ export const Greeter = defineComponent<{ name: string }>('app-greeter', ({ props
 
 ## Templates
 
-Tagged template literals — `html` templates, text bindings, attribute bindings, style bindings, and HTML fragment injection.
+Tagged template literals — `html` templates, text, attribute and style bindings, `class:` toggles, `bind:value`,
+element refs, ternaries, `&&` and `.map()`, and fragments.
 
 ```typescript
 template: html`
@@ -76,10 +76,11 @@ template: html`
 
 ## Event Handling
 
-Bind DOM events with `@event` syntax and typed handlers.
+Bind DOM events with `@event` syntax: each handler's event is typed for its element, and modifiers handle the
+usual chores.
 
 ```typescript
-template: html`<button @click=${(e: MouseEvent) => console.log(e)}>Click</button>`
+html`<form @submit.prevent=${save}><input @keydown.esc=${(e) => e.currentTarget.blur()} /></form>`
 ```
 
 **→ [Event Handling](event-handling.md)**
@@ -88,22 +89,23 @@ template: html`<button @click=${(e: MouseEvent) => console.log(e)}>Click</button
 
 ## Directives
 
-Conditional rendering and list rendering — `when()`, `whenElse()`, `repeat()`.
+Conditional rendering and list rendering — `when()`, with an else branch and a narrowing form, and `repeat()`.
 
 ```typescript
 template: html`
   <div ${when(isVisible())}>Shown conditionally</div>
-  ${repeat(items(), (item) => html`<li>${item()}</li>`, html`<li>No items</li>`, (item) => item().id)}
+  ${repeat(items(), (item) => html`<li>${item()}</li>`, { key: (item) => item().id, empty: html`<li>No items</li>` })}
 `
 ```
 
-**→ [Directives Overview](directives/README.md)** · [when](directives/when.md) · [whenElse](directives/when-else.md) · [repeat](directives/repeat.md)
+**→ [Directives Overview](directives/README.md)** · [when](directives/when.md) · [repeat](directives/repeat.md)
 
 ---
 
 ## Routing
 
-Type-safe client-side routing with `defineRoutes()`, lazy loading, route parameters, and scroll restoration.
+Type-safe client-side routing with `defineRoutes()`: a `<router-outlet>`, plain `<a href>` links, lazy pages,
+typed parameters and search values, guards, heads, active links and scroll restoration.
 
 ```typescript
 const Routes = defineRoutes({
@@ -148,7 +150,8 @@ export const doubled = computed(() => count() * 2);
 
 ## CLI
 
-`thane dev`, `thane build`, `thane serve`, `thane typecheck`, `thane types` — plus configuration file support.
+`thane init`, `thane generate component`, `thane dev` with hot updates, `thane build`, `thane serve`, `thane typecheck`,
+`thane types` — plus configuration file support.
 
 ```bash
 thane dev --port 3000 --open
@@ -169,7 +172,8 @@ How the build pipeline works — esbuild plugins, template compilation, binding 
 
 ## Lint Rules
 
-11 compile-time lint rules (THANE400–THANE413) and the compiler errors (THANE006–THANE013) that catch silent failures before they reach the browser.
+The lint rules (THANE400–THANE416) and the compiler's build errors (THANE006–THANE018) that catch silent failures
+before they reach the browser.
 
 **→ [Lint Rules](lint-rules.md)**
 

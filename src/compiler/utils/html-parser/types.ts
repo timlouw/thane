@@ -35,6 +35,8 @@ interface HtmlElementBase {
   children: HtmlElement[];
   parent: HtmlElement | null;
   textContent: TextNode[];
+  /** The `${…}`s alone in the tag other than `when()` (an element ref), as written, with their spans */
+  tagValues?: { text: string; start: number; end: number }[] | undefined;
 }
 
 /**
@@ -127,6 +129,7 @@ export const VOID_ELEMENTS = new Set([
 
 // Regex factories — fresh instances to avoid stale lastIndex bugs with /g.
 // Match BARE signal calls: signalName() — NOT this.signalName()
-export const WHEN_ELSE_REGEX = () => /\$\{whenElse\(/g;
+/** `${when(` in content: a conditional with its templates (in a tag, `${when(cond)}` shows the element) */
+export const WHEN_CONTENT_REGEX = () => /\$\{when\(/g;
 export const REPEAT_REGEX = () => /\$\{repeat\(/g;
 export const SIGNAL_EXPR_REGEX = () => /\$\{(\w+)\(\)\}/g;

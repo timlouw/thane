@@ -14,13 +14,13 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(rows(), (item) => html\`${row}\`, null, (item) => item.id)}
+        \${repeat(rows(), (item) => html\`${row}\`, { key: "id" })}
       </ul>
       ${extra}
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 describe('Rows without cleanups are bound by a standalone function and created in batches', () => {

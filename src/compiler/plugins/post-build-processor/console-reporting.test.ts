@@ -19,7 +19,7 @@ import { defineComponent, html, mount } from 'thane';
 export const App = defineComponent('test-app', () => ({
   template: html\`<div>size report</div>\`,
 }));
-mount({ component: App });
+mount(App);
 `;
 
 const sizeColor = (size: number, max: number): string => {

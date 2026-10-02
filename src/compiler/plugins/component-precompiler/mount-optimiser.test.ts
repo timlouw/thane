@@ -1,10 +1,11 @@
 /**
  * Characterisation of the mount-call optimiser (component-precompiler.ts).
  *
- * An entry file that calls `mount({ component, target?, props? })` and contains neither the text
- * `router` nor an `html` template is rewritten to `mountComponent(component, target?, props?)`,
- * so the router-aware `mount` wrapper is tree-shaken. Build-through tests: the component lives in
- * its own file, as it does in an app, so the entry reaches the optimiser.
+ * An entry file that calls `mount(Component, { target?, props? })` once, with a component it can name, and
+ * holds no `html` template, is rewritten to `mountComponent(component, target?, props?)`, so the router-aware
+ * `mount` wrapper is tree-shaken. Routes (`mount(Shell, { routes })`, `mount(Routes)`) keep `mount()`.
+ * Build-through tests: the component lives in its own file, as it does in an app, so the entry reaches the
+ * optimiser.
  */
 import { describe, expect, test } from 'bun:test';
 import { buildAndReadJs } from '../../testing/build-project.js';
@@ -17,13 +18,18 @@ const build = (entry: string, extraFiles: Record<string, string> = {}) =>
   buildAndReadJs(entry, { extraFiles: { 'src/app.ts': APP, ...extraFiles } });
 
 /** The router-aware wrapper is bundled only when `mount` itself is still called. */
-const hasMountWrapper = (js: string) => /function mount\(options\)/.test(js);
+const hasMountWrapper = (js: string) => /function mount\(app, options/.test(js);
+
+const ROUTES = `import { defineRoutes } from 'thane/router';
+import { App } from './app';
+export const Routes = defineRoutes({ '/': { component: App }, notFound: { component: App } });
+`;
 
 describe('mount optimiser: rewritten', () => {
   test('component only', async () => {
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
-mount({ component: App });
+mount(App);
 `);
     expect(js).toContain('\nmountComponent(App);\n');
     expect(hasMountWrapper(js)).toBe(false);
@@ -33,7 +39,7 @@ mount({ component: App });
   test('with a target', async () => {
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
-mount({ component: App, target: document.getElementById('app')! });
+mount(App, { target: document.getElementById('app')! });
 `);
     expect(js).toContain('\nmountComponent(App, document.getElementById("app"));\n');
     expect(hasMountWrapper(js)).toBe(false);
@@ -42,7 +48,7 @@ mount({ component: App, target: document.getElementById('app')! });
   test('with props only: the target defaults to document.body', async () => {
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
-mount({ component: App, props: { n: 1 } });
+mount(App, { props: { n: 1 } });
 `);
     expect(js).toContain('\nmountComponent(App, document.body, { n: 1 });\n');
     expect(hasMountWrapper(js)).toBe(false);
@@ -52,7 +58,7 @@ mount({ component: App, props: { n: 1 } });
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
 const el = document.getElementById('app')!;
-mount({ props: { n: 1 }, target: el, component: App });
+mount(App, { props: { n: 1 }, target: el });
 `);
     expect(js).toContain('\nmountComponent(App, el, { n: 1 });\n');
     expect(hasMountWrapper(js)).toBe(false);
@@ -62,7 +68,7 @@ mount({ props: { n: 1 }, target: el, component: App });
     const js = await build(`import { mount, signal } from 'thane';
 import { App } from './app';
 const ready = signal(true);
-const handle = mount({ component: App });
+const handle = mount(App);
 if (ready()) console.log(handle.root);
 `);
     expect(js).toContain('var handle = mountComponent(App);');
@@ -74,7 +80,7 @@ if (ready()) console.log(handle.root);
     const js = await build(`import { mount, registerGlobalStyles } from 'thane';
 import { App } from './app';
 registerGlobalStyles(css\`body { margin: 0; }\`);
-mount({ component: App });
+mount(App);
 `);
     expect(js).toContain('registerGlobalStyles(`body { margin: 0; }`);');
     expect(js).toContain('\nmountComponent(App);\n');
@@ -86,7 +92,7 @@ mount({ component: App });
     const js = await build(`import { boot } from './boot';\nboot();\n`, {
       'src/boot.ts': `import { mount } from 'thane';
 import { App } from './app';
-export const boot = () => mount({ component: App });
+export const boot = () => mount(App);
 `,
     });
     expect(js).toContain('var boot = () => mountComponent(App);');
@@ -98,7 +104,7 @@ export const boot = () => mount({ component: App });
 import { mount } from 'thane';
 import { App } from './app';
 const ready = signal(true);
-if (ready()) mount({ component: App });
+if (ready()) mount(App);
 `);
     expect(js).toContain('if (ready()) mountComponent(App);');
     expect(js).toContain('function mountComponent(');
@@ -108,7 +114,7 @@ if (ready()) mount({ component: App });
   test('an unmount() call is not a second mount() call', async () => {
     const js = await build(`import { mount, unmount } from 'thane';
 import { App } from './app';
-const handle = mount({ component: App });
+const handle = mount(App);
 unmount(handle);
 `);
     expect(js).toContain('var handle = mountComponent(App);');
@@ -119,33 +125,55 @@ unmount(handle);
 });
 
 describe('mount optimiser: not rewritten', () => {
-  test('an entry that mentions "router" anywhere, even in a comment', async () => {
+  test('the routes alone, or a shell with routes: they need the router', async () => {
+    const alone = await build(
+      `import { mount } from 'thane';
+import { Routes } from './routes';
+mount(Routes);
+`,
+      { 'src/routes.ts': ROUTES },
+    );
+    expect(alone).toContain('\nmount(Routes);\n');
+    expect(hasMountWrapper(alone)).toBe(true);
+    const shell = await build(
+      `import { mount } from 'thane';
+import { App } from './app';
+import { Routes } from './routes';
+mount(App, { routes: Routes });
+`,
+      { 'src/routes.ts': ROUTES },
+    );
+    expect(shell).toContain('\nmount(App, { routes: Routes });\n');
+    expect(hasMountWrapper(shell)).toBe(true);
+  });
+
+  test('options that are not an object literal: their keys are unknown', async () => {
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
-// no router in this app
-mount({ component: App });
+const options = { target: document.body };
+mount(App, options);
 `);
-    expect(js).toContain('\nmount({ component: App });\n');
+    expect(js).toContain('mount(App, options)');
     expect(hasMountWrapper(js)).toBe(true);
   });
 
   test('an entry that contains an html template', async () => {
     const js = await buildAndReadJs(`import { defineComponent, mount } from 'thane';
 export const App = defineComponent(() => ({ template: html\`<p>hi</p>\` }));
-mount({ component: App });
+mount(App);
 `);
-    expect(js).toContain('\nmount({ component: App });\n');
+    expect(js).toContain('\nmount(App);\n');
     expect(hasMountWrapper(js)).toBe(true);
   });
 
   test('two mount() calls on different targets: neither is rewritten', async () => {
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
-mount({ component: App, target: document.getElementById('a')! });
-mount({ component: App, target: document.getElementById('b')! });
+mount(App, { target: document.getElementById('a')! });
+mount(App, { target: document.getElementById('b')! });
 `);
-    expect(js).toContain('\nmount({ component: App, target: document.getElementById("a") });\n');
-    expect(js).toContain('\nmount({ component: App, target: document.getElementById("b") });\n');
+    expect(js).toContain('\nmount(App, { target: document.getElementById("a") });\n');
+    expect(js).toContain('\nmount(App, { target: document.getElementById("b") });\n');
     expect(js).not.toContain('mountComponent(App');
     expect(hasMountWrapper(js)).toBe(true);
   });
@@ -153,9 +181,9 @@ mount({ component: App, target: document.getElementById('b')! });
   test("a local function called mount is not thane's", async () => {
     const js = await build(`import { App } from './app';
 const mount = (options: { component: unknown }) => console.log(options);
-mount({ component: App });
+mount(App);
 `);
-    expect(js).toContain('\nmount({ component: App });\n');
+    expect(js).toContain('\nmount(App);\n');
     expect(js).not.toContain('mountComponent');
   });
 
@@ -163,10 +191,10 @@ mount({ component: App });
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
 const start = mount;
-mount({ component: App });
+mount(App);
 console.log(start);
 `);
-    expect(js).toContain('\nmount({ component: App });\n');
+    expect(js).toContain('\nmount(App);\n');
     expect(js).not.toContain('mountComponent(App');
     expect(hasMountWrapper(js)).toBe(true);
   });
@@ -174,10 +202,10 @@ console.log(start);
   test('mount also exported: the import stays and the call is left alone', async () => {
     const js = await build(`import { mount } from 'thane';
 import { App } from './app';
-mount({ component: App });
+mount(App);
 export { mount };
 `);
-    expect(js).toContain('\nmount({ component: App });\n');
+    expect(js).toContain('\nmount(App);\n');
     expect(hasMountWrapper(js)).toBe(true);
   });
 
@@ -185,11 +213,11 @@ export { mount };
     const js = await build(
       `import { mount } from './my-mount';
 import { App } from './app';
-mount({ component: App });
+mount(App);
 `,
       { 'src/my-mount.ts': 'export const mount = (options: { component: unknown }) => console.log(options);\n' },
     );
-    expect(js).toContain('\nmount({ component: App });\n');
+    expect(js).toContain('\nmount(App);\n');
     expect(js).not.toContain('mountComponent');
   });
 });

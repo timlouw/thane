@@ -3,27 +3,27 @@
 <p data-thane-ref="b0" class="" style="color: "><!--b1--> <!----> and <!--b2--> <!----></p><input data-thane-ref="b3"><b data-thane-ref="b4" title=""><!--b5--> <!----></b>
 --- binding function body
     const _subs = [];
-    const b1 = _ns[0].firstChild.nextSibling;
-    const b2 = _ns[0].lastChild.previousSibling;
-    const b5 = _ns[2].firstChild.nextSibling;
-    const b0 = _ns[0];
-    const b3 = _ns[1];
-    const b4 = _ns[2];
-    b0.className = cls();
-    b0.style.color = col();
-    b1.data = count() ?? '';
-    b3.value = v();
-    b5.data = label() ?? '';
-    _subs.push(cls.subscribe(v => { b0.className = v; }, true));
-    _subs.push(col.subscribe(v => { b0.style.color = v; }, true));
-    _subs.push(count.subscribe(v => { b1.data = v ?? ''; }, true));
-    _subs.push(v.subscribe(v => { b3.value = v; }, true));
-    _subs.push(label.subscribe(v => { b5.data = v ?? ''; }, true));
-    let _pv_b2_0; const _upd_b2_0 = () => { if (_pv_b2_0 !== (_pv_b2_0 = a() + b())) b2.data = (_pv_b2_0) ?? ''; };
+    const _b1 = _ns[0].firstChild.nextSibling;
+    const _b2 = _ns[0].lastChild.previousSibling;
+    const _b5 = _ns[2].firstChild.nextSibling;
+    const _b0 = _ns[0];
+    const _b3 = _ns[1];
+    const _b4 = _ns[2];
+    _b0.className = cls();
+    _b0.style.color = col();
+    _b1.data = count() ?? '';
+    _b3.value = v();
+    _b5.data = label() ?? '';
+    _subs.push(cls.subscribe(v => { _b0.className = v; }, true));
+    _subs.push(col.subscribe(v => { _b0.style.color = v; }, true));
+    _subs.push(count.subscribe(v => { _b1.data = v ?? ''; }, true));
+    _subs.push(v.subscribe(v => { _b3.value = v; }, true));
+    _subs.push(label.subscribe(v => { _b5.data = v ?? ''; }, true));
+    let _pv_b2_0; const _upd_b2_0 = () => { if (_pv_b2_0 !== (_pv_b2_0 = a() + b())) _b2.data = (_pv_b2_0) ?? ''; };
     _upd_b2_0();
     _subs.push(a.subscribe(_upd_b2_0, true));
     _subs.push(b.subscribe(_upd_b2_0, true));
-    let _pv_b4_1; const _upd_b4_1 = () => { if (_pv_b4_1 !== (_pv_b4_1 = `${a()}-${b()}`)) b4.setAttribute('title', _pv_b4_1); };
+    let _pv_b4_1; const _upd_b4_1 = () => { if (_pv_b4_1 !== (_pv_b4_1 = `${a()}-${b()}`)) _b4.setAttribute('title', _pv_b4_1); };
     _upd_b4_1();
     _subs.push(a.subscribe(_upd_b4_1, true));
     _subs.push(b.subscribe(_upd_b4_1, true));
@@ -36,9 +36,9 @@
 --- binding function body
     const _subs = [];
     _ns[0].addEventListener('click', inc);
-    _ns[1].addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); (() => go(1))(e); });
-    _ns[2].addEventListener('keydown', (e) => { if (e.key !== 'Enter') return; save(); });
-    _ns[3].addEventListener('click', (e) => { if (e.target !== e.currentTarget) return; (close)(e); });
+    _ns[1].addEventListener('click', (_e) => { _e.preventDefault(); _e.stopPropagation(); (() => go(1))(_e); });
+    _ns[2].addEventListener('keydown', (_e) => { if (_e.key !== 'Enter') return; save(); });
+    _ns[3].addEventListener('click', (_e) => { if (_e.target !== _e.currentTarget) return; (close)(_e); });
     return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };
 --- static templates
   const __tpl = __T(`<button>+</button><button>go</button><input><div>x</div>`);
@@ -53,22 +53,22 @@
     const _ws_b3 = _we_b0.nextSibling;
     const _we_b3 = _r.lastChild;
     _subs.push(__bindIf(_ws_b0, _we_b0, show, `<div><button>A</button><!----> <!----></div>`, (_c) => {
-      const b1 = _c.lastElementChild;
-      const b2 = b1.nextSibling.nextSibling;
-      b2.data = n() ?? '';
-      b1.addEventListener('click', a);
+      const _b1 = _c.lastElementChild;
+      const _b2 = _b1.nextSibling.nextSibling;
+      _b2.data = n() ?? '';
+      _b1.addEventListener('click', a);
       return [
-        n.subscribe(v => { b2.data = v ?? ''; }, true),
+        n.subscribe(v => { _b2.data = v ?? ''; }, true),
       ];
     }));
     _subs.push(__bindIfExpr(_ws_b3, _we_b3, [a, b], () => a() && !b(), `<div><span title=""><!----> <!----></span></div>`, (_c) => {
-      const b4 = _c.lastElementChild;
-      const b5 = b4.firstChild.nextSibling;
-      b4.setAttribute('title', t());
-      b5.data = m() ?? '';
+      const _b4 = _c.lastElementChild;
+      const _b5 = _b4.firstChild.nextSibling;
+      _b4.setAttribute('title', t());
+      _b5.data = m() ?? '';
       return [
-        t.subscribe(v => { b4.setAttribute('title', v); }, true),
-        m.subscribe(v => { b5.data = v ?? ''; }, true),
+        t.subscribe(v => { _b4.setAttribute('title', v); }, true),
+        m.subscribe(v => { _b5.data = v ?? ''; }, true),
       ];
     }));
     return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };
@@ -79,27 +79,27 @@
 <!--b0(--><!--b0|--><!--b0)--><p><!--b5--> <!----></p>
 --- binding function body
     const _subs = [];
-    const b5 = _ns[0].firstChild.nextSibling;
+    const _b5 = _ns[0].firstChild.nextSibling;
     const _ws_b0 = _ns[0].previousSibling.previousSibling.previousSibling;
     const _wm_b0 = _ws_b0.nextSibling;
     const _we_b0 = _wm_b0.nextSibling;
-    b5.data = other() ?? '';
-    _subs.push(other.subscribe(v => { b5.data = v ?? ''; }, true));
+    _b5.data = other() ?? '';
+    _subs.push(other.subscribe(v => { _b5.data = v ?? ''; }, true));
     _subs.push(__bindIfExpr(_ws_b0, _wm_b0, [on], () => on(), `<b><!----> <!----></b>`, (_c) => {
-      const b2 = _c;
-      const b3 = _c.firstChild.nextSibling;
-      b3.data = t() ?? '';
-      b2.addEventListener('click', x);
+      const _b2 = _c;
+      const _b3 = _c.firstChild.nextSibling;
+      _b3.data = t() ?? '';
+      _b2.addEventListener('click', x);
       return [
-        t.subscribe(v => { b3.data = v ?? ''; }, true),
+        t.subscribe(v => { _b3.data = v ?? ''; }, true),
       ];
     }));
     _subs.push(__bindIfExpr(_wm_b0, _we_b0, [on], () => !(on()), `<i title="">no</i>`, (_c) => {
-      const b4 = _c;
-      b4.setAttribute('title', u());
-      b4.addEventListener('click', y);
+      const _b4 = _c;
+      _b4.setAttribute('title', u());
+      _b4.addEventListener('click', y);
       return [
-        u.subscribe(v => { b4.setAttribute('title', v); }, true),
+        u.subscribe(v => { _b4.setAttribute('title', v); }, true),
       ];
     }));
     return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };
@@ -160,24 +160,24 @@
       }
       return [
         __bindIf(_ws_b1, _we_b1, inner, `<div><!----> <!----></div>`, (_c) => {
-      const b2 = _c.firstChild.nextSibling;
-      b2.data = x() ?? '';
+      const _b2 = _c.firstChild.nextSibling;
+      _b2.data = x() ?? '';
       return [
-        x.subscribe(v => { b2.data = v ?? ''; }, true),
+        x.subscribe(v => { _b2.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_ws_b3, _we_b3, [p, q], () => p() || q(), `<div><b><!----> <!----></b></div>`, (_c) => {
-      const b4 = _c.lastChild.firstChild.nextSibling;
-      b4.data = y() ?? '';
+      const _b4 = _c.lastChild.firstChild.nextSibling;
+      _b4.data = y() ?? '';
       return [
-        y.subscribe(v => { b4.data = v ?? ''; }, true),
+        y.subscribe(v => { _b4.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_ws_b5, _wm_b5, [z], () => z(), `<u><!----> <!----></u>`, (_c) => {
-      const b7 = _c.firstChild.nextSibling;
-      b7.data = t() ?? '';
+      const _b7 = _c.firstChild.nextSibling;
+      _b7.data = t() ?? '';
       return [
-        t.subscribe(v => { b7.data = v ?? ''; }, true),
+        t.subscribe(v => { _b7.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_wm_b5, _we_b5, [z], () => !(z()), `<s>none</s>`, () => []),
@@ -200,11 +200,11 @@
     const _wm_b3 = _ws_b3.nextSibling;
     const _we_b3 = _r.lastChild;
     _subs.push(__bindIf(_ws_b0, _we_b0, a, `<div><b title=""><!----> <!----></b></div>`, (_c) => {
-      const b1 = _c.lastElementChild;
-      const b2 = b1.firstChild.nextSibling;
-      let _pv_b1_0; const _upd_b1_0 = () => { if (_pv_b1_0 !== (_pv_b1_0 = `${x()}-${y()}`)) b1.setAttribute('title', _pv_b1_0); };
+      const _b1 = _c.lastElementChild;
+      const _b2 = _b1.firstChild.nextSibling;
+      let _pv_b1_0; const _upd_b1_0 = () => { if (_pv_b1_0 !== (_pv_b1_0 = `${x()}-${y()}`)) _b1.setAttribute('title', _pv_b1_0); };
       _upd_b1_0();
-      let _pv_b2_1; const _upd_b2_1 = () => { if (_pv_b2_1 !== (_pv_b2_1 = x() + y())) b2.data = (_pv_b2_1) ?? ''; };
+      let _pv_b2_1; const _upd_b2_1 = () => { if (_pv_b2_1 !== (_pv_b2_1 = x() + y())) _b2.data = (_pv_b2_1) ?? ''; };
       _upd_b2_1();
       return [
         x.subscribe(_upd_b1_0, true),
@@ -214,11 +214,11 @@
       ];
     }));
     _subs.push(__bindIfExpr(_ws_b3, _wm_b3, [c], () => c(), `<i style="width: "><!----> <!----></i>`, (_c) => {
-      const b5 = _c;
-      const b6 = _c.firstChild.nextSibling;
-      let _pv_b5_0; const _upd_b5_0 = () => { if (_pv_b5_0 !== (_pv_b5_0 = `${w() * 2}px`)) b5.style.setProperty('width', _pv_b5_0); };
+      const _b5 = _c;
+      const _b6 = _c.firstChild.nextSibling;
+      let _pv_b5_0; const _upd_b5_0 = () => { if (_pv_b5_0 !== (_pv_b5_0 = `${w() * 2}px`)) _b5.style.setProperty('width', _pv_b5_0); };
       _upd_b5_0();
-      let _pv_b6_1; const _upd_b6_1 = () => { if (_pv_b6_1 !== (_pv_b6_1 = w() + 1)) b6.data = (_pv_b6_1) ?? ''; };
+      let _pv_b6_1; const _upd_b6_1 = () => { if (_pv_b6_1 !== (_pv_b6_1 = w() + 1)) _b6.data = (_pv_b6_1) ?? ''; };
       _upd_b6_1();
       return [
         w.subscribe(_upd_b5_0, true),
@@ -270,22 +270,22 @@
       const _rsrc_b8_0 = rows;
       _subs.push(typeof _rsrc_b8_0?.subscribe === 'function' ? _rsrc_b8_0.subscribe(() => { _rc_b8.reconcile(_items_b8()); }, true) : () => {});
       _subs.push(() => _rc_b8.clearAll());
-      _ct_b8.addEventListener('click', (e) => { let _row = e.target, _cell = null; while (_row && _row.parentNode !== _ct_b8) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const r = _row.__d; pick(r); });
+      _ct_b8.addEventListener('click', (_e) => { let _row = _e.target, _cell = null; while (_row && _row.parentNode !== _ct_b8) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const r = _row.__d; pick(r); });
       }
       return [
         __bindIf(_ws_b2, _we_b2, deep, `<p><!----> <!----></p>`, (_c) => {
-      const b3 = _c.firstChild.nextSibling;
-      b3.data = d() ?? '';
+      const _b3 = _c.firstChild.nextSibling;
+      _b3.data = d() ?? '';
       return [
-        d.subscribe(v => { b3.data = v ?? ''; }, true),
+        d.subscribe(v => { _b3.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_ws_b4, _we_b4, [d], () => d() > 1, `<p>many</p>`, () => []),
         __bindIfExpr(_ws_b5, _wm_b5, [k], () => k(), `<em><!----> <!----></em>`, (_c) => {
-      const b7 = _c.firstChild.nextSibling;
-      b7.data = e1() ?? '';
+      const _b7 = _c.firstChild.nextSibling;
+      _b7.data = e1() ?? '';
       return [
-        e1.subscribe(v => { b7.data = v ?? ''; }, true),
+        e1.subscribe(v => { _b7.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_wm_b5, _we_b5, [k], () => !(k()), `<em>b</em>`, () => []),
@@ -348,15 +348,15 @@
       const _we_b3 = _c.lastChild;
       return [
         __bindIfExpr(_ws_b3, _wm_b3, [c], () => c(), `<b><!----> <!----></b>`, (_c) => {
-      const b5 = _c.firstChild.nextSibling;
-      b5.data = t() ?? '';
+      const _b5 = _c.firstChild.nextSibling;
+      _b5.data = t() ?? '';
       return [
-        t.subscribe(v => { b5.data = v ?? ''; }, true),
+        t.subscribe(v => { _b5.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_wm_b3, _we_b3, [c], () => !(c()), `<i>x</i>`, (_c) => {
-      const b6 = _c;
-      b6.addEventListener('click', go);
+      const _b6 = _c;
+      _b6.addEventListener('click', go);
       return [
       ];
     }),
@@ -382,10 +382,10 @@
       const _we_b1 = _c.lastChild;
       return [
         __bindIfExpr(_ws_b1, _wm_b1, [b], () => b(), `<b><!----> <!----></b>`, (_c) => {
-      const b3 = _c.firstChild.nextSibling;
-      b3.data = t() ?? '';
+      const _b3 = _c.firstChild.nextSibling;
+      _b3.data = t() ?? '';
       return [
-        t.subscribe(v => { b3.data = v ?? ''; }, true),
+        t.subscribe(v => { _b3.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_wm_b1, _we_b1, [b], () => !(b()), `<i>x</i>`, () => []),
@@ -417,14 +417,14 @@
           _insertBefore.call(_ct_b1, _el, _ref);
           const _cleanups = [];
           _cleanups.push(__bindIf(_ws_b2, _we_b2, on, `<span><!----> <!----></span>`, (_c) => {
-      const b3 = _c.firstChild.nextSibling;
-      b3.data = lbl() ?? '';
+      const _b3 = _c.firstChild.nextSibling;
+      _b3.data = lbl() ?? '';
       return [
-        lbl.subscribe(v => { b3.data = v ?? ''; }, true),
+        lbl.subscribe(v => { _b3.data = v ?? ''; }, true),
       ];
     }));
           return { el: _el, cleanups: _cleanups, value: x,
-            update: (x) => { ; } };
+            update: () => {} };
         },
       (_, i) => i);
       const _items_b1 = () => xs();
@@ -500,8 +500,8 @@
     const _we_b9 = _r.lastChild;
     const _a_b12 = _ns[0].lastChild;
     _subs.push(__bindIf(_ws_b0, _we_b0, a, `<div><button>1</button><!----><!----><!----><ul><!----></ul></div>`, (_c) => {
-      const b8 = _c.firstElementChild;
-      const _ws_b1 = b8.nextSibling;
+      const _b8 = _c.firstElementChild;
+      const _ws_b1 = _b8.nextSibling;
       const _wm_b1 = _ws_b1.nextSibling;
       const _we_b1 = _wm_b1.nextSibling;
       const _a_b5 = _c.lastChild.lastChild;
@@ -518,13 +518,13 @@
           _insertBefore.call(_ct_b5, _el, _ref);
           const _cleanups = [];
           _cleanups.push(__bindIf(_ws_b6, _we_b6, on, `<button>b</button>`, (_c) => {
-      const b7 = _c;
-      b7.addEventListener('click', go);
+      const _b7 = _c;
+      _b7.addEventListener('click', go);
       return [
       ];
     }));
           return { el: _el, cleanups: _cleanups, value: x,
-            update: (x) => { ; } };
+            update: () => {} };
         },
       (_, i) => i);
       const _items_b5 = () => xs();
@@ -533,17 +533,17 @@
       _subs.push(typeof _rsrc_b5_0?.subscribe === 'function' ? _rsrc_b5_0.subscribe(() => { _rc_b5.reconcile(_items_b5()); }, true) : () => {});
       _subs.push(() => _rc_b5.clearAll());
       }
-      b8.addEventListener('click', one);
+      _b8.addEventListener('click', one);
       return [
         __bindIfExpr(_ws_b1, _wm_b1, [b], () => b(), `<b>2</b>`, (_c) => {
-      const b3 = _c;
-      b3.addEventListener('click', two);
+      const _b3 = _c;
+      _b3.addEventListener('click', two);
       return [
       ];
     }),
         __bindIfExpr(_wm_b1, _we_b1, [b], () => !(b()), `<i>3</i>`, (_c) => {
-      const b4 = _c;
-      b4.addEventListener('click', three);
+      const _b4 = _c;
+      _b4.addEventListener('click', three);
       return [
       ];
     }),
@@ -551,8 +551,8 @@
       ];
     }));
     _subs.push(__bindIfExpr(_ws_b9, _wm_b9, [c], () => c(), `<u>5</u>`, (_c) => {
-      const b11 = _c;
-      b11.addEventListener('click', five);
+      const _b11 = _c;
+      _b11.addEventListener('click', five);
       return [
       ];
     }));
@@ -568,13 +568,13 @@
         _insertBefore.call(_ct_b12, _el, _ref);
         const _cleanups = [];
         _cleanups.push(__bindIf(_ws_b13, _we_b13, on, `<p><button>4</button></p>`, (_c) => {
-      const b14 = _c.lastElementChild;
-      b14.addEventListener('click', four);
+      const _b14 = _c.lastElementChild;
+      _b14.addEventListener('click', four);
       return [
       ];
     }));
         return { el: _el, cleanups: _cleanups, value: y,
-          update: (y) => { ; } };
+          update: () => {} };
       },
     (_, i) => i);
     const _items_b12 = () => ys();
@@ -699,10 +699,10 @@
       const _we_b1 = _c.lastChild;
       return [
         __bindIfExpr(_ws_b1, _wm_b1, [b], () => b(), `<b><!----> <!----></b>`, (_c) => {
-      const b3 = _c.firstChild.nextSibling;
-      b3.data = t() ?? '';
+      const _b3 = _c.firstChild.nextSibling;
+      _b3.data = t() ?? '';
       return [
-        t.subscribe(v => { b3.data = v ?? ''; }, true),
+        t.subscribe(v => { _b3.data = v ?? ''; }, true),
       ];
     }),
         __bindIfExpr(_wm_b1, _we_b1, [b], () => !(b()), `<i>x</i>`, () => []),
@@ -722,7 +722,8 @@
       (it, _idx, _ref) => {
         const _el = document.createElement('div');
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Card.__f(_el, { item: it }))], value: it, update: () => {} };
+        const _cd = __rc(Card, _el, { item: it });
+        return { el: _el, cleanups: [_cd.d], value: it, update: (it) => { _cd.u({ item: it }); } };
       },
     'id');
     const _items_b0 = () => items();
@@ -744,9 +745,10 @@
       (it, n, _ref) => {
         const _el = document.createElement('div');
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Card.__f(_el, { item: it, n }))], value: it, update: () => {} };
+        const _cd = __rc(Card, _el, { item: it, n });
+        return { el: _el, cleanups: [_cd.d], value: it, update: (it, n) => { _cd.u({ item: it, n }); } };
       },
-    (it) => it.a + it.b);
+    (it) => it.a + it.b, undefined, true);
     const _items_b0 = () => items();
     let _empty_b0;
     const _syncEmpty_b0 = (items) => { items.length ? _empty_b0?.remove() : _ct_b0.insertBefore(_empty_b0 ??= __T(`<li>none</li>`).content.firstElementChild, _a_b0); };
@@ -769,7 +771,8 @@
       (it, _idx, _ref) => {
         const _el = document.createElement('div');
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Card.__f(_el, { it }))], value: it, update: () => {} };
+        const _cd = __rc(Card, _el, { it });
+        return { el: _el, cleanups: [_cd.d], value: it, update: (it) => { _cd.u({ it }); } };
       },
     (_, i) => i);
     const _items_b0 = () => items().filter((x) => x.on === flag());
@@ -970,9 +973,10 @@
         const _el = _cloneNode.call(_tc_b0, true);
         const _cm0 = _el.lastElementChild;
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Kid.__f(_cm0, { label: it.name, i }))], value: it, update: () => {} };
+        const _cd0 = __rc(Kid, _cm0, { label: it.name, i });
+        return { el: _el, cleanups: [_cd0.d], value: it, update: (it, i) => { _cd0.u({ label: it.name, i }); } };
       },
-    (_, i) => i);
+    (_, i) => i, undefined, true);
     const _items_b0 = () => items();
     _rc_b0.reconcile(_items_b0());
     const _rsrc_b0_0 = items;
@@ -995,7 +999,8 @@
         const _el = _cloneNode.call(_tc_b0, true);
         const _cm0 = _el.lastElementChild;
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Kid.__f(_cm0, { it }))], value: it, update: () => {} };
+        const _cd0 = __rc(Kid, _cm0, { it });
+        return { el: _el, cleanups: [_cd0.d], value: it, update: (it) => { _cd0.u({ it }); } };
       },
     (_, i) => i);
     const _items_b0 = () => items();
@@ -1027,11 +1032,12 @@
         let _p0;
         _e0.textContent = (_p0 = it.name) ?? ''; let _t0;
         _insertBefore.call(_ct_b0, _el, _ref);
+        const _cd0 = __rc(Kid, _cm0, { it });
         const _cleanups = [];
-        _cleanups.push(__dc(Kid.__f(_cm0, { it })));
+        _cleanups.push(_cd0.d);
         _cleanups.push(__dc(Other.__f(_cm1, {})));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { if (_p0 !== (_p0 = it.name)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); } };
+          update: (it) => { if (_p0 !== (_p0 = it.name)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); _cd0.u({ it }); } };
       },
     (_, i) => i);
     const _items_b0 = () => items();
@@ -1052,11 +1058,11 @@
     const _ws_b0 = _r.lastChild.previousSibling;
     const _we_b0 = _r.lastChild;
     _subs.push(__bindIf(_ws_b0, _we_b0, a, `<div><x-kid></x-kid><b><!----> <!----></b></div>`, (_c) => {
-      const b1 = _c.lastChild.firstChild.nextSibling;
+      const _b1 = _c.lastChild.firstChild.nextSibling;
       const _cm0 = _c.firstElementChild;
-      b1.data = t() ?? '';
+      _b1.data = t() ?? '';
       return [
-        t.subscribe(v => { b1.data = v ?? ''; }, true),
+        t.subscribe(v => { _b1.data = v ?? ''; }, true),
         __dc(Kid.__f(_cm0, { x: t() })),
       ];
     }));
@@ -1068,11 +1074,11 @@
 <div><p><x-kid data-thane-ref="b900"></x-kid></p><table><tr><td><!--b0--> <!----></td><!--b901.--></tr></table><svg><!--b902.--></svg></div>
 --- binding function body
     const _subs = [];
-    const b0 = _ns[6].firstChild.nextSibling;
+    const _b0 = _ns[6].firstChild.nextSibling;
     const _cma1 = _ns[5].lastChild;
     const _cma2 = _ns[7].lastChild;
-    b0.data = t() ?? '';
-    _subs.push(t.subscribe(v => { b0.data = v ?? ''; }, true));
+    _b0.data = t() ?? '';
+    _subs.push(t.subscribe(v => { _b0.data = v ?? ''; }, true));
     _subs.push(__dc(Kid.__f(_ns[2], { x: t() })));
     const _cm1 = document.createElement('x-cell');
     _cma1.replaceWith(_cm1);
@@ -1177,26 +1183,24 @@
     const _ct_b0 = _a_b0.parentNode;
     const _bind_b0 = (_el, it, i) => {
         _el.__d = it;
+        _el.__i = i;
         const _e0 = _el.firstElementChild;
         let _p0;
         _e0.textContent = (_p0 = it.label) ?? ''; let _t0;
-        _e0.addEventListener('click', (e) => { if (e.target !== e.currentTarget) return; open(it.id); });
-        return { el: _el, cleanups: __nc, value: it, key: undefined, p0: _p0, t0: undefined };
-    };
-    const _update_b0 = (_m, it, i) => {
-      const _el = _m.el;
-      if (_m.p0 !== (_m.p0 = it.label)) (_m.t0 ??= _el.firstElementChild.firstChild) ? (_m.t0.nodeValue = _m.p0 ?? '') : (_el.firstElementChild.textContent = _m.p0 ?? ''); _el.__d = it;
+        _e0.addEventListener('click', (_e) => { if (_e.target !== _e.currentTarget) return; open(it.id); });
+        return { el: _el, cleanups: __nc, value: it,
+          update: (_it, _ix) => { it = _it; const i = _ix; if (_p0 !== (_p0 = it.label)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); _el.__d = it; _el.__i = i; } };
     };
     const _rc_b0 = createKeyedReconciler(_ct_b0, _a_b0,
       (it, i, _ref) => { const _el = _cloneNode.call(_tc_b0, true); const _m = _bind_b0(_el, it, i); _insertBefore.call(_ct_b0, _el, _ref); return _m; },
-    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0, _update_b0));
+    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0), true);
     const _items_b0 = () => items();
     _rc_b0.reconcile(_items_b0());
     const _rsrc_b0_0 = items;
     _subs.push(typeof _rsrc_b0_0?.subscribe === 'function' ? _rsrc_b0_0.subscribe(() => { _rc_b0.reconcile(_items_b0()); }, true) : () => {});
     _subs.push(() => _rc_b0.clearAll());
-    _ct_b0.addEventListener('click', (e) => { let _row = e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; pick(it); if (_cell !== null && _cell === _row.firstElementChild.nextElementSibling) { e.stopPropagation(); remove(e); return; } });
-    _ct_b0.addEventListener('keydown', (e) => { let _row = e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; if (_cell !== null && _cell === _row.firstElementChild.nextElementSibling.nextElementSibling) { if (e.key !== 'Enter') return; save(it, i, e); return; } });
+    _ct_b0.addEventListener('click', (_e) => { let _row = _e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; pick(it); if (_cell !== null && _cell === _row.firstElementChild.nextElementSibling) { _e.stopPropagation(); remove(_e); return; } });
+    _ct_b0.addEventListener('keydown', (_e) => { let _row = _e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; const i = _row.__i; if (_cell !== null && _cell === _row.firstElementChild.nextElementSibling.nextElementSibling) { if (_e.key !== 'Enter') return; { const e = _e; save(it, i, e); }; return; } });
     return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };
 --- static templates
   const __tpl = __T(`<ul><!----></ul>`);
@@ -1213,16 +1217,13 @@
         const _ev0 = _el.firstElementChild;
         const _ev1 = _el.firstElementChild.nextElementSibling;
         ;
-        _ev0.addEventListener('click', (e) => { if (e.target !== e.currentTarget) return; open(it); }); _ev1.addEventListener('keydown', (e) => { if (e.target !== e.currentTarget) return; if (e.key !== 'Enter') return; { const ev = e; key(ev, it); }; });
-        return { el: _el, cleanups: __nc, value: it, key: undefined };
-    };
-    const _update_b0 = (_m, it, _idx) => {
-      const _el = _m.el;
-      ;
+        _ev0.addEventListener('click', (_e) => { if (_e.target !== _e.currentTarget) return; open(it); }); _ev1.addEventListener('keydown', (_e) => { if (_e.target !== _e.currentTarget) return; if (_e.key !== 'Enter') return; { const ev = _e; key(ev, it); }; });
+        return { el: _el, cleanups: __nc, value: it,
+          update: (_it) => { it = _it; } };
     };
     const _rc_b0 = createKeyedReconciler(_ct_b0, _a_b0,
       (it, _idx, _ref) => { const _el = _cloneNode.call(_tc_b0, true); const _m = _bind_b0(_el, it, _idx); _insertBefore.call(_ct_b0, _el, _ref); return _m; },
-    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0, _update_b0));
+    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0));
     const _items_b0 = () => items();
     _rc_b0.reconcile(_items_b0());
     const _rsrc_b0_0 = items;
@@ -1290,7 +1291,7 @@
         _cleanups.push(sep.subscribe(() => { if (_p3 !== (_p3 = it.t + sep())) _m2.setAttribute('title', _p3); }, true));
         _cleanups.push(unit.subscribe(() => { if (_p4 !== (_p4 = `width: ${it.w + unit()}`)) _m3.style.cssText = _p4; }, true));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { if (_p0 !== (_p0 = it.x)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); if (_p1 !== (_p1 = it.label + suffix())) _m0.textContent = (_p1) ?? ''; if (_p3 !== (_p3 = it.t + sep())) _m2.setAttribute('title', _p3); if (_p4 !== (_p4 = `width: ${it.w + unit()}`)) _m3.style.cssText = _p4; } };
+          update: (_it) => { it = _it; if (_p0 !== (_p0 = it.x)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); if (_p1 !== (_p1 = it.label + suffix())) _m0.textContent = (_p1) ?? ''; if (_p3 !== (_p3 = it.t + sep())) _m2.setAttribute('title', _p3); if (_p4 !== (_p4 = `width: ${it.w + unit()}`)) _m3.style.cssText = _p4; } };
       },
     'id');
     let _sel_b0_1 = sel(); _subs.push(sel.subscribe((_v) => { const _o = _rc_b0.get(_sel_b0_1); if (_o) _o.el.className = ''; const _n = _rc_b0.get(_v); if (_n) _n.el.className = 'on'; _sel_b0_1 = _v; }, true));
@@ -1431,10 +1432,10 @@
         const _s1 = _el;
         let _p0;
         _e0.textContent = (_p0 = it.x) ?? ''; let _t0;
-        _s0.setAttribute('class', cls()); _s1.style.setProperty('top', top());
+        _s0.className = cls(); _s1.style.setProperty('top', top());
         _insertBefore.call(_ct_b0, _el, _ref);
         const _cleanups = [];
-        _cleanups.push(cls.subscribe(() => { _s0.setAttribute('class', cls()); }, true));
+        _cleanups.push(cls.subscribe(() => { _s0.className = cls(); }, true));
         _cleanups.push(top.subscribe(() => { _s1.style.setProperty('top', top()); }, true));
         return { el: _el, cleanups: _cleanups, value: it,
           update: (it) => { if (_p0 !== (_p0 = it.x)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); } };
@@ -1473,41 +1474,41 @@
         _insertBefore.call(_ct_b0, _el, _ref);
         const _cleanups = [];
         _cleanups.push(__bindIf(_ws_b1, _we_b1, show, `<b><!----> <!----></b>`, (_c) => {
-      const b2 = _c.firstChild.nextSibling;
-      b2.data = lbl() ?? '';
+      const _b2 = _c.firstChild.nextSibling;
+      _b2.data = lbl() ?? '';
       return [
-        lbl.subscribe(v => { b2.data = v ?? ''; }, true),
+        lbl.subscribe(v => { _b2.data = v ?? ''; }, true),
       ];
     }));
         _cleanups.push(__bindIfExpr(_ws_b3, _we_b3, [flag, it$], () => it$().on && flag(), `<i title=""><!----> <!----></i>`, (_c) => {
-      const b4 = _c;
-      const b5 = _c.firstChild.nextSibling;
-      let _pv_b4_0; const _upd_b4_0 = () => { if (_pv_b4_0 !== (_pv_b4_0 = it$().t)) b4.setAttribute('title', _pv_b4_0); };
+      const _b4 = _c;
+      const _b5 = _c.firstChild.nextSibling;
+      let _pv_b4_0; const _upd_b4_0 = () => { if (_pv_b4_0 !== (_pv_b4_0 = it$().t)) _b4.setAttribute('title', _pv_b4_0); };
       _upd_b4_0();
-      let _pv_b5_1; const _upd_b5_1 = () => { if (_pv_b5_1 !== (_pv_b5_1 = it$().name)) b5.data = (_pv_b5_1) ?? ''; };
+      let _pv_b5_1; const _upd_b5_1 = () => { if (_pv_b5_1 !== (_pv_b5_1 = it$().name)) _b5.data = (_pv_b5_1) ?? ''; };
       _upd_b5_1();
-      b4.addEventListener('click', go);
+      _b4.addEventListener('click', go);
       return [
         it$.subscribe(_upd_b4_0, true),
         it$.subscribe(_upd_b5_1, true),
       ];
     }));
         _cleanups.push(__bindIfExpr(_ws_b6, _wm_b6, [it$], () => it$().done, `<s><!----> <!----></s>`, (_c) => {
-      const b8 = _c.firstChild.nextSibling;
-      let _pv_b8_0; const _upd_b8_0 = () => { if (_pv_b8_0 !== (_pv_b8_0 = it$().name)) b8.data = (_pv_b8_0) ?? ''; };
+      const _b8 = _c.firstChild.nextSibling;
+      let _pv_b8_0; const _upd_b8_0 = () => { if (_pv_b8_0 !== (_pv_b8_0 = it$().name)) _b8.data = (_pv_b8_0) ?? ''; };
       _upd_b8_0();
       return [
         it$.subscribe(_upd_b8_0, true),
       ];
     }));
         _cleanups.push(__bindIfExpr(_wm_b6, _we_b6, [it$], () => !(it$().done), `<u style="color: "><!----> <!----></u>`, (_c) => {
-      const b9 = _c;
-      const b10 = _c.firstChild.nextSibling;
-      b9.style.color = col();
-      let _pv_b10_0; const _upd_b10_0 = () => { if (_pv_b10_0 !== (_pv_b10_0 = i$())) b10.data = (_pv_b10_0) ?? ''; };
+      const _b9 = _c;
+      const _b10 = _c.firstChild.nextSibling;
+      _b9.style.color = col();
+      let _pv_b10_0; const _upd_b10_0 = () => { if (_pv_b10_0 !== (_pv_b10_0 = i$())) _b10.data = (_pv_b10_0) ?? ''; };
       _upd_b10_0();
       return [
-        col.subscribe(v => { b9.style.color = v; }, true),
+        col.subscribe(v => { _b9.style.color = v; }, true),
         i$.subscribe(_upd_b10_0, true),
       ];
     }));
@@ -1555,7 +1556,7 @@
         _cleanups.push(__bindIfExpr(_ws_b2, _wm_b2, [it$], () => it$().done, `<s>s</s>`, () => []));
         _cleanups.push(__bindIfExpr(_wm_b2, _we_b2, [it$], () => !(it$().done), `<u>u</u>`, () => []));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { if (_p0 !== (_p0 = sel() === it.id ? 'on' : '')) _m0.className = _p0; _el.__d = it; it$(it); } };
+          update: (_it) => { it = _it; if (_p0 !== (_p0 = sel() === it.id ? 'on' : '')) _m0.className = _p0; _el.__d = it; it$(it); } };
       },
     'id');
     const _items_b0 = () => items();
@@ -1563,7 +1564,7 @@
     const _rsrc_b0_0 = items;
     _subs.push(typeof _rsrc_b0_0?.subscribe === 'function' ? _rsrc_b0_0.subscribe(() => { _rc_b0.reconcile(_items_b0()); }, true) : () => {});
     _subs.push(() => _rc_b0.clearAll());
-    _ct_b0.addEventListener('click', (e) => { let _row = e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; if (_row.__e0.contains(e.target)) { go(it.id); return; } if (_row.__e1.contains(e.target)) { go(e); return; } });
+    _ct_b0.addEventListener('click', (_e) => { let _row = _e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; if (_row.__e0.contains(_e.target)) { go(it.id); return; } if (_row.__e1.contains(_e.target)) { go(_e); return; } });
     return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };
 --- static templates
   const __tpl = __T(`<ul><!----></ul>`);
@@ -1585,21 +1586,21 @@
         _insertBefore.call(_ct_b0, _el, _ref);
         const _cleanups = [];
         _cleanups.push(__bindIf(_ws_b1, _we_b1, show, `<b style="color: " title=""><!----> <!----></b>`, (_c) => {
-      const b2 = _c;
-      const b3 = _c.firstChild.nextSibling;
-      b2.style.color = col();
-      b2.setAttribute('title', col());
-      b3.data = col() ?? '';
+      const _b2 = _c;
+      const _b3 = _c.firstChild.nextSibling;
+      _b2.style.color = col();
+      _b2.setAttribute('title', col());
+      _b3.data = col() ?? '';
       return [
         col.subscribe(v => {
-      b2.style.color = v;
-      b2.setAttribute('title', v);
-      b3.data = v ?? '';
+      _b2.style.color = v;
+      _b2.setAttribute('title', v);
+      _b3.data = v ?? '';
     }, true),
       ];
     }));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { ; } };
+          update: () => {} };
       },
     (_, i) => i);
     const _items_b0 = () => items();
@@ -1759,7 +1760,7 @@
             _cleanups.push(x.subscribe(() => { _s1.style.setProperty('left', x()); }, true));
             _cleanups.push(user.subscribe(() => { _st0.data = user().name ?? ''; }, true));
             return { el: _el, cleanups: _cleanups, value: it,
-              update: (it) => { ; } };
+              update: () => {} };
           },
         (it) => it.k + 1);
         const _items_b1 = () => g$().items;
@@ -1885,13 +1886,13 @@
 --- binding function body
     const _r = _ctx.root;
     const _subs = [];
-    const b4 = _ns[0].lastChild.previousSibling;
+    const _b4 = _ns[0].lastChild.previousSibling;
     const _ws_b0 = _ns[2].nextSibling;
     const _we_b0 = _r.lastChild;
     const _a_b1 = _ns[1].lastChild;
     const _a_b3 = _ns[2].lastChild;
-    b4.data = t() ?? '';
-    _subs.push(t.subscribe(v => { b4.data = v ?? ''; }, true));
+    _b4.data = t() ?? '';
+    _subs.push(t.subscribe(v => { _b4.data = v ?? ''; }, true));
     _subs.push(__bindIf(_ws_b0, _we_b0, a, `<div><i>\`w\`\</i></div>`, () => []));
     const _tc_b1 = __tpl_b1.content.firstElementChild;
     const _ct_b1 = _a_b1.parentNode;
@@ -1942,13 +1943,13 @@
 --- binding function body
     const _r = _ctx.root;
     const _subs = [];
-    const b4 = _ns[0].lastChild.previousSibling;
+    const _b4 = _ns[0].lastChild.previousSibling;
     const _ws_b0 = _ns[2].nextSibling;
     const _we_b0 = _r.lastChild;
     const _a_b1 = _ns[1].lastChild;
     const _a_b3 = _ns[2].lastChild;
-    b4.data = t() ?? '';
-    _subs.push(t.subscribe(v => { b4.data = v ?? ''; }, true));
+    _b4.data = t() ?? '';
+    _subs.push(t.subscribe(v => { _b4.data = v ?? ''; }, true));
     _subs.push(__bindIf(_ws_b0, _we_b0, a, `<div><i>\`w\`\</i></div>`, () => []));
     const _tc_b1 = __tpl_b1.content.firstElementChild;
     const _ct_b1 = _a_b1.parentNode;
@@ -2023,13 +2024,14 @@
         const _a_b3 = _we_b1.nextSibling.lastChild;
         ;
         _insertBefore.call(_ct_b0, _el, _ref);
+        const _cd0 = __rc(Kid, _cm0, { g });
         const _cleanups = [];
-        _cleanups.push(__dc(Kid.__f(_cm0, { g })));
+        _cleanups.push(_cd0.d);
         _cleanups.push(__bindIf(_ws_b1, _we_b1, on, `<b><!----> <!----></b>`, (_c) => {
-      const b2 = _c.firstChild.nextSibling;
-      b2.data = lbl() ?? '';
+      const _b2 = _c.firstChild.nextSibling;
+      _b2.data = lbl() ?? '';
       return [
-        lbl.subscribe(v => { b2.data = v ?? ''; }, true),
+        lbl.subscribe(v => { _b2.data = v ?? ''; }, true),
       ];
     }));
         const _ct_b3 = _a_b3.parentNode;
@@ -2042,7 +2044,7 @@
         _cleanups.push(typeof _rsrc_b3_0?.subscribe === 'function' ? _rsrc_b3_0.subscribe(() => { _rc_b3.reconcile(_items_b3()); }, true) : () => {});
         _cleanups.push(() => _rc_b3.clearAll());
         return { el: _el, cleanups: _cleanups, value: g,
-          update: (g) => { g$(g); } };
+          update: (g) => { _cd0.u({ g }); g$(g); } };
       },
     (_, i) => i);
     const _items_b0 = () => groups();

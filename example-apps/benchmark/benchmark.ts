@@ -118,73 +118,70 @@ export const Benchmark = defineComponent('bench-mark', () => {
     }
   };
 
-  return {
-    template: html`
-      <div class="container">
-        <div class="jumbotron">
-          <div class="row">
-            <div class="col-md-6">
-              <h1>Thane Benchmark</h1>
-            </div>
-            <div class="col-md-6">
-              <div class="row">
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="run" @click=${run}
-                    >Create 1,000 rows</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="runlots" @click=${runLots}
-                    >Create 10,000 rows</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="add" @click=${add}
-                    >Append 1,000 rows</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="update" @click=${update}
-                    >Update every 10th row</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="clear" @click=${clear}>Clear</button>
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="swaprows" @click=${swapRows}
-                    >Swap Rows</button
-                  >
-                </div>
+  return html`
+    <div class="container">
+      <div class="jumbotron">
+        <div class="row">
+          <div class="col-md-6">
+            <h1>Thane Benchmark</h1>
+          </div>
+          <div class="col-md-6">
+            <div class="row">
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="run" @click=${run}
+                  >Create 1,000 rows</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="runlots" @click=${runLots}
+                  >Create 10,000 rows</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="add" @click=${add}
+                  >Append 1,000 rows</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="update" @click=${update}
+                  >Update every 10th row</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="clear" @click=${clear}>Clear</button>
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="swaprows" @click=${swapRows}
+                  >Swap Rows</button
+                >
               </div>
             </div>
           </div>
         </div>
-        <table class="table table-hover table-striped test-data">
-          <tbody id="tbody">
-            ${repeat(
-              rows(),
-              (row) => html`
-                <tr class=${selected() === row.id ? 'danger' : ''}>
-                  <td class="col-md-1">${row.id}</td>
-                  <td class="col-md-4">
-                    <a @click=${() => select(row.id)}>${row.label}</a>
-                  </td>
-                  <td class="col-md-1">
-                    <a @click=${() => remove(row.id)}>
-                      <span class="glyphicon glyphicon-remove" aria-hidden="true"></span>
-                    </a>
-                  </td>
-                  <td class="col-md-6"></td>
-                </tr>
-              `,
-              null,
-              (row) => row.id,
-            )}
-          </tbody>
-        </table>
-        <span class="preloadicon glyphicon glyphicon-remove" aria-hidden="true"></span>
       </div>
-    `,
-  };
+      <table class="table table-hover table-striped test-data">
+        <tbody id="tbody">
+          ${repeat(
+            rows(),
+            (row) => html`
+              <tr class=${selected() === row.id ? 'danger' : ''}>
+                <td class="col-md-1">${row.id}</td>
+                <td class="col-md-4">
+                  <a @click=${() => select(row.id)}>${row.label}</a>
+                </td>
+                <td class="col-md-1">
+                  <a @click=${() => remove(row.id)}>
+                    <span class="glyphicon glyphicon-remove" aria-hidden="true"></span>
+                  </a>
+                </td>
+                <td class="col-md-6"></td>
+              </tr>
+            `,
+            { key: 'id' },
+          )}
+        </tbody>
+      </table>
+      <span class="preloadicon glyphicon glyphicon-remove" aria-hidden="true"></span>
+    </div>
+  `;
 });

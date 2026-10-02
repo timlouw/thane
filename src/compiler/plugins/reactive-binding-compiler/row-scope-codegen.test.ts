@@ -15,12 +15,12 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(rows(), ${params} => html\`${row}\`, null, (row) => row.id)}
+        \${repeat(rows(), ${params} => html\`${row}\`, { key: "id" })}
       </ul>
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 describe('Nested directives inside rows read the row through row-scoped signals', () => {
@@ -33,11 +33,11 @@ describe('Nested directives inside rows read the row through row-scoped signals'
     expect(js).toMatch(/__bindIfExpr\(_w[se]_b\d+, _w[me]_b\d+, \[row\$\], \(\) => row\$\(\)\.on,/);
     // Bound elements inside the content are reached by path from the content's root: here the
     // bound element is the root itself. The content is bound by the branch initializer.
-    expect(js).toMatch(/\(_c\) => \{\s+const b\d+ = _c;/);
+    expect(js).toMatch(/\(_c\) => \{\s+const _b\d+ = _c;/);
     expect(js).not.toMatch(/_q\(/);
     // The host attribute is a guarded expression binding on the row signal
     expect(js).toMatch(
-      /if \(_pv_b\d+_0 !== \(_pv_b\d+_0 = row\$\(\)\.name\)\) b\d+\.setAttribute\("title", _pv_b\d+_0\)/,
+      /if \(_pv_b\d+_0 !== \(_pv_b\d+_0 = row\$\(\)\.name\)\) _b\d+\.setAttribute\("title", _pv_b\d+_0\)/,
     );
     expect(js).toMatch(/row\$\.subscribe\(/);
     // The when() reads the row through its signal; only the first write of the row's own text binding
@@ -46,14 +46,14 @@ describe('Nested directives inside rows read the row through row-scoped signals'
     expect(js.match(/.*\brow\.name\b.*/g)?.map((line) => line.trim())).toEqual(['_c0.data = (_p0 = row.name) ?? "";']);
   });
 
-  test('whenElse() branches inside a row may read the item', async () => {
+  test('when() branches inside a row may read the item', async () => {
     const js = await buildAndReadJs(
-      app('<li>${whenElse(row.on, html`<b>${row.name}</b>`, html`<i>${row.name}!</i>`)}</li>'),
+      app('<li>${when(row.on, html`<b>${row.name}</b>`, html`<i>${row.name}!</i>`)}</li>'),
     );
     expect(js).toMatch(/const row\$ = (?:__sig|signal)\(row\);/);
     expect(js).toMatch(/__bindIfExpr\(_w[se]_b\d+, _w[me]_b\d+, \[row\$\], \(\) => row\$\(\)\.on,/);
     expect(js).toMatch(/__bindIfExpr\(_wm_b\d+, _we_b\d+, \[row\$\], \(\) => !row\$\(\)\.on,/);
-    expect(js).toMatch(/if \(_pv_b\d+_0 !== \(_pv_b\d+_0 = row\$\(\)\.name\)\) b\d+\.data = _pv_b\d+_0 \?\? ""/);
+    expect(js).toMatch(/if \(_pv_b\d+_0 !== \(_pv_b\d+_0 = row\$\(\)\.name\)\) _b\d+\.data = _pv_b\d+_0 \?\? ""/);
   });
 
   test('a nested repeat over item data re-reconciles on row update and its rows read the outer item', async () => {

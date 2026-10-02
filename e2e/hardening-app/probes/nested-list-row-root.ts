@@ -7,20 +7,17 @@ export const NestedListRowRoot = defineComponent('hardening-nested-list-row-root
   const outer = signal([{ id: 'A' }, { id: 'B' }]);
   const inner = signal<string[]>([]);
   expose('nestedListRowRoot', { inner });
-  return {
-    template: html`<div class="row-root-list">
-      ${repeat(
-        outer(),
-        (o) =>
-          html`<ul class="row-root-list-row" data-id=${o.id}>
-            ${repeat(
-              inner().filter((x) => x.startsWith(o.id)),
-              (x) => html`<li class="row-root-list-inner">${x}</li>`,
-            )}
-          </ul>`,
-        null,
-        (o) => o.id,
-      )}
-    </div>`,
-  };
+  return html`<div class="row-root-list">
+    ${repeat(
+      outer(),
+      (o) =>
+        html`<ul class="row-root-list-row" data-id=${o.id}>
+          ${repeat(
+            inner().filter((x) => x.startsWith(o.id)),
+            (x) => html`<li class="row-root-list-inner">${x}</li>`,
+          )}
+        </ul>`,
+      { key: 'id' },
+    )}
+  </div>`;
 });

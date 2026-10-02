@@ -10,9 +10,8 @@ export const RowTextSpace = defineComponent('hardening-row-text-space', () => {
   const a = signal('A');
   const b = signal('B');
   expose('rowTextSpace', { items, label, a, b });
-  return {
-    // prettier-ignore
-    template: html`<div class="row-text">
+  // prettier-ignore
+  return html`<div class="row-text">
       <ul class="row-text-space">${repeat(items(), (it) => html`<li>${it.first} ${it.last}</li>`)}</ul>
       <ul class="row-text-two">${repeat(items(), (it) => html`<li>${it.first}  ${it.last}</li>`)}</ul>
       <ul class="row-text-newline">${repeat(items(), (it) => html`<li>${it.first}
@@ -31,6 +30,5 @@ export const RowTextSpace = defineComponent('hardening-row-text-space', () => {
       <ul class="row-text-after">${repeat(items(), (it) => html`<li><b>b</b> ${it.first}</li>`)}</ul>
       <p class="row-text-cbefore">${a()} <b>b</b></p>
       <p class="row-text-cafter"><b>b</b> ${a()}</p>
-    </div>`,
-  };
+    </div>`;
 });

@@ -5,4 +5,4 @@
 import { mount } from 'thane';
 import Routes from './routes.js';
 
-mount({ router: { routes: Routes, scrollRestoration: false } });
+mount(Routes, { scrollRestoration: false });

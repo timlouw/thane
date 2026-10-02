@@ -8,12 +8,10 @@ export const BodyMount = defineComponent('hardening-body-mount', () => {
   const items = signal(['a', 'b']);
   const clicks = signal(0);
   expose('bodyMount', { t, items, clicks });
-  return {
-    // prettier-ignore
-    template: html`body ${t()}
+  // prettier-ignore
+  return html`body ${t()}
     <div class="body-mount" title=${t()}>
       <ul class="body-mount-list">${repeat(items(), (it) => html`<li class="body-mount-row">${it}</li>`)}</ul>
       <button class="body-mount-btn" @click=${() => clicks(clicks() + 1)}>${clicks()}</button>
-    </div>`,
-  };
+    </div>`;
 });

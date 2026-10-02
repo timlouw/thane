@@ -9,11 +9,12 @@ import { DestroyGrandchild } from './destroy-grandchild';
  *
  * Destroying this parent should fire onDestroy for BOTH trackers.
  */
-export const DestroyParentNested = defineComponent('destroy-parent-nested', () => ({
-  template: html`
+export const DestroyParentNested = defineComponent(
+  'destroy-parent-nested',
+  () => html`
     <div data-testid="destroy-nested-root">
       <span>Nested parent</span>
-      ${DestroyTracker({ trackerId: 'nested-direct' })} ${DestroyGrandchild({})}
+      ${DestroyTracker({ trackerId: 'nested-direct' })} ${DestroyGrandchild()}
     </div>
   `,
-}));
+);

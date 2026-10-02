@@ -17,7 +17,7 @@ const DEV = { strictTypeCheck: false };
 
 const MAIN =
   "import { mount } from 'thane';\nimport { App } from './app.js';\n" +
-  "mount({ component: App, target: document.getElementById('app')! });\n";
+  "mount(App, { target: document.getElementById('app')! });\n";
 
 /** src/app.ts: a component with the given imports and template content. */
 const app = (imports: string, template: string): string =>

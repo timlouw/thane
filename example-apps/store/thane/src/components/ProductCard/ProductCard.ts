@@ -1,23 +1,12 @@
 import { defineComponent, html, when } from 'thane';
 import type { Signal } from 'thane';
+import { navigate } from 'thane/router';
 import type { AppStateProduct } from '../../models/app-state.models.js';
 import { addToCart } from '../../state/global-state.js';
 import styles from './ProductCard.module.css';
 
-const addToCartIconPath = '/assets/icons/add-to-cart.svg';
-
-type ProductCardProps = {
-  product: Signal<AppStateProduct>;
-};
-
-export const ProductCard = defineComponent<ProductCardProps>('product-card', ({ props }) => {
+export const ProductCard = defineComponent<{ product: Signal<AppStateProduct> }>(({ props }) => {
   const product = props.product;
-
-  const addCurrentToCart = (event: Event) => {
-    event.stopPropagation();
-    addToCart(product().id);
-  };
-
   return {
     template: html`
       <div class="productCard" @click=${navigate(`/product-details/${product().id}`)}>
@@ -26,12 +15,9 @@ export const ProductCard = defineComponent<ProductCardProps>('product-card', ({ 
           <h5 title=${product().title} class="productTitle">${product().title}</h5>
           <p class="productPrice">R${product().price}</p>
         </div>
-        <button
-          class=${product().cartCount > 0 ? 'addToCartButton added' : 'addToCartButton'}
-          @click=${addCurrentToCart}
-        >
+        <button class="addToCartButton" class:added=${product().cartCount > 0} @click.stop=${addToCart(product().id)}>
           ${product().cartCount > 0 ? 'Added to cart' : 'Add to Cart'}
-          <img class="addToCartIcon" src=${addToCartIconPath} alt="Add to cart icon" />
+          <img class="addToCartIcon" src="/assets/icons/add-to-cart.svg" alt="Add to cart icon" />
           <span class="cartCounter" ${when(product().cartCount > 0)}>${product().cartCount}</span>
         </button>
       </div>
@@ -39,5 +25,3 @@ export const ProductCard = defineComponent<ProductCardProps>('product-card', ({ 
     styles,
   };
 });
-
-export default ProductCard;

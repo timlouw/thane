@@ -4,7 +4,6 @@ import ts from 'typescript';
 import type { Diagnostic, DiagnosticSeverity } from '../../../types.js';
 import { createDiagnostic } from '../../../errors.js';
 import { isDefineComponentCall } from '../../../utils/ast-utils.js';
-import { unwrapParens } from '../../../utils/component-ast.js';
 import { FN } from '../../../utils/constants.js';
 
 /** 1-based line and column of a node's first token (after comments and whitespace). */
@@ -33,6 +32,111 @@ export const createReporter = (
   return { diagnostics, report };
 };
 
+const SIGNAL_FACTORIES: ReadonlySet<string> = new Set(['signal', 'computed']);
+
+/** Whether a declaration's name (or one of the names it destructures) is `name` */
+const bindsName = (binding: ts.BindingName, name: string): boolean =>
+  ts.isIdentifier(binding)
+    ? binding.text === name
+    : binding.elements.some((element) => !ts.isOmittedExpression(element) && bindsName(element.name, name));
+
+const unwrapInitializer = (node: ts.Expression | undefined): ts.Expression | undefined => {
+  while (
+    node &&
+    (ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isNonNullExpression(node))
+  ) {
+    node = node.expression;
+  }
+  return node;
+};
+
+/** What the statements of one scope declare under `name`: a signal, something else, or nothing */
+const declaredIn = (statements: readonly ts.Statement[], name: string): 'signal' | 'other' | undefined => {
+  for (const statement of statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        if (!bindsName(declaration.name, name)) continue;
+        const init = unwrapInitializer(declaration.initializer);
+        const isSignal =
+          ts.isIdentifier(declaration.name) &&
+          !!init &&
+          ts.isCallExpression(init) &&
+          ts.isIdentifier(init.expression) &&
+          SIGNAL_FACTORIES.has(init.expression.text);
+        return isSignal ? 'signal' : 'other';
+      }
+    } else if (
+      (ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement) || ts.isEnumDeclaration(statement)) &&
+      statement.name?.text === name
+    ) {
+      return 'other';
+    } else if (ts.isImportDeclaration(statement) && statement.importClause) {
+      const clause = statement.importClause;
+      const named = clause.namedBindings;
+      if (
+        clause.name?.text === name ||
+        (named && ts.isNamespaceImport(named) && named.name.text === name) ||
+        (named && ts.isNamedImports(named) && named.elements.some((element) => element.name.text === name))
+      ) {
+        return 'other';
+      }
+    }
+  }
+  return undefined;
+};
+
+/**
+ * Whether `id`, a read of a name, reads a signal the file declares: the nearest declaration of the name, through
+ * the scopes around the read, is `const name = signal(…)` or `computed(…)`. A parameter, any other declaration,
+ * and an import (a store's signal is one) are not: the type check reports what a lint cannot see.
+ */
+export const readsDeclaredSignal = (id: ts.Identifier): boolean => {
+  const name = id.text;
+  for (let node: ts.Node = id.parent; ; node = node.parent) {
+    if (ts.isFunctionLike(node) && node.parameters.some((parameter) => bindsName(parameter.name, name))) return false;
+    if (
+      (ts.isForOfStatement(node) || ts.isForInStatement(node) || ts.isForStatement(node)) &&
+      node.initializer &&
+      ts.isVariableDeclarationList(node.initializer) &&
+      node.initializer.declarations.some((declaration) => bindsName(declaration.name, name))
+    ) {
+      return false;
+    }
+    if (ts.isCatchClause(node) && node.variableDeclaration && bindsName(node.variableDeclaration.name, name)) {
+      return false;
+    }
+    if (ts.isBlock(node) || ts.isSourceFile(node) || ts.isModuleBlock(node)) {
+      const declared = declaredIn(node.statements, name);
+      if (declared) return declared === 'signal';
+    }
+    if (ts.isSourceFile(node)) return false;
+  }
+};
+
+/** A `${…}` of an html template: its expression, and the template text before it (the literal it follows) */
+export interface TemplateSlot {
+  expression: ts.Expression;
+  /** The literal text just before the `${` */
+  before: string;
+}
+
+/** The `${…}` slots of an html template */
+export const slotsOf = (template: ts.TaggedTemplateExpression): TemplateSlot[] => {
+  const literal = template.template;
+  if (!ts.isTemplateExpression(literal)) return [];
+  return literal.templateSpans.map((span, i) => ({
+    expression: span.expression,
+    before: i === 0 ? literal.head.text : literal.templateSpans[i - 1]!.literal.text,
+  }));
+};
+
+/** The event a slot handles, when the text before it is an event attribute (`@click=`, `@keydown.enter="`) */
+export const eventOfSlot = (slot: TemplateSlot): string | undefined =>
+  /@([\w:-]+)(?:\.[\w-]+)*=["']?$/.exec(slot.before)?.[1];
+
 /** Tags of the templates the compiler resolves at compile time. */
 export const TEMPLATE_TAGS: readonly string[] = [FN.HTML, FN.CSS];
 
@@ -59,34 +163,3 @@ export const declarationKeyword = (list: ts.VariableDeclarationList): 'const' | 
       : list.flags & ts.NodeFlags.Using
         ? 'using'
         : 'var';
-
-/**
- * The return objects THANE401 and THANE402 inspect. For each `defineComponent(…)` call, and each arrow
- * or function expression among its arguments: a concise body that is an object literal (in any number
- * of parentheses), or each top-level `return {…}` statement of a block body, `return ({…})` included.
- * Returns inside other statements or nested functions are not included, and the arguments are not
- * searched for further calls. The compiler finds return objects differently.
- */
-export const findReturnObjects = (root: ts.Node): ts.ObjectLiteralExpression[] => {
-  const results: ts.ObjectLiteralExpression[] = [];
-  const visit = (node: ts.Node): void => {
-    if (!isDefineComponentExpr(node)) {
-      ts.forEachChild(node, visit);
-      return;
-    }
-    for (const arg of node.arguments) {
-      if (!ts.isArrowFunction(arg) && !ts.isFunctionExpression(arg)) continue;
-      if (ts.isBlock(arg.body)) {
-        for (const stmt of arg.body.statements) {
-          const returned = ts.isReturnStatement(stmt) && stmt.expression ? unwrapParens(stmt.expression) : null;
-          if (returned && ts.isObjectLiteralExpression(returned)) results.push(returned);
-        }
-      } else {
-        const expr = unwrapParens(arg.body);
-        if (ts.isObjectLiteralExpression(expr)) results.push(expr);
-      }
-    }
-  };
-  visit(root);
-  return results;
-};

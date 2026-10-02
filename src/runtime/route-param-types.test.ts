@@ -1,7 +1,6 @@
 /**
  * `href(pattern, params)` and `navigate(pattern, params)` are typed from the app's routes: a pattern
- * with parameters, and a value for each of its parameters. The global `navigate` (index.ts) and the one
- * `thane/router` exports take the same arguments.
+ * with parameters, and a value for each of its parameters.
  *
  * One program holds the runtime, the route types a build generates for four routes, and a usage file
  * with one case per function; a case's diagnostics are the ones on its lines.
@@ -15,7 +14,6 @@ const VALID: Record<string, string> = {
   'two parameters, a string and a number': "navigate('/users/:id/posts/:post', { id: 'a', post: 2 });",
   'a static path, as before': "navigate('/about');",
   "href's result is a path": "const path: RoutePaths = href('/users/:id', { id: 1 });\n  navigate(path);",
-  "thane/router's navigate": "routerNavigate('/users/:id/posts/:post', { id: 1, post: 'x' });",
   'a redirect and a guard to routes':
     "defineRoutes({ '/old': { redirectTo: '/about' }, '/me': { component: page, canEnter: () => '/about' }, notFound: { component: page } });",
   'a redirect function and an async guard':
@@ -27,10 +25,7 @@ const INVALID: Record<string, [string, RegExp]> = {
   'a parameter of the wrong type': ["href('/users/:id', { id: true });", /not assignable to type 'string \| number'/],
   'a pattern without parameters': ["href('/about', {});", /not assignable to parameter of type/],
   'a pattern that is not a route': ["href('/missing/:x', { x: 1 });", /not assignable to parameter of type/],
-  "thane/router's navigate, a missing parameter": [
-    "routerNavigate('/users/:id/posts/:post', { id: 1 });",
-    /'post' is missing/,
-  ],
+  'a missing second parameter': ["navigate('/users/:id/posts/:post', { id: 1 });", /'post' is missing/],
   'a redirect to a path that is not a route': [
     "defineRoutes({ '/old': { redirectTo: '/missing' }, notFound: { component: page } });",
     /'"\/missing"' is not assignable/,
@@ -59,7 +54,7 @@ const register = [
 const cases = Object.entries({ ...VALID, ...Object.fromEntries(Object.entries(INVALID).map(([k, [c]]) => [k, c])) });
 const usage = [
   `import type { RoutePaths } from '${dir}/index.js';`,
-  `import { defineRoutes, href, navigate as routerNavigate } from '${dir}/router-exports.js';`,
+  `import { defineRoutes, href, navigate } from '${dir}/router-exports.js';`,
   'const page = () => Promise.resolve({});',
   ...cases.map(([, code], i) => `export function case${i}() {\n  ${code}\n}`),
 ].join('\n');

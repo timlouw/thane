@@ -6,22 +6,33 @@ This page documents current constraints, browser requirements, and by-design dec
 
 ### `html` Templates Inside Others
 
-An `html` template inside another is compiled where it is the whole `${…}` or a directive argument. In a ternary or a `map()` it would be a plain value (THANE404): use `whenElse()` and `repeat()`.
+An `html` template inside another is compiled where it is the whole `${…}`, a directive argument, a branch of a
+ternary, an `&&` or a `.map()` row in content, or a child component's prop (a slot). Anywhere else, such as an argument of your own function, it would
+be a plain value (THANE404). A ternary with a template on one side and text on the other is a build error too.
 
 ### Unique Selectors
 
-A component's selector is the class of its host element, which scopes its styles. Two components of an app with one selector (two components declared under one name, each with a derived selector) share it: the styles of the one registered first apply to both. The build reports them (THANE013). Give one of them another name or an explicit selector. A child component call, `${Card({ … })}`, is resolved through the file's own declarations and imports, so two components with one name in different files are never confused for each other.
+A component's selector is the class of its host element, which scopes its styles and names it for hot updates, so the selectors of an app's components differ: two components with one selector (two explicit selectors alike, or two components declared under one name in different files, each with the selector derived from it) fail the build (THANE013). Give one of them another name or a selector of its own. A private component counts too: two files that each declare a `Row` of their own need one of them renamed. A child component call, `${Card({ … })}`, is resolved through the file's own declarations and imports, so two components with one name in different files are never confused for each other.
 
 
 ### One Return Object per Setup
 
-A setup function returns one object (THANE412). The compiler builds one static template per component, so an early `return { template: … }` in a branch cannot work. Use `when()` or `whenElse()` in the template instead.
+A setup function returns one object (THANE412). The compiler builds one static template per component, so an early `return { template: … }` in a branch cannot work. Choose in the template instead, with `when()` or a ternary.
 
-### Hot Updates Swap Whole Components
+### Hot Updates Keep Signals by Name
 
-`thane dev` swaps a changed component file in the open page, but a swapped component starts again: its own signals
-start from their initial values (its stores, and the rest of the page, keep theirs). A change to any other module
-reloads the page.
+`thane dev` swaps a changed component file in the open page, and each swapped instance keeps its state by name: a
+signal its setup declares with `const` at the top level starts from the value of the old instance's signal of that
+name, and so does a signal the file declares at its top level. The children a swapped component mounts as it mounts take
+their old children's state, matched by selector in the order they were on the page. A store (any module) that runs again
+because it changed keeps its top-level `const` signals the same way.
+
+What starts again: a signal declared with `let`, or inside a function or a block; a signal whose value is now of
+another type (`signal(0)` changed to `signal('')`); and a child that is new, or that moved before another of its
+selector. A `computed()` computes again, an `effect()` runs again, and `onMount` is called again; so does
+whatever else a module that runs again does at its top level (a listener it adds to `window` is added again). To start
+a signal again, rename it, or reload the page. A change that reaches the entry reloads the page
+([CLI](cli.md#thane-dev)).
 
 ### `const` Required for Components and Templates
 
@@ -29,9 +40,11 @@ reloads the page.
 - `html` and `css` tagged templates must be assigned to `const` (THANE403)
 - Components must use named exports, never default exports (THANE400)
 
-### No Conditional Template Initialization
+### No Conditional Template Variables
 
-Template variables cannot use ternary or logical operators (THANE405). Use `whenElse()` for conditional rendering instead.
+A template variable is one template: `const body = ok ? html`…` : html`…`` is a build error (THANE405). Choose in
+the template instead, where a ternary of templates is compiled as `when()`: `${ok ? html`…` : html`…`}`
+([JavaScript Control Flow](templates.md#javascript-control-flow)).
 
 ### User IDs
 
@@ -41,11 +54,11 @@ A comment written like one of the compiler's own markers (`<!--b0-->`) is report
 
 ### One Root Element per Repeat Row
 
-Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is only a directive (a `when()`, `whenElse()` or nested `repeat()`) is THANE007 as well. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
+Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is only a directive (a `when()` or a nested `repeat()`) is THANE007 as well. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
 
 For the same reason a row's root element cannot carry `when()` (THANE008): filter the list, or put the `when()` on an element inside the row.
 
-Inside the row, anything a component template can hold works, at any depth: bindings, event handlers, child components, `when()`, `whenElse()` and further lists.
+Inside the row, anything a component template can hold works, at any depth: bindings, event handlers, child components, `when()` and further lists. A ref names one element, so a row cannot hold one (THANE016).
 
 ### Empty Templates Are Static
 
@@ -113,7 +126,7 @@ export const Page = defineComponent(() => {
 
 ### Single Router Instance
 
-Only one router instance is supported. Calling `mount()` with a `router` option a second time logs a warning and is ignored.
+Only one router instance is supported. Calling `mount()` with `routes` a second time logs a warning and is ignored.
 
 ### Circular Signal Dependencies
 
@@ -131,7 +144,6 @@ These features are **not currently supported**:
 | :-------------------------------- | :---------------------------------------------------------- |
 | Shadow DOM                        | By design — Light DOM only                                  |
 | SSR / Server-Side Rendering       | Not supported                                               |
-| `ref` API (direct element access) | Not available — use `ctx.root.querySelector()` in `onMount` |
 | Context / Provide / Inject        | Not available — use module-level signals for shared state   |
 | Async component setup             | Not supported — use `onMount` for async work                |
 | Multiple router instances         | Not supported — single-instance only                        |
@@ -175,12 +187,11 @@ Route patterns starting with `/:param` are rejected at runtime. Every route must
 '/pages/:slug': { component: ... }
 ```
 
-### Outlet ID Pattern
-
-When using Mode B (shell + router), the outlet element's `id` must match the pattern `` `router-${string}` ``. The default is `router-outlet`.
-
 ### Route Type Generation
 
 Type-safe routing requires running `thane dev`, `thane build`, or `thane types` at least once to generate the `.thane/types/router/` type definitions. Until then, `route.params` is typed as `Record<string, string>` and `navigate()` accepts any string.
+
+A page's `route.params` are typed through its explicit selector, which the route types map to the page's route: a
+page whose selector is derived from its name reads them as `Record<string, string>`.
 
 ← [Back to Docs](README.md)

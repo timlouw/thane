@@ -14,15 +14,11 @@ export const RowWhenSignal = defineComponent('hardening-row-when-signal', () => 
   ]);
   const show = signal(true);
   expose('rowWhenSignal', { rows, show });
-  return {
-    // prettier-ignore
-    template: html`<ul>
+  // prettier-ignore
+  return html`<ul>
       ${repeat(
         rows(),
-        (r) => html`<li class="when-signal-row"><div ${when(show())}><b class="when-signal-b" title=${r.label}>shown</b></div></li>`,
-        null,
-        (r) => r.id,
+        (r) => html`<li class="when-signal-row"><div ${when(show())}><b class="when-signal-b" title=${r.label}>shown</b></div></li>`, { key: "id" },
       )}
-    </ul>`,
-  };
+    </ul>`;
 });

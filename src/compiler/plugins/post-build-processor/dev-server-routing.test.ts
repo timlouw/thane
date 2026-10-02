@@ -233,11 +233,10 @@ describe('page reloads', () => {
 
   test('development: a hot update goes to every open page', async () => {
     await withSocket(async (server, messages) => {
-      server.hotUpdate([{ key: 'src/card.ts', code: 'module.exports = 1;' }]);
+      const update = { key: 'src/card.ts', code: 'module.exports = 1;', needs: { thane: ['signal'] } };
+      server.hotUpdate([update]);
       await waitFor(() => messages.length > 0);
-      expect(messages.map((message) => JSON.parse(message))).toEqual([
-        { hot: [{ key: 'src/card.ts', code: 'module.exports = 1;' }] },
-      ]);
+      expect(messages.map((message) => JSON.parse(message))).toEqual([{ hot: [update] }]);
     });
   });
 
@@ -248,6 +247,65 @@ describe('page reloads', () => {
     // Components register for swapping before the app's module runs
     expect(html.indexOf('window.__thaneHot = {};')).toBeGreaterThan(-1);
     expect(html).toContain("id.startsWith('__thane_package__:')");
+  });
+
+  /**
+   * The page script, run with a fake socket and page: `modules` is what the page's modules registered. Returns
+   * a function that sends a hot update, and how often the page reloaded.
+   */
+  const page = (modules: Map<string, unknown>) => {
+    const script = /<script>([\s\S]*)<\/script>/.exec(DevServer.injectBrowserRelayScript(''))![1]!;
+    const listeners = new Map<string, (event: { data: string }) => void>();
+    class FakeSocket {
+      static OPEN = 1;
+      readyState = 0;
+      addEventListener(type: string, listener: (event: { data: string }) => void) {
+        listeners.set(type, listener);
+      }
+      send() {}
+    }
+    const reloads = { count: 0 };
+    const location = { protocol: 'http:', host: 'x', href: 'http://x/', reload: () => reloads.count++ };
+    const window = { __thaneModules: modules, addEventListener() {} };
+    const console = { error() {} };
+    new Function('window', 'WebSocket', 'location', 'console', 'setTimeout', script)(
+      window,
+      FakeSocket,
+      location,
+      console,
+      () => {},
+    );
+    const send = (update: object) => listeners.get('message')!({ data: JSON.stringify({ hot: [update] }) });
+    return { send, reloads };
+  };
+  const CODE = 'module.exports = { made: require("__thane_package__:thane").signal(2) };';
+
+  test('the page runs an update whose package bindings its modules registered, and keeps its new exports', () => {
+    const modules = new Map<string, unknown>([
+      ['src/card.ts', {}],
+      ['pkg:thane', { signal: (n: number) => n * 2 }],
+    ]);
+    const { send, reloads } = page(modules);
+    send({ key: 'src/card.ts', code: CODE, needs: { thane: ['signal'] } });
+    expect(reloads.count).toBe(0);
+    expect(modules.get('src/card.ts')).toEqual({ made: 4 });
+  });
+
+  test('the page reloads for an update that reads a binding no module registered, or a module it has not loaded', () => {
+    const modules = new Map<string, unknown>([
+      ['src/card.ts', {}],
+      ['pkg:thane', { signal: () => 0 }],
+    ]);
+    const { send, reloads } = page(modules);
+    send({ key: 'src/card.ts', code: CODE, needs: { thane: ['signal', 'effect'] } });
+    send({ key: 'src/card.ts', code: CODE, needs: { 'thane/router': ['navigate'] } });
+    send({ key: 'src/other.ts', code: CODE, needs: {} });
+    // A whole namespace is there when a module registered it whole
+    send({ key: 'src/card.ts', code: CODE, needs: { thane: ['*'] } });
+    expect(reloads.count).toBe(4);
+    modules.set('pkg*:thane', true);
+    send({ key: 'src/card.ts', code: CODE, needs: { thane: ['*'] } });
+    expect(reloads.count).toBe(4);
   });
 });
 

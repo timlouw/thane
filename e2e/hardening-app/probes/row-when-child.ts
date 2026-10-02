@@ -5,15 +5,11 @@ import { ProbeCard } from '../shared/probe-card.js';
 export const RowWhenChild = defineComponent('hardening-row-when-child', () => {
   const rows = signal([{ id: 1 }]);
   const show = signal(true);
-  return {
-    // prettier-ignore
-    template: html`<ul>
+  // prettier-ignore
+  return html`<ul>
       ${repeat(
         rows(),
-        (r) => html`<li class="when-child-row" data-row=${r.id}><div ${when(show())}>${ProbeCard({ label: 'row-card' })}</div></li>`,
-        null,
-        (r) => r.id,
+        (r) => html`<li class="when-child-row" data-row=${r.id}><div ${when(show())}>${ProbeCard({ label: 'row-card' })}</div></li>`, { key: "id" },
       )}
-    </ul>`,
-  };
+    </ul>`;
 });

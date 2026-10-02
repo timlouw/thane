@@ -25,10 +25,13 @@ const noCleanup = (): void => {};
 
 /**
  * Mounts a copy of `fragment` before `anchor`, and returns the function that releases its bindings. The
- * nodes go with the template around them: a branch or a row removes them with its own.
+ * nodes go with the template around them: a branch or a row removes them with its own. A fragment is an exported
+ * one, or a template a parent passed to a child as a prop (a slot); one left out (`undefined`) mounts nothing.
  * @internal — emitted by the compiler; not part of the public API.
  */
-export const __mf = (anchor: Node, fragment: CompiledFragment): (() => void) => {
+export const __mf = (anchor: Node, fragment: CompiledFragment | undefined): (() => void) => {
+  // A slot the parent left out
+  if (!fragment) return noCleanup;
   const root = fragment.t.content.cloneNode(true) as DocumentFragment;
   const place = (): void => void anchor.parentNode!.insertBefore(root, anchor);
   if (!fragment.b) {

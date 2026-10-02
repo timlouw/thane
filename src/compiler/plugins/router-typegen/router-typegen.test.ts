@@ -21,7 +21,7 @@ const MAIN = `
 import { mount } from 'thane';
 import Routes from './routes.js';
 
-mount({ router: { routes: Routes } });
+mount(Routes);
 `;
 
 // Lazy loaders with an inferred return type: the page types flow into the type of Routes
@@ -39,6 +39,7 @@ export default Routes;
 
 const page = (exportName: string, target: string): string => `
 import { defineComponent, html } from 'thane';
+import { navigate } from 'thane/router';
 
 export const ${exportName} = defineComponent(() => ({
   template: html\`<a href="${target}" @click.prevent=\${navigate('${target}')}>go</a>\`,
@@ -95,7 +96,7 @@ export default Routes;
 
 const metaPage = (exportName: string, setMetaArgument: string): string => `
 import { defineComponent, html } from 'thane';
-import { setMeta } from 'thane/router';
+import { navigate, setMeta } from 'thane/router';
 
 export const ${exportName} = defineComponent(() => {
   setMeta(${setMetaArgument});
@@ -146,6 +147,7 @@ describe('Two route tables in one project', () => {
   const appFiles = (name: string, target: string): Record<string, string> => ({
     [`src/${name}/page.ts`]: [
       "import { defineComponent, html } from 'thane';",
+      "import { navigate } from 'thane/router';",
       '',
       `export const ${name.toUpperCase()}Page = defineComponent('${name}-page', ({ route }) => {`,
       '  const pattern: string = route!.pattern;',
@@ -252,6 +254,7 @@ describe('Typed search values', () => {
       'src/pages/home.ts': page('HomePage', '/products'),
       'src/pages/products.ts': [
         "import { defineComponent, html } from 'thane';",
+        "import { navigate } from 'thane/router';",
         '',
         "export const ProductsPage = defineComponent('products-page', ({ route }) => {",
         '  const search = route!.search;',

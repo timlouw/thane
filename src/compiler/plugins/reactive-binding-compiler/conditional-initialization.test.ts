@@ -7,7 +7,7 @@ const process = (template: string, inits = new Map<string, string | number | boo
 describe('conditional initialization', () => {
   test('unresolved local whenElse expression defers initial branch selection', () => {
     const { processedContent } = process(
-      '${whenElse(localMode === "ready", html`<p data-testid="then-branch">then</p>`, html`<p data-testid="else-branch">else</p>`)}',
+      '${when(localMode === "ready", html`<p data-testid="then-branch">then</p>`, html`<p data-testid="else-branch">else</p>`)}',
     );
 
     expect(processedContent).not.toContain('data-testid="else-branch"');
@@ -18,7 +18,7 @@ describe('conditional initialization', () => {
 
   test('signal conditions without a known compile-time initializer defer initial branch selection', () => {
     const { processedContent } = process(
-      '${whenElse(total() > 0, html`<p data-testid="then-branch">then</p>`, html`<p data-testid="else-branch">else</p>`)}',
+      '${when(total() > 0, html`<p data-testid="then-branch">then</p>`, html`<p data-testid="else-branch">else</p>`)}',
     );
 
     expect(processedContent).not.toContain('data-testid="else-branch"');
@@ -28,7 +28,7 @@ describe('conditional initialization', () => {
 
   test('constant whenElse expressions still pre-render the chosen branch', () => {
     const { processedContent } = process(
-      '${whenElse(1 + 1 === 2, html`<p data-testid="then-branch">then</p>`, html`<p data-testid="else-branch">else</p>`)}',
+      '${when(1 + 1 === 2, html`<p data-testid="then-branch">then</p>`, html`<p data-testid="else-branch">else</p>`)}',
     );
 
     expect(processedContent).toContain('data-testid="then-branch"');
@@ -37,13 +37,18 @@ describe('conditional initialization', () => {
     expect(processedContent).toMatch(/^<!--(b\d+)\(--><p data-testid="then-branch">then<\/p><!--\1\|--><!--\1\)-->$/);
   });
 
-  test('an empty whenElse() branch is a branch that shows nothing', () => {
-    const { processedContent, whenElseBlocks } = process('${whenElse(1 + 1 === 2, html`<p>then</p>`, html``)}');
-    expect(whenElseBlocks).toHaveLength(1);
-    expect(whenElseBlocks[0]!.elseTemplate).toBe('');
-    expect(processedContent).toMatch(/^<!--(b\d+)\(--><p>then<\/p><!--\1\|--><!--\1\)-->$/);
+  test('a when() without an else-branch is one conditional between two anchors; an empty branch shows nothing', () => {
+    const { processedContent, whenElseBlocks, conditionals } = process('${when(1 + 1 === 2, html`<p>then</p>`)}');
+    expect(whenElseBlocks).toHaveLength(0);
+    expect(conditionals).toHaveLength(1);
+    expect(conditionals[0]!.templateContent).toBe('<p>then</p>');
+    expect(processedContent).toMatch(/^<!--(b\d+)\(--><p>then<\/p><!--\1\)-->$/);
+    // An else-branch written empty is the same conditional
+    expect(process('${when(1 + 1 === 2, html`<p>then</p>`, html``)}').processedContent).toMatch(
+      /^<!--(b\d+)\(--><p>then<\/p><!--\1\)-->$/,
+    );
 
-    const emptyThen = process('${whenElse(1 + 1 === 2, html``, html`<p>else</p>`)}');
+    const emptyThen = process('${when(1 + 1 === 2, html``, html`<p>else</p>`)}');
     expect(emptyThen.whenElseBlocks).toHaveLength(1);
     expect(emptyThen.processedContent).toMatch(/^<!--(b\d+)\(--><!--\1\|--><!--\1\)-->$/);
   });
@@ -78,7 +83,7 @@ describe('conditional initialization', () => {
 
   test('a statically pre-rendered nested whenElse branch sits between its first two anchors', () => {
     const inits = new Map<string, string | number | boolean>([['flag', true]]);
-    const template = '<div>${whenElse(flag(), html`<p>nested-then</p>`, html`<p>nested-else</p>`)}</div>';
+    const template = '<div>${when(flag(), html`<p>nested-then</p>`, html`<p>nested-else</p>`)}</div>';
 
     const result = processSubTemplateWithNesting(template, inits, 0, 'parent', { detectNonSignalBindings: true });
 
@@ -98,7 +103,7 @@ describe('conditional initialization', () => {
       ['innerGate', true],
     ]);
     const template =
-      '${whenElse(outerGate(), html`<div>${whenElse(innerGate(), html`<u>a</u>`, html`<u>b</u>`)}</div>`, html`<div>else</div>`)}' +
+      '${when(outerGate(), html`<div>${when(innerGate(), html`<u>a</u>`, html`<u>b</u>`)}</div>`, html`<div>else</div>`)}' +
       '<p>AFTER-MARKER</p>';
 
     const result = process(template, inits);
@@ -116,8 +121,7 @@ describe('conditional initialization', () => {
       ['innerGate', true],
     ]);
     const template =
-      '<div ${when(outerGate())}>${whenElse(innerGate(), html`<u>a</u>`, html`<u>b</u>`)}</div>' +
-      '<p>AFTER-MARKER</p>';
+      '<div ${when(outerGate())}>${when(innerGate(), html`<u>a</u>`, html`<u>b</u>`)}</div>' + '<p>AFTER-MARKER</p>';
 
     const result = process(template, inits);
 

@@ -1,40 +1,40 @@
 # Directives
 
-Directives extend Thane's template syntax with conditional rendering and list rendering. They are imported from `thane` (`import { when, whenElse, repeat } from 'thane'`) and used inside `html` templates, where the compiler transforms them into optimized DOM operations. The examples leave the imports out.
+Directives extend Thane's template syntax with conditional rendering and list rendering. They are imported from `thane` (`import { when, repeat } from 'thane'`) and used inside `html` templates, where the compiler transforms them into optimized DOM operations. The examples leave the imports out.
 
 ## Overview
 
 | Directive | Purpose | Syntax |
 |:----------|:--------|:-------|
-| [`when()`](when.md) | Show/hide a block based on a condition | `<div ${when(condition())}>...</div>` |
-| [`whenElse()`](when-else.md) | Render one of two branches | `${whenElse(cond(), thenHtml, elseHtml)}` |
-| [`repeat()`](repeat.md) | Render a list with keyed reconciliation | `${repeat(items(), renderFn, emptyTpl, keyFn)}` |
+| [`when()`](when.md) | Show an element while a condition is truthy | `<div ${when(condition())}>...</div>` |
+| [`when()`](when.md#in-content) | Show a template, or one of two | `${when(cond(), thenHtml, elseHtml?)}` |
+| [`when()`](when.md#narrowing) | Show a template about a value that may be missing | `${when(user(), (u) => html`…${u.name}…`)}` |
+| [`repeat()`](repeat.md) | Render a list with keyed reconciliation | `${repeat(items(), (item) => html`…`, { key: 'id', empty: emptyHtml })}` |
+
+In content, a ternary, an `&&` and a `.map()` of templates compile to these directives too ([JavaScript Control Flow](../templates.md#javascript-control-flow)).
 
 ## How They Work
 
 Unlike frameworks that use a virtual DOM to diff entire trees, Thane directives operate at the DOM level:
 
-- **`when`** keeps its content between two invisible comment anchors: it inserts cloned content between them on show and removes it on hide. Nested bindings are initialized on show and disposed on hide.
-- **`whenElse`** keeps its two branches between three anchors and swaps between them. A branch may have any number of root nodes, text included. Only the active branch has live bindings.
+- **`when`** keeps its content between invisible comment anchors: two around one branch, three between two branches. It inserts cloned content on show and removes it on hide; a branch may have any number of root nodes, text included. Bindings are initialized on show and disposed on hide, so only the content on screen has live bindings.
 - **`repeat`** uses a keyed reconciler that tracks item identity. It adds, removes, reorders, and updates DOM nodes directly — no diffing of the full list.
 
 ## Nesting
 
 Directives can be freely nested. Every directive's content is compiled as its own sub-template, so the same rules apply at any depth:
 
-- `when`, `whenElse` and `repeat` inside `repeat` items, including lists nested in rows at any depth
-- `when`, `whenElse` and `repeat` inside `whenElse` branches
-- `when`, `whenElse` and `repeat` inside `when` blocks
+- `when` and `repeat` inside `repeat` rows, including lists nested in rows at any depth
+- `when` and `repeat` inside `when` branches
 - Event handlers and child components inside any of the above
 
-Bindings inside hidden content are disposed and re-created each time it is shown, so a block that is hidden and shown again always reflects the current signal values.
+Bindings inside hidden content are disposed and re-created each time it is shown, so content that is hidden and shown again always reflects the current signal values.
 
 Two shapes are build errors, because a list moves each row by its one root element: a row with more than one root element, or none (THANE007), and a `when()` on a row's root element (THANE008).
 
 ## Detail Pages
 
 - [when — Conditional Rendering](when.md)
-- [whenElse — If/Else Rendering](when-else.md)
 - [repeat — List Rendering](repeat.md)
 
 ← [Back to Docs](../README.md)

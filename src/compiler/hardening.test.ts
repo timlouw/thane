@@ -22,7 +22,7 @@ const component = (name: string, body: string): string =>
   `import { defineComponent, signal } from 'thane';\nexport const ${name} = defineComponent(() => {\n${body}\n});\n`;
 
 const mainFor = (name: string, file: string): string =>
-  `import { mount } from 'thane';\nimport { ${name} } from './${file}.js';\nmount({ component: ${name}, target: document.getElementById('app')! });\n`;
+  `import { mount } from 'thane';\nimport { ${name} } from './${file}.js';\nmount(${name}, { target: document.getElementById('app')! });\n`;
 
 /**
  * Names the bundle reads but never declares, other than browser globals: each one is a
@@ -140,8 +140,8 @@ describe('compile-time defects', () => {
     const js = await buildAndReadJs(
       "import { mount } from 'thane';\n" +
         "import { Mo } from './mo.js';\n" +
-        "mount({ component: Mo, target: document.getElementById('app')! });\n" +
-        "mount({ component: Mo, target: document.getElementById('app2')! });\n",
+        "mount(Mo, { target: document.getElementById('app')! });\n" +
+        "mount(Mo, { target: document.getElementById('app2')! });\n",
       {
         ...DEV,
         extraFiles: {

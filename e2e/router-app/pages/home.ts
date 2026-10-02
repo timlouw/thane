@@ -8,18 +8,16 @@ export const HomePage = defineComponent('home-page', () => {
   const increment = () => localCount(localCount() + 1);
   const setMessage = () => sharedMessage('hello from home');
 
-  return {
-    template: html`
-      <section data-testid="home-page">
-        <h2 data-testid="page-title">Home</h2>
-        <div data-testid="home-local-count">${localCount()}</div>
-        <button data-testid="home-increment" @click=${increment}>+1</button>
-        <button data-testid="home-set-message" @click=${setMessage}>Set Message</button>
-        <div data-testid="home-visit-count">${visitCount()}</div>
-        <div data-testid="home-spacer" style="height: 2200px;"></div>
-      </section>
-    `,
-  };
+  return html`
+    <section data-testid="home-page">
+      <h2 data-testid="page-title">Home</h2>
+      <div data-testid="home-local-count">${localCount()}</div>
+      <button data-testid="home-increment" @click=${increment}>+1</button>
+      <button data-testid="home-set-message" @click=${setMessage}>Set Message</button>
+      <div data-testid="home-visit-count">${visitCount()}</div>
+      <div data-testid="home-spacer" style="height: 2200px;"></div>
+    </section>
+  `;
 });
 
 export default HomePage;

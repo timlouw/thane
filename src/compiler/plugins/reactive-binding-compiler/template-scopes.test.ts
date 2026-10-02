@@ -63,7 +63,7 @@ const cases: Record<string, Case> = {
   'component: whenElse with events, a repeat with row events, then more bindings': {
     scope: 'component',
     template:
-      '<section>${whenElse(f(), html`<p @click=${a}>${n()}</p>`, html`<p>else</p>`)}' +
+      '<section>${when(f(), html`<p @click=${a}>${n()}</p>`, html`<p>else</p>`)}' +
       '<ul>${repeat(items(), (it) => html`<li @click=${() => pick(it)}>${it.name}</li>`)}</ul>' +
       '<em @click=${z}>${m()}</em></section>',
     inits: [['f', true]],
@@ -97,7 +97,7 @@ const cases: Record<string, Case> = {
   'sub: nested whenElse and when() with events': {
     scope: 'sub',
     template:
-      '<div>${whenElse(f(), html`<p @click=${a}>${n()}</p>`, html`<p>${m()}</p>`)}<em ${when(g())} @click=${z}>${m()}</em><u @click=${y}>u</u></div>',
+      '<div>${when(f(), html`<p @click=${a}>${n()}</p>`, html`<p>${m()}</p>`)}<em ${when(g())} @click=${z}>${m()}</em><u @click=${y}>u</u></div>',
     inits: [
       ['f', false],
       ['g', true],

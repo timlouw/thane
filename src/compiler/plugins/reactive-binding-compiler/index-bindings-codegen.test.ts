@@ -13,13 +13,13 @@ export const App = defineComponent('test-app', () => {
     template: html\`<ul>${list}</ul>\`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 describe('Lists whose bindings read the index ask the reconciler to refresh moved rows', () => {
   test('a lean list with an index binding passes trackIndex', async () => {
     const js = await buildAndReadJs(
-      app('${repeat(rows(), (item, index) => html`<li data-i=${index}>${item.label}</li>`, null, (item) => item.id)}'),
+      app('${repeat(rows(), (item, index) => html`<li data-i=${index}>${item.label}</li>`, { key: "id" })}'),
     );
     expect(js).toMatch(
       /createKeyedReconciler\([\s\S]*?__batchRows\(16, _tc_b\d+, _bind_b\d+, _update_b\d+\),\s*true\s*\)/,
@@ -28,7 +28,7 @@ describe('Lists whose bindings read the index ask the reconciler to refresh move
 
   test('a list without an index binding does not', async () => {
     const js = await buildAndReadJs(
-      app('${repeat(rows(), (item, index) => html`<li>${item.label}</li>`, null, (item) => item.id)}'),
+      app('${repeat(rows(), (item, index) => html`<li>${item.label}</li>`, { key: "id" })}'),
     );
     expect(js).toMatch(/_update_b\d+\)\s*\)/);
     expect(js).not.toMatch(/_update_b\d+\),\s*true\s*\)/);
@@ -38,7 +38,7 @@ describe('Lists whose bindings read the index ask the reconciler to refresh move
   test('a closure-row list takes the index through its update function', async () => {
     const js = await buildAndReadJs(
       app(
-        '${repeat(rows(), (item, index) => html`<li><i ${when(show())}>${index}</i>${item.label}-${index}</li>`, null, (item) => item.id)}',
+        '${repeat(rows(), (item, index) => html`<li><i ${when(show())}>${index}</i>${item.label}-${index}</li>`, { key: "id" })}',
       ),
     );
     // the update takes the row's current index (esbuild renames the shadowing parameters)

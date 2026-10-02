@@ -10,6 +10,9 @@ Commands:
   serve       Build and serve the application
   types       Generate hidden .thane types without building
   typecheck   Run Thane-aware TypeScript checking without building
+  init [dir]  Create a new project in dir (default: the current directory)
+  generate component <name>
+              Create name/name.component.ts and .css (<folder>/<name> puts it in folder)
 
 Options:
   --prod, -p          Production build (default: development)
@@ -55,3 +58,6 @@ Examples:
   thane types                  Generate hidden project types only
   thane typecheck              Run typecheck with generated .thane types included
   thane build --verbose        Build with detailed logging
+  thane init my-app            Create a project in ./my-app
+  thane generate component ui/user-card
+                               Create ui/user-card/user-card.component.ts and .css

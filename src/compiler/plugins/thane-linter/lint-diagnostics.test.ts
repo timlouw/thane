@@ -2,8 +2,9 @@
  * Lint rule diagnostics, pinned in full: severity, message, code and location (file, line, column).
  *
  * lint-rules.test.ts pins codes and counts. These tests pin everything else a user sees, plus the
- * shapes each rule accepts or skips: which return objects THANE401/402 inspect, which calls count as
- * defineComponent, which tags count as html/css, and how THANE411 keys mount targets.
+ * shapes each rule accepts or skips: which calls count as defineComponent, which tags count as html/css,
+ * and how THANE411 keys mount targets. THANE401 (component-property-order) and THANE402
+ * (lifecycle-arrow-function) are retired: the compiler reads properties in any order and hooks in any form.
  * THANE406 (no-element-id) is retired: compiled code no longer uses ids. THANE407 (single-component-per-file)
  * is retired: each component of a file is compiled on its own. THANE410 (no-cross-file-html-template) is
  * retired: a template can use a fragment another module exports.
@@ -16,8 +17,6 @@ import type { Diagnostic } from '../../types.js';
 import type { LintRuleDefinition } from './rules/types.js';
 import {
   noDefaultExportComponent,
-  componentPropertyOrder,
-  lifecycleArrowFunction,
   requireConstTaggedTemplates,
   noNestedHtmlTags,
   noConditionalTemplateInit,
@@ -65,174 +64,6 @@ describe('THANE400 diagnostics', () => {
     expect(run(noDefaultExportComponent, ['export default lib.defineComponent(() => ({}));'])).toStrictEqual([]);
     expect(run(noDefaultExportComponent, ['export default (defineComponent(() => ({})));'])).toStrictEqual([]);
     expect(run(noDefaultExportComponent, ['export = defineComponent(() => ({}));'])).toStrictEqual([]);
-  });
-});
-
-// ============================================================================
-// THANE401: component-property-order
-// ============================================================================
-
-describe('THANE401 diagnostics', () => {
-  const error = diag('error', ErrorCode.COMPONENT_PROPERTY_ORDER);
-  const before = (name: string, last: string) =>
-    `'${name}' must be declared before '${last}' (required order: template → styles → onMount → onDestroy)`;
-
-  test('reports each property that goes back in the order, against the previous lifecycle property', () => {
-    const src = [
-      'export const A = defineComponent(() => ({',
-      '  onMount: () => {},',
-      '  label: "x",',
-      '  template: html`<div/>`,',
-      '  onDestroy: () => {},',
-      '    styles: css`x`,',
-      '}));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 4, 'template', before('template', 'onMount')),
-      error(src, 6, 'styles', before('styles', 'onDestroy')),
-    ]);
-  });
-
-  test('counts shorthand and method properties; skips string, computed, spread and accessor properties', () => {
-    const src = [
-      'export const A = defineComponent(() => {',
-      '  return {',
-      '    onDestroy() {},',
-      '    template,',
-      "    'onMount': m,",
-      '    [styles]: s,',
-      '    ...rest,',
-      '    get onMount() { return m; },',
-      '    styles: s,',
-      '  };',
-      '});',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 4, 'template', before('template', 'onDestroy')),
-    ]);
-  });
-
-  test('inspects concise bodies in any number of parentheses and top-level returns of block bodies', () => {
-    const src = [
-      'const A = defineComponent(() => (({ styles: s, template: t })));',
-      "const B = defineComponent('x-b', function () {",
-      '  const helper = () => ({ onDestroy: d, onMount: m });',
-      '  return { styles: s, template: t };',
-      '});',
-      'const make = () => defineComponent(() => ({ styles: s, template: t }));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 1, 'template', before('template', 'styles')),
-      error(src, 4, 'template', before('template', 'styles')),
-      error(src, 6, 'template', before('template', 'styles')),
-    ]);
-  });
-
-  test('inspects the setup of a parenthesised arrow only if it is a direct argument', () => {
-    // `(() => …)` is a ParenthesizedExpression, not an arrow function: the first line is skipped.
-    const src = [
-      'const A = defineComponent((() => ({ styles: s, template: t })));',
-      'const B = defineComponent(() => ({ styles: s, template: t }));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([error(src, 2, 'template', before('template', 'styles'))]);
-  });
-
-  test('inspects a parenthesised return; skips nested and non-object returns and calls inside another', () => {
-    const src = [
-      'export const A = defineComponent(() => {',
-      '  if (x) {',
-      '    return { styles: s, template: t };',
-      '  }',
-      '  function inner() {',
-      '    return { styles: s, template: t };',
-      '  }',
-      '  const Inner = defineComponent(() => ({ styles: s, template: t }));',
-      '  return ({ styles: s, template: t });',
-      '});',
-      'const B = defineComponent(() => build({ styles: s, template: t }));',
-      'const C = lib.defineComponent(() => ({ styles: s, template: t }));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([error(src, 9, 'template', before('template', 'styles'))]);
-  });
-
-  test('inspects every function-like argument and every top-level return', () => {
-    const src = [
-      'const A = defineComponent(() => ({ onDestroy: d, onMount: m }), function () {',
-      '  return { styles: s, template: t };',
-      '  return { onMount: m, styles: s };',
-      '});',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 1, 'onMount', before('onMount', 'onDestroy')),
-      error(src, 2, 'template', before('template', 'styles')),
-      error(src, 3, 'styles', before('styles', 'onMount')),
-    ]);
-  });
-});
-
-// ============================================================================
-// THANE402: lifecycle-arrow-function
-// ============================================================================
-
-describe('THANE402 diagnostics', () => {
-  const error = diag('error', ErrorCode.LIFECYCLE_ARROW_FUNCTION);
-  const method = (n: string) => `'${n}' must be an arrow function, not a method shorthand (use '${n}: () => { ... }')`;
-  const fnExpr = (n: string) =>
-    `'${n}' must be an arrow function, not a function expression (use '${n}: () => { ... }')`;
-  const inline = (n: string) => `'${n}' must be an inline arrow function (use '${n}: () => { ... }')`;
-
-  test('reports method shorthand, function expressions and other values; accepts arrows', () => {
-    const src = [
-      'const A = defineComponent(() => ({',
-      '  template: html`<div/>`,',
-      '    onMount() {},',
-      '  onDestroy: function () {},',
-      '}));',
-      'const B = defineComponent(() => ({ onMount: handler, onDestroy: make() }));',
-      'const C = defineComponent(() => ({ onMount: () => {}, onDestroy: async () => {} }));',
-    ];
-    expect(run(lifecycleArrowFunction, src)).toStrictEqual([
-      error(src, 3, 'onMount', method('onMount')),
-      error(src, 4, 'onDestroy', fnExpr('onDestroy')),
-      error(src, 6, 'onMount', inline('onMount')),
-      error(src, 6, 'onDestroy', inline('onDestroy')),
-    ]);
-  });
-
-  test('reports shorthand, accessor and string-named hooks; skips other properties', () => {
-    const src = [
-      'const A = defineComponent(() => ({',
-      '  onMount,',
-      '  get onDestroy() { return d; },',
-      "  'onMount': function () {},",
-      '  onClick() {},',
-      '}));',
-    ];
-    expect(run(lifecycleArrowFunction, src)).toStrictEqual([
-      error(src, 2, 'onMount', inline('onMount')),
-      error(src, 3, 'get', `'onDestroy' must be an arrow function, not an accessor (use 'onDestroy: () => { ... }')`),
-      error(src, 4, "'onMount'", fnExpr('onMount')),
-    ]);
-  });
-
-  test('inspects the same return objects as THANE401', () => {
-    const src = [
-      'const A = defineComponent((() => (({ onMount() {} }))));',
-      "const B = defineComponent('x-b', function () {",
-      '  if (x) return { onMount() {} };',
-      '  const helper = () => ({ onMount() {} });',
-      '  return ({ onDestroy() {} });',
-      '  return { onDestroy() {} };',
-      '});',
-      'const C = defineComponent(() => ({ onMount() {} }), () => ({ onDestroy() {} }));',
-      'const D = defineComponent(() => ({ template: t, inner: defineComponent(() => ({ onMount() {} })) }));',
-    ];
-    expect(run(lifecycleArrowFunction, src)).toStrictEqual([
-      error(src, 5, 'onDestroy', method('onDestroy')),
-      error(src, 6, 'onDestroy', method('onDestroy')),
-      error(src, 8, 'onMount', method('onMount')),
-      error(src, 8, 'onDestroy', method('onDestroy')),
-    ]);
   });
 });
 
@@ -285,24 +116,29 @@ describe('THANE404 diagnostics', () => {
   const error = diag('error', ErrorCode.NO_NESTED_HTML_TAGS);
   const MESSAGE =
     "An 'html' template here is not compiled: inside another template, one is compiled where it is the whole " +
-    '${…} or a directive argument. Use whenElse() to choose between templates, and repeat() for a list.';
+    '${…}, a directive argument, or a branch of a ternary, && or .map() in content.';
 
-  test('reports a nested html template at its tag unless it is the whole ${} or in a directive call', () => {
+  test('reports a nested html template at its tag unless it is the whole ${}, in a directive call or a branch', () => {
     const src = [
       'const t = html`<div>${html`<p>${html`<i/>`}</p>`}</div>`;',
-      'const u = html`${when(x(), html`<b/>`)}${whenElse(x(), html`<c/>`, html`<d/>`)}`;',
+      'const u = html`${when(x(), html`<b/>`)}${when(x(), html`<c/>`, html`<d/>`)}`;',
       'const v = html`${fmt(html`<e/>`)}`;',
       'const w = html`${repeat(xs, (i) => html`${html`<s/>`}`)}`;',
       'const m = html`${lib.html`<q/>`}${lib.when(x(), html`<r/>`)}`;',
-      "const y = html`${on() ? html`<y/>` : ''}${xs.map((i) => html`<z/>`)}`;",
+      "const y = html`${on() ? html`<y/>` : ''}${xs.map((i) => html`<z/>`)}${on() && html`<a/>`}`;",
       'const k = html`${fmt(html`${html`<k/>`}`)}`;',
+      "const g = html`<p title=${on() ? html`<g/>` : ''}>${on() ? a : b ? html`<h/>` : null}</p>`;",
+      'const f = html`${on() ? fmt(html`<f/>`) : html`<f2/>`}${xs.map((i) => { return html`<f3/>`; })}`;',
     ];
     expect(run(noNestedHtmlTags, src)).toStrictEqual([
       error(src, 3, 'html`<e/>', MESSAGE),
       error(src, 5, 'html`<r/>', MESSAGE),
-      error(src, 6, 'html`<y/>', MESSAGE),
-      error(src, 6, 'html`<z/>', MESSAGE),
       error(src, 7, 'html`${html', MESSAGE),
+      // In a tag, a ternary of templates is a plain value
+      error(src, 8, 'html`<g/>', MESSAGE),
+      // A template inside a branch's call, and a .map() row with a block body, are plain values
+      error(src, 9, 'html`<f/>', MESSAGE),
+      error(src, 9, 'html`<f3/>', MESSAGE),
     ]);
   });
 });
@@ -315,10 +151,10 @@ describe('THANE405 diagnostics', () => {
   const warning = diag('warning', ErrorCode.NO_CONDITIONAL_TEMPLATE_INIT);
   const TERNARY =
     'Conditional assignment of tagged templates is not supported. ' +
-    "The compiler cannot determine which template to use at compile time. Use 'whenElse()' instead.";
+    "The compiler cannot determine which template to use at compile time. Use 'when()' in the template instead.";
   const LOGICAL =
     'Logical expression assignment of tagged templates is not supported. ' +
-    "The compiler cannot resolve the template value at compile time. Use 'whenElse()' instead.";
+    "The compiler cannot resolve the template value at compile time. Use 'when()' in the template instead.";
 
   test('reports ternaries and logical expressions whose operands contain html or css', () => {
     const src = [
@@ -379,9 +215,6 @@ describe('THANE408 diagnostics', () => {
 
 describe('THANE409 diagnostics', () => {
   const error = diag('error', ErrorCode.NO_ALIASED_COMPONENT_EXPORT);
-  const reExport = (name: string) =>
-    `Component re-exports are not supported. Define the component in this file instead: ` +
-    `export const ${name} = defineComponent(...)`;
   const aliased = (local: string, exported: string) =>
     `Aliased component export is not supported: '${local}' exported as '${exported}'. ` +
     'The compiler derives the selector from the declaration name, not the exported name. ' +
@@ -390,7 +223,7 @@ describe('THANE409 diagnostics', () => {
     `Deferred component export is not supported. The compiler requires the export keyword ` +
     `on the declaration: export const ${name} = defineComponent(...)`;
 
-  test('reports aliased and deferred exports of local components, and PascalCase re-exports', () => {
+  test('reports aliased and deferred exports of local components; a re-export is fine', () => {
     const src = [
       'const Inner = defineComponent(() => ({ template: html`<a/>` }));',
       'const Plain = defineComponent(() => ({ template: html`<b/>` }));',
@@ -407,8 +240,6 @@ describe('THANE409 diagnostics', () => {
       error(src, 7, 'Inner as', aliased('Inner', 'Outer')),
       error(src, 7, 'Plain', deferred('Plain')),
       error(src, 7, 'Deep', deferred('Deep')),
-      error(src, 8, 'Card', reExport('Card')),
-      error(src, 9, 'x as', reExport('Button')),
     ]);
   });
 });
@@ -430,44 +261,44 @@ describe('THANE411 diagnostics', () => {
     const src = [
       'mount(App);',
       '  mount(Other);',
-      'mount({ component: App });',
-      'mount({ component: App, target });',
-      "mount({ 'target': el });",
+      'mount(App, { target });',
+      "mount(App, { 'target': el });",
       'mount(...args);',
-      'mount(options);',
-      'mount({ component: B, target: el });',
-      "mount({ target: document.getElementById('app') });",
-      'mount({ target: document.body });',
-      "mount({ target: document.getElementById('app') });",
-      'mount({ target: els[0] });',
-      'mount({ target: els[0] });',
-      'mount({ target: (el as HTMLElement)! });',
-      'mount({ target: target });',
+      'mount(App, options);',
+      'mount(B, { target: el });',
+      "mount(App, { target: document.getElementById('app') });",
+      'mount(App, { target: document.body });',
+      "mount(App, { target: document.getElementById('app') });",
+      'mount(App, { target: els[0] });',
+      'mount(App, { target: els[0] });',
+      'mount(App, { target: (el as HTMLElement)! });',
+      'mount(App, { target: target });',
       'lib.mount(App);',
-      'mount({ target: document.body, component: C }, extra);',
+      'mount(Routes, { scrollRestoration: false });',
     ];
-    // The old mount(App) form, a spread and an options variable are not compared: their target is
-    // unknown. The shorthand `{ target }` and a string key are the variables they name.
+    // A spread and an options variable are not compared: their target is unknown. The shorthand `{ target }`
+    // and a string key are the variables they name; no options, or options without a target, is document.body.
     expect(run(duplicateMountTarget, src)).toStrictEqual([
-      warning(src, 8, 'mount', message('var:el', 5)),
-      warning(src, 10, 'mount', message(BODY, 3)),
-      warning(src, 11, 'mount', message("document.getElementById('app')", 9)),
-      warning(src, 13, 'mount', message('els[0]', 12)),
-      warning(src, 14, 'mount', message('var:el', 5)),
-      warning(src, 15, 'mount', message('var:target', 4)),
-      warning(src, 17, 'mount', message(BODY, 3)),
+      warning(src, 2, 'mount', message(BODY, 1)),
+      warning(src, 7, 'mount', message('var:el', 4)),
+      warning(src, 9, 'mount', message(BODY, 1)),
+      warning(src, 10, 'mount', message("document.getElementById('app')", 8)),
+      warning(src, 12, 'mount', message('els[0]', 11)),
+      warning(src, 13, 'mount', message('var:el', 4)),
+      warning(src, 14, 'mount', message('var:target', 3)),
+      warning(src, 16, 'mount', message(BODY, 1)),
     ]);
   });
 
   test('tracks each function scope on its own', () => {
     const src = [
-      'mount({ component: App, target: el });',
+      'mount(App, { target: el });',
       'const f = () => {',
-      '  mount({ component: App, target: el });',
-      '  const g = function () { mount({ component: App, target: el }); };',
-      '  mount({ component: Other, target: el });',
+      '  mount(App, { target: el });',
+      '  const g = function () { mount(App, { target: el }); };',
+      '  mount(Other, { target: el });',
       '};',
-      'mount({ component: Other, target: el });',
+      'mount(Other, { target: el });',
     ];
     expect(run(duplicateMountTarget, src)).toStrictEqual([
       warning(src, 5, 'mount', message('var:el', 3)),
@@ -483,8 +314,31 @@ describe('THANE411 diagnostics', () => {
 describe('THANE412 diagnostics', () => {
   const error = diag('error', ErrorCode.SINGLE_RETURN_OBJECT);
   const MESSAGE =
-    'A setup function with more than one return object is not supported. ' +
-    "The compiler builds one template per component, from the last return, so this one is never used. Use 'when()' or 'whenElse()' in the template instead.";
+    'A setup function with more than one return is not supported. ' +
+    "The compiler builds one template per component, from the last return, so this one is never used. Use 'when()' in the template instead.";
+
+  test('a template returned alone counts as a return, before an object or another template', () => {
+    const src = [
+      'export const A = defineComponent(() => {',
+      '  if (loading()) return html`<p>Loading</p>`;',
+      '  if (failed()) return (html`<p>Failed</p>`);',
+      '  return { template: html`<p>a</p>`, styles };',
+      '});',
+      'export const B = defineComponent(() => {',
+      '  if (x) return { template: html`<p>b</p>` };',
+      '  return html`<p>c</p>`;',
+      '});',
+      'export const C = defineComponent(() => {',
+      '  const label = () => html`<i>nested</i>`;',
+      '  return html`<p>${label}</p>`;',
+      '});',
+    ];
+    expect(run(singleReturnObject, src)).toStrictEqual([
+      error(src, 2, 'return', MESSAGE),
+      error(src, 3, 'return', MESSAGE),
+      error(src, 7, 'return', MESSAGE),
+    ]);
+  });
 
   test('reports every return object but the last, at any depth, at its return', () => {
     const src = [
@@ -583,7 +437,7 @@ describe('THANE413 diagnostics', () => {
 
   test('accepts the markers under their own names, other aliases, type imports and other modules', () => {
     const src = [
-      "import { defineComponent, html, css, when, whenElse, repeat, signal as s } from 'thane';",
+      "import { defineComponent, html, css, when, repeat, signal as s } from 'thane';",
       "import { type Signal as S } from 'thane';",
       "import type { MountHandle as H } from 'thane';",
       "import { html as litHtml } from 'lit';",

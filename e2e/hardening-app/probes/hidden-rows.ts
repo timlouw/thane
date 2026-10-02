@@ -13,21 +13,18 @@ export const HiddenRows = defineComponent('hardening-hidden-rows', () => {
   ]);
   const show = signal(true);
   expose('hiddenRows', { show });
-  return {
-    template: html`<section>
-      <div class="hidden-when" ${when(show())}>
-        <ul>
-          ${repeat(
-            items(),
-            (it) =>
-              html`<li class="hidden-row"
-                ><span class="hidden-m">${it.n}-${hiddenRowsTick()}</span>${Kid({ label: it.n })}</li
-              >`,
-            null,
-            (it) => it.id,
-          )}
-        </ul>
-      </div>
-    </section>`,
-  };
+  return html`<section>
+    <div class="hidden-when" ${when(show())}>
+      <ul>
+        ${repeat(
+          items(),
+          (it) =>
+            html`<li class="hidden-row"
+              ><span class="hidden-m">${it.n}-${hiddenRowsTick()}</span>${Kid({ label: it.n })}</li
+            >`,
+          { key: 'id' },
+        )}
+      </ul>
+    </div>
+  </section>`;
 });

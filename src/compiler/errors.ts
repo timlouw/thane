@@ -13,10 +13,15 @@ export enum ErrorCode {
   REPEAT_ROW_ROOT = 'THANE007',
   ROW_ROOT_WHEN = 'THANE008',
   TEMPLATE_STRUCTURE = 'THANE009',
-  REPEAT_EMPTY_TEMPLATE_FUNCTION = 'THANE010',
+  REPEAT_OPTIONS = 'THANE010',
   REPEAT_EMPTY_TEMPLATE_SHAPE = 'THANE011',
   BINDING_NAME_COLLISION = 'THANE012',
   SHARED_SELECTOR = 'THANE013',
+  WHEN_ARGUMENTS = 'THANE014',
+  EVENT_MODIFIER = 'THANE015',
+  TAG_VALUE = 'THANE016',
+  DIRECTIVE_ATTRIBUTE = 'THANE017',
+  MAYBE_MISSING_SIGNAL = 'THANE018',
 
   // Build errors
   FILE_NOT_FOUND = 'THANE200',
@@ -24,8 +29,9 @@ export enum ErrorCode {
 
   // Lint rules
   NO_DEFAULT_EXPORT_COMPONENT = 'THANE400',
-  COMPONENT_PROPERTY_ORDER = 'THANE401',
-  LIFECYCLE_ARROW_FUNCTION = 'THANE402',
+  // THANE401 (component-property-order) is retired and not reused: the order of a component's properties
+  // never mattered to the compiler
+  // THANE402 (lifecycle-arrow-function) is retired and not reused: a hook may be written in any form
   REQUIRE_CONST_TAGGED_TEMPLATES = 'THANE403',
   NO_NESTED_HTML_TAGS = 'THANE404',
   NO_CONDITIONAL_TEMPLATE_INIT = 'THANE405',
@@ -37,7 +43,26 @@ export enum ErrorCode {
   DUPLICATE_MOUNT_TARGET = 'THANE411',
   SINGLE_RETURN_OBJECT = 'THANE412',
   NO_ALIASED_THANE_IMPORT = 'THANE413',
+  NO_UNCALLED_SIGNAL = 'THANE414',
+  NO_UNKNOWN_COMPONENT_KEY = 'THANE415',
+  NO_SIGNAL_SNAPSHOT_PROP = 'THANE416',
 }
+
+/** What `lint` in thane.config.json sets a code to: left out, or reported as a warning or an error */
+export type LintSeverity = 'off' | 'warning' | 'error';
+
+/** The severities thane.config.json's `lint` sets, by code */
+export type LintSeverities = Readonly<Record<string, LintSeverity>>;
+
+/** The diagnostic with the severity `lint` gives its code, or null when `lint` turns the code off */
+export const withConfiguredSeverity = (
+  diagnostic: Diagnostic,
+  severities: LintSeverities | undefined,
+): Diagnostic | null => {
+  const severity = diagnostic.code ? severities?.[diagnostic.code] : undefined;
+  if (severity === 'off') return null;
+  return severity ? { ...diagnostic, severity } : diagnostic;
+};
 
 /**
  * Create a diagnostic message

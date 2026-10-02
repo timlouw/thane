@@ -5,17 +5,15 @@ Thane uses tagged template literals for HTML. At build time, the compiler transf
 `html`, `css` and the [directives](directives/README.md) are imported from `thane`:
 
 ```typescript
-import { html, css, when, whenElse, repeat } from 'thane';
+import { html, css, when, repeat } from 'thane';
 ```
 
-They exist only at build time: the compiler turns each use into DOM code, so none of them adds to the bundle. The compiler finds them by name, so import them under their own names ([THANE413](lint-rules.md#thane413--no-aliased-thane-import)). The examples below leave the imports out.
+They exist only at build time: the compiler turns each use into DOM code, so none of them adds to the bundle. The compiler finds them by name, so import them under their own names ([THANE413](lint-rules.md#thane413--no-aliased-thane-import)). The examples below leave the imports out, and show a template as the setup returns it: alone, or as the `template` of the object it returns ([Components](components.md)).
 
 ## Basic Template
 
 ```typescript
-return {
-  template: html`<h1>Hello, world!</h1>`,
-};
+return html`<h1>Hello, world!</h1>`;
 ```
 
 Static content is cloned from a pre-built `<template>` element — no runtime parsing.
@@ -27,7 +25,7 @@ Embed signal reads directly in the template. Only the specific text node updates
 ```typescript
 const count = signal(0);
 
-template: html`<p>Count: ${count()}</p>`;
+html`<p>Count: ${count()}</p>`;
 ```
 
 The compiler places an empty comment on each side of the dynamic text. At runtime, a subscription updates only the text node between them.
@@ -37,7 +35,7 @@ The compiler places an empty comment on each side of the dynamic text. At runtim
 Combine static text with multiple dynamic values in a single element:
 
 ```typescript
-template: html`<p>Name: ${first()} ${last()}</p>`;
+html`<p>Name: ${first()} ${last()}</p>`;
 ```
 
 Each binding gets its own text node — updating `first` doesn't touch the `last` text node.
@@ -55,7 +53,7 @@ const total = () => price() * qty(); // follows price and qty
 const format = (n: number) => `${n} ${currency()}`; // follows its argument's signals, and currency
 const label = () => 'Total'; // reads no signal: rendered once
 
-template: html`<p>${label()}: ${total()}, ${format(price())}</p>`;
+html`<p>${label()}: ${total()}, ${format(price())}</p>`;
 ```
 
 This covers the functions declared in the component's setup and at the top of its file, and the helpers they
@@ -67,7 +65,7 @@ when it is called without arguments (an imported store signal, `${visitCount()}`
 Bind a dynamic value to an attribute by writing the expression as its value:
 
 ```typescript
-template: html`
+html`
   <img src=${imageUrl()} alt=${description()} />
   <input value=${query()} placeholder="Search..." />
   <a class="btn ${kind()}" href="/items/${id()}">Open</a>
@@ -81,20 +79,50 @@ properties, so their values keep their JavaScript meaning: `value`, `checked`, `
 (`checked=${false}` unchecks; `value=${name()}` moves the field's live value). A `:`-prefixed
 attribute name is rejected at build time (THANE006).
 
-### Dynamic Classes
+### Class Toggles
 
-Bind `class` using an expression:
+`class:name=${condition}` adds the class while the condition is truthy and removes it while it is not, next to the
+element's static classes:
 
 ```typescript
-template: html` <button class=${isActive() ? 'btn active' : 'btn'}>Click</button> `;
+html`<input class="field" class:invalid=${errors().email !== ''} class:filled=${email() !== ''} />`;
 ```
+
+Each toggle writes its own class (`classList.toggle`), so the classes do not need to be assembled into one string. A whole
+`class=${…}` binding replaces every class of the element, toggled ones included: use one form or the other on an
+element. A `class:` without a condition is a build error (THANE017).
+
+### Two-Way Bindings
+
+`bind:value=${signal}` shows a signal in a field and writes what is typed back into it; `bind:checked=${signal}` does the
+same for a checkbox:
+
+```typescript
+const email = signal('');
+const subscribe = signal(false);
+const plan = signal('basic');
+
+html`
+  <input type="email" bind:value=${email} />
+  <input type="checkbox" bind:checked=${subscribe} />
+  <select bind:value=${plan}>
+    <option value="basic">Basic</option>
+    <option value="pro">Pro</option>
+  </select>
+`;
+```
+
+Each is the property's binding (`value=${email()}`) and the listener that writes the signal: `input` for an input or a
+textarea, `change` for a select and a checkbox. The type check takes a writable signal of a string for `bind:value` and
+of a boolean for `bind:checked`: a `computed()` or a `Signal<number>` there is a type error. Any other `bind:` is a
+build error (THANE017).
 
 ## Style Bindings
 
 Bind the whole inline style, or individual properties:
 
 ```typescript
-template: html`
+html`
   <div style=${'color:' + textColor()}>Styled text</div>
   <div style="color: ${textColor()}; width: ${width()}px">Per property</div>
 `;
@@ -110,15 +138,17 @@ expression belongs to the value: `width: ${width()}px` writes `40px`, and
 Use ternary operators for conditional text:
 
 ```typescript
-template: html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`;
+html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`;
 ```
+
+A ternary of templates chooses between them: see [JavaScript Control Flow](#javascript-control-flow).
 
 ## Nullish Coalescing
 
 Use `??` for fallback values:
 
 ```typescript
-template: html`<p>${username() ?? 'Anonymous'}</p>`;
+html`<p>${username() ?? 'Anonymous'}</p>`;
 ```
 
 ## HTML Fragment Injection
@@ -129,7 +159,7 @@ Assign a template to a `const` variable, then embed it:
 const header = html`<h1>Welcome</h1>`;
 const footer = html`<footer>© 2024</footer>`;
 
-template: html`
+html`
   ${header}
   <main>Content</main>
   ${footer}
@@ -152,8 +182,54 @@ Compiled templates keep the text you write, with whitespace tidied the same way 
 Templates are JavaScript template literals, and their escapes mean what they mean in any template literal: `\${` writes a literal `${`, which is text and not a binding, and `` \` `` writes a backtick.
 
 ```typescript
-template: html`<code>\${price}</code>`; // renders "${price}"
+html`<code>\${price}</code>`; // renders "${price}"
 ```
+
+## What a `${…}` Takes
+
+The type check that `thane build`, `thane dev` and `thane typecheck` run (and the editor, with
+[the plugin](event-handling.md#in-the-editor)) checks each value against what its position takes:
+
+| Position | Takes |
+|:---------|:------|
+| Content, `<p>${value}</p>` | text, a number, `true` or `false`, nothing (`null`, `undefined`), or templates: an `html` template, a child component call, a directive, or a list of them (`.map()`) |
+| In a tag, `<p class=${value}>` | text, a number, `true` or `false`, or nothing |
+| An event attribute, `@click=${…}` | a handler for that event, or an expression that runs on it (see [Event Handling](event-handling.md)) |
+
+So an object, which would show as `[object Object]`, a promise, and a signal without its call are type errors where
+they are written:
+
+```typescript
+html`<p>${user()}</p>`;
+// error TS1360: Type '{ name: string; }' does not satisfy the expected type 'ThaneContent'.
+html`<p>${user().name}</p>`; // ✅
+```
+
+## Element Refs
+
+A ref names an element of the template, for the code that needs the element itself: focus, measuring, a canvas, a
+library that takes a node. Create it in the setup with `ref()`, typed with the element, and put it in the element's tag:
+
+```typescript
+import { defineComponent, html, ref } from 'thane';
+
+export const Search = defineComponent(() => {
+  const input = ref<HTMLInputElement>();
+  return {
+    template: html`<input ${input} type="search" />`,
+    onMount: () => input.el.focus(),
+  };
+});
+```
+
+The compiled template assigns the element to `input.el` when it binds, from the path it reaches the element by, before
+`onMount` runs; there is no query. A ref in a `when()` branch is the element while the branch shows, and `null` while it
+is hidden. In the setup itself, before the template is bound, `el` is `null`: read it in `onMount` or a handler. The type
+check checks the ref's type against the tag: a `ref<HTMLCanvasElement>()` on an `<input>` is a type error.
+
+A ref names one element, so one in a list row is a build error (THANE016): read the element from the event in a handler
+(`e.currentTarget`), or give the row a component that holds the ref. Any other `${…}` alone in a tag is a build error too:
+in a tag, a value is an attribute's (`name=${…}`), `when()` or a ref.
 
 ## Child Components in Templates
 
@@ -162,13 +238,14 @@ Embed child components using their function-call syntax:
 ```typescript
 import { Navbar } from './navbar.js';
 
-template: html`
-  ${Navbar({})}
+html`
+  ${Navbar()}
   <main>Page content</main>
 `;
 ```
 
-The compiler manages the child's lifecycle and binding initialization.
+A component whose props are all optional, or that has none, is called without them, `Navbar()`; one with a required prop
+takes its props, `Card({ title })`. The compiler manages the child's lifecycle and binding initialization.
 
 ---
 
@@ -177,7 +254,7 @@ The compiler manages the child's lifecycle and binding initialization.
 ### Fragments
 
 An `html` template can be a fragment of another: a `const` of the component or the module, used as `${name}`
-wherever markup goes, as a `whenElse()` branch, or as a `repeat()` empty template. An `html` template can also
+wherever markup goes, as a `when()` branch, or as a `repeat()` empty template. An `html` template can also
 be written as a whole `${…}`. The compiler inlines each fragment where it is used, so a fragment costs nothing
 at run time, and it can be used any number of times:
 
@@ -187,17 +264,50 @@ const spinner = html`<span class="spinner"></span>`;
 export const Orders = defineComponent(() => {
   const loading = signal(true);
   const empty = html`<li>No orders</li>`;
-  return {
-    template: html`
-      ${whenElse(loading(), spinner, html`<p>Ready</p>`)}
-      <ul>${repeat(orders(), (o) => html`<li>${o.name}</li>`, empty)}</ul>
-    `,
-  };
+  return html`
+    ${when(loading(), spinner, html`<p>Ready</p>`)}
+    <ul>${repeat(orders(), (o) => html`<li>${o.name}</li>`, { empty })}</ul>
+  `;
 });
 ```
 
-Anywhere else in a `${…}`, such as a ternary or a `map()`, an `html` template would be a plain value, and the
-build reports it (lint rule THANE404): use `whenElse()` to choose between templates, and `repeat()` for a list.
+#### JavaScript Control Flow
+
+In content, a ternary, an `&&` or a `.map()` of templates is compiled as the directive it means:
+
+```typescript
+html`
+  ${open() ? html`<p>Open</p>` : html`<p>Closed</p>`}
+  ${open() && html`<p>Open</p>`}
+  ${error() ? html`<p class="error">${error()}</p>` : null}
+  ${role() === 'admin' ? AdminPanel() : role() === 'user' ? UserPanel() : html`<p>Sign in</p>`}
+  <ul>${items().map((item) => html`<li>${item.name}</li>`)}</ul>
+  <div>${cards().map((card) => Card({ card }))}</div>
+`;
+```
+
+| Written                     | Compiled as                     |
+| :-------------------------- | :------------------------------ |
+| `c ? A : B`                 | `when(c, A, B)`                 |
+| `c ? A : null`              | `when(c, A)`                    |
+| `c ? null : B`              | `when(!(c), B)`                 |
+| `c && A`                    | `when(c, A)`                    |
+| `items.map((item, i) => A)` | `repeat(items, (item, i) => A)` |
+
+A branch is a template: an `html` template, a fragment, a child component call, another such expression (a
+chain of ternaries is a chain of `when()`s), or nothing: `null`, `undefined`, `false` or `''`. A `.map()` row
+is an `html` template or a child component call, written as the arrow function's expression body. The compiled
+code is the directive's, so a branch or a row costs the same either way; write `when()` or `repeat()` for what
+only they take: the tag form of `when()`, its narrowing form, and `repeat()`'s `key` and `empty`.
+
+A signal that may be missing (`const found = items().find(…)`) is shown with `when(found, (s) => html`…`)`, whose
+branch reads it while there is one; `found?.()` in a binding is a build error (THANE018,
+[Narrowing](directives/when.md#narrowing)).
+
+A ternary whose branches are both text is a text binding, as before (`${n > 0 ? 'Positive' : 'None'}`). One
+with a template on one side and text on the other is a build error (THANE404): the template would never be
+compiled. A template given to a child component as a prop is a slot ([Slots](components.md#slots)). An `html`
+template anywhere else in a `${…}`, such as an argument of your own function, is reported too.
 
 #### Fragments Shared Across Files
 
@@ -216,7 +326,7 @@ export const Badge = html`<b class=${theme()}>New</b>`;
 // orders.ts
 import { Spinner, Badge } from './pieces.js';
 
-template: html`<h2>Orders ${Badge}</h2>${whenElse(loading(), Spinner, html`<ul>…</ul>`)}`;
+html`<h2>Orders ${Badge}</h2>${when(loading(), Spinner, html`<ul>…</ul>`)}`;
 ```
 
 A fragment without `${…}` (`Spinner`) is written out where it is used, like a fragment of the same file. One

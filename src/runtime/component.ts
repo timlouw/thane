@@ -3,6 +3,7 @@
  * Uses native DOM (no Shadow DOM). Scoped styles via adoptedStyleSheets.
  */
 
+import { __owning } from './signal.js';
 import type { RouteContextForSelector, UntypedRouteContext } from './router.js';
 import type { Fragment } from './markers.js';
 import { hotRegister, hotRuntime, hotStyles } from './hot.js';
@@ -16,7 +17,11 @@ import type { ComponentRoot } from './types.js';
 // ============================================================================
 
 type ComponentProps = Record<string, any>;
-export type ComponentHTMLSelector<T> = (props: T) => Fragment;
+/**
+ * A component, as a template calls it: `${Card({ title })}`. A component whose props are all optional (or that
+ * has none) can be called without them: `${Nav()}`.
+ */
+export type ComponentHTMLSelector<T> = {} extends T ? (props?: T) => Fragment : (props: T) => Fragment;
 
 /**
  * Context object passed to the defineComponent setup function.
@@ -31,8 +36,7 @@ export interface ComponentContext<P = {}, S extends string = string> {
 }
 
 /**
- * Object returned from a defineComponent setup function.
- * Lifecycle hooks are typed as arrow-function properties (enforced by THANE402).
+ * Object returned from a defineComponent setup function. A hook is any function: an arrow, a method or a reference.
  */
 export type ComponentReturnType = {
   /** HTML template (html tagged template literal) */
@@ -56,7 +60,8 @@ interface InternalComponentResult extends ComponentReturnType {
 }
 
 /** Setup function signature for defineComponent. */
-type SetupFunction<P = {}, S extends string = string> = (ctx: ComponentContext<P, S>) => ComponentReturnType;
+/** A component's setup: its template, styles and hooks, or its template alone (`() => html`…``) */
+type SetupFunction<P = {}, S extends string = string> = (ctx: ComponentContext<P, S>) => ComponentReturnType | Fragment;
 
 /** @internal */
 interface ComponentInstance {
@@ -71,9 +76,6 @@ interface ComponentRef {
 }
 
 /** @internal */
-interface SetupWithSelector<P = {}, S extends string = string> extends SetupFunction<P, S> {
-  __selector: string;
-}
 
 /** @internal — A `<template>` holding `markup`: every compiled template (component, list row, empty list) is one. */
 export const __T = (markup: string): HTMLTemplateElement => {
@@ -304,8 +306,8 @@ export function __enableKeyframeScoping(): void {
 // ============================================================================
 
 /**
- * Define a component using the function-based API.
- * Selector is auto-derived from the export name at compile time.
+ * Define a component: its setup function, and its selector when it is not the one derived from the name it is
+ * declared under. The compiler turns each call into the component's code; run uncompiled, it throws.
  *
  * @example
  * export const MyCounter = defineComponent(() => ({
@@ -317,89 +319,12 @@ export function defineComponent<P extends ComponentProps = {}, const S extends s
   selector: S,
   setup: SetupFunction<P, S>,
 ): ComponentHTMLSelector<P>;
-export function defineComponent<P extends ComponentProps = {}>(
-  selectorOrSetup: string | SetupFunction<P, any>,
-  maybeSetup?: SetupFunction<P, any> | any,
-): ComponentHTMLSelector<P> {
-  let selector: string;
-  let setup: SetupFunction<P, any>;
-
-  if (typeof selectorOrSetup === 'string') {
-    selector = selectorOrSetup;
-    setup = maybeSetup as SetupFunction<P, any>;
-  } else {
-    // Auto-derived selector should have been injected by the compiler
-    selector = (selectorOrSetup as SetupWithSelector<P, any>).__selector;
-    setup = selectorOrSetup;
-    if (!selector) {
-      throw new Error(
-        'defineComponent: could not resolve selector. ' +
-          'Either pass an explicit selector string or ensure the compiler auto-derives it from the export name.',
-      );
-    }
-  }
-
-  // Register styles once (before factory runs)
-  let stylesRegistered = false;
-
-  // Create factory function for component instantiation
-  const factory = (
-    target?: HTMLElement,
-    props?: P,
-    extras?: { route?: UntypedRouteContext | undefined },
-  ): ComponentInstance => {
-    if (!target) {
-      throw new Error(`[thane] Component "${selector}" requires a target element to mount into.`);
-    }
-    target.classList.add(selector);
-    const root = target as unknown as ComponentRoot;
-    const ctx: ComponentContext<P, any> = {
-      root,
-      props: (props || {}) as Readonly<P>,
-      route: (extras?.route ?? _getRouteContext?.()) as RouteContextForSelector<any>,
-    };
-
-    const result = setup(ctx) as InternalComponentResult;
-
-    // Register styles (once) — only runs when __enableComponentStyles was called
-    if (_onStyles && !stylesRegistered && result.styles) {
-      _onStyles(selector, result.styles);
-      stylesRegistered = true;
-    }
-
-    // Apply template: uncompiled, it is the markup string the caller passed
-    if (result.template) {
-      root.innerHTML = result.template as unknown as string;
-    }
-
-    // Initialize reactive bindings (injected by the compiler into the return object)
-    let bindingsCleanup: (() => void) | void | undefined;
-    if (result.__b) {
-      bindingsCleanup = result.__b(ctx, root.querySelectorAll('*'));
-    }
-
-    // Lifecycle: onMount
-    if (result.onMount) {
-      result.onMount();
-    }
-
-    const instance: ComponentInstance = { root };
-    if (bindingsCleanup) {
-      instance.__bindingsCleanup = bindingsCleanup;
-    }
-    if (result.onDestroy) {
-      instance.__onDestroy = result.onDestroy;
-    }
-
-    return instance;
-  };
-
-  // Return a ref object compatible with mount().
-  // The cast is necessary: ComponentRef is the runtime shape, but the public
-  // type includes the (props: P) => string call-signature that the compiler
-  // generates at compile time — there is no way to satisfy it at runtime.
-  const ref: ComponentRef = { __f: factory };
-  return ref as unknown as ComponentHTMLSelector<P>;
+export function defineComponent(): never {
+  throw new Error(
+    "[thane] defineComponent() ran uncompiled. The compiler turns each component's defineComponent() call into the " +
+      "component's code: declare it as a const (const Card = defineComponent(...)), import defineComponent from " +
+      "'thane' under its own name, and build with thane (thane dev, thane build).",
+  );
 }
 
 /**
@@ -436,7 +361,9 @@ export function __registerComponent(
       props: (props || {}) as Readonly<any>,
       route: (extras?.route ?? _getRouteContext?.()) as RouteContextForSelector<any>,
     };
-    const result = setup(ctx) as InternalComponentResult;
+    // What the setup and onMount create (computeds, effects, onCleanup functions) is destroyed with the component
+    const owned: (() => void)[] = [];
+    const result = __owning(owned, () => setup(ctx)) as InternalComponentResult;
 
     if (_onStyles && !stylesRegistered && result.styles) {
       _onStyles(selector, result.styles);
@@ -448,15 +375,17 @@ export function __registerComponent(
     const elements = clone.querySelectorAll('*');
     root.append(clone);
     const bindingsCleanup = result.__b?.(ctx, elements);
-    if (result.onMount) result.onMount();
+    if (result.onMount) __owning(owned, result.onMount);
 
     const instance: ComponentInstance = { root };
     if (bindingsCleanup) {
       instance.__bindingsCleanup = bindingsCleanup;
     }
-    if (result.onDestroy) {
-      instance.__onDestroy = result.onDestroy;
-    }
+    // Its destroy: onDestroy, then what the setup and onMount own, each once, in the order they were made
+    instance.__onDestroy = () => {
+      result.onDestroy?.();
+      for (const cleanup of owned.splice(0)) cleanup();
+    };
     return instance;
   };
 
@@ -529,6 +458,40 @@ export const __dc =
     if (i.__onDestroy) i.__onDestroy();
   };
 
+type Props = Record<string, unknown>;
+
+const sameProps = (a: Props, b: Props): boolean => {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  for (const key of keys) if (!Object.is(a[key], b[key])) return false;
+  return true;
+};
+
+/**
+ * A child component in a list row whose props read the row's item or index, mounted into `host`. A component
+ * reads its props when it mounts, so when the row's item changes, `u` is called with the props for the new one:
+ * when one of them is not the value the child has, the child is destroyed and mounted again with them. `d`
+ * destroys it.
+ *
+ * @internal — emitted by the compiler; not part of the public API.
+ */
+export const __rc = (
+  child: ComponentRef,
+  host: HTMLElement,
+  props: Props,
+): { u: (props: Props) => void; d: () => void } => {
+  let destroy = __dc(child.__f(host, props));
+  return {
+    u: (next) => {
+      if (sameProps(props, next)) return;
+      destroy();
+      host.textContent = '';
+      destroy = __dc(child.__f(host, (props = next)));
+    },
+    d: () => destroy(),
+  };
+};
+
 /**
  * Handle returned by mount(), allowing the caller to destroy the mounted
  * component and invoke its onDestroy lifecycle hook.
@@ -600,47 +563,68 @@ export function unmount(handle: MountHandle): void {
 
 /** Options for the `mount()` function. */
 export interface MountOptions {
-  /** Component to mount (return value of `defineComponent()`). Omit for Mode C (router only). */
-  component?: ComponentHTMLSelector<any> | undefined;
-  /** Target element. Defaults to `document.body`. */
+  /** The element the app goes into. Defaults to `document.body`. */
   target?: HTMLElement | undefined;
-  /** Component props. */
+  /** The component's props. */
   props?: Record<string, any> | undefined;
-  /** Router configuration. Omit for Mode A (no routing). */
-  router?: import('./router.js').RouterConfig | undefined;
+  /** The routes, from `defineRoutes()`: the component is the app's shell, and pages go into its `<router-outlet>` */
+  routes?: import('./router.js').RoutesConfig | undefined;
+  /** Router-managed scroll restoration (with routes). Defaults to enabled. */
+  scrollRestoration?: boolean | import('./router.js').ScrollRestorationConfig | undefined;
 }
+
+/** The router's mount: a shell (or none) and the routes, into the target. @internal */
+type RouterMount = (
+  shell: ComponentHTMLSelector<any> | undefined,
+  routes: import('./router.js').RoutesConfig,
+  options: MountOptions,
+  target: HTMLElement,
+) => MountHandle;
 
 /**
  * Hook for router-aware mount — set by `defineRoutes()` in `router.ts`.
- * When null, only Mode A (component-only) mount is supported.
+ * When null, only a component is mounted.
  * @internal
  */
-let _routerMount: ((options: MountOptions, target: HTMLElement) => MountHandle) | null = null;
+let _routerMount: RouterMount | null = null;
 
 /**
  * Called by `defineRoutes()` to install the router-aware mount handler.
  * @internal — not part of the public API.
  */
-export function __setRouterMount(fn: (options: MountOptions, target: HTMLElement) => MountHandle): void {
+export function __setRouterMount(fn: RouterMount): void {
   _routerMount = fn;
 }
 
 /**
  * Mount a Thane application.
  *
- * - **Mode A** — `mount({ component })` — component only, no routing.
- * - **Mode B** — `mount({ component, router })` — shell component + router.
- * - **Mode C** — `mount({ router })` — router only, no shell.
+ * - `mount(App)`, `mount(App, { target, props })`: a component, no routing.
+ * - `mount(Shell, { routes })`: a shell component, whose `<router-outlet>` the pages go into.
+ * - `mount(Routes)`: the routes alone; pages go into the target.
  *
- * Modes B and C require `defineRoutes()` to be called first (from `thane/router`).
+ * Routes come from `defineRoutes()` (`thane/router`).
  *
  * @returns A MountHandle with a `destroy()` method.
  */
-export function mount(options: MountOptions): MountHandle {
+export function mount(component: ComponentHTMLSelector<any>, options?: MountOptions): MountHandle;
+export function mount(
+  routes: import('./router.js').RoutesConfig,
+  options?: Omit<MountOptions, 'props' | 'routes'>,
+): MountHandle;
+export function mount(
+  app: ComponentHTMLSelector<any> | import('./router.js').RoutesConfig,
+  options: MountOptions = {},
+): MountHandle {
   const target = options.target ?? document.body;
-  if (options.router) {
+  const shell = (app as unknown as ComponentRef | undefined)?.__f ? (app as ComponentHTMLSelector<any>) : undefined;
+  // The routes alone: defineRoutes() gives every table its notFound route
+  const alone = !shell && !!app && 'notFound' in app ? (app as import('./router.js').RoutesConfig) : undefined;
+  const routes = shell ? options.routes : alone;
+  if (routes) {
     if (!_routerMount) throw new Error('Import defineRoutes from thane/router to use routing');
-    return _routerMount(options, target);
+    return _routerMount(shell, routes, options, target);
   }
-  return mountComponent(options.component!, target, options.props);
+  // Neither a component nor routes: mountComponent reports it
+  return mountComponent(shell ?? (app as ComponentHTMLSelector<any>), target, options.props);
 }

@@ -1,7 +1,8 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import type { OnLoadArgs, OnLoadResult, Plugin } from 'esbuild';
 import ts from 'typescript';
-import type { ComponentDefinition, BuildContext, FragmentDefinition } from '../../types.js';
+import type { BuildContext } from '../../types.js';
 import {
   sourceCache,
   logger,
@@ -15,17 +16,25 @@ import {
   findComponentDeclarations,
 } from '../../utils/index.js';
 import { createComponentResolver, type ComponentResolver } from '../../utils/component-resolver.js';
-import { transformDefineComponentSource, TEMPLATE_ARGUMENTS } from '../reactive-binding-compiler/index.js';
-import { anchorMark } from '../reactive-binding-compiler/template-utils.js';
+import { transformDefineComponentSource } from '../reactive-binding-compiler/index.js';
 import type { CompileOptions } from '../reactive-binding-compiler/index.js';
+import type { TemplateNames } from '../reactive-binding-compiler/types.js';
 import {
   compileCssTemplate,
   declaresOwnCssTag,
   isCssTaggedTemplate,
   KEYFRAME_SCOPING,
 } from '../minification/css-transform.js';
-import { ErrorCode, createError, createWarning } from '../../errors.js';
-import { hotRegistration, isSwappable, trackHotInput } from './hot-modules.js';
+import { ErrorCode, createError } from '../../errors.js';
+import {
+  hotModuleKey,
+  hotRegistration,
+  keepModuleSignals,
+  packageImports,
+  recordHotModule,
+  trackHotInput,
+} from './hot-modules.js';
+import { createModuleResolver, type ModuleResolver } from '../../utils/module-graph.js';
 import { INTERNAL_RUNTIME_SPECIFIER, RUNTIME_HELPER } from '../../../contracts/index.js';
 
 const NAME = PLUGIN_NAME.COMPONENT;
@@ -34,154 +43,14 @@ const NAME = PLUGIN_NAME.COMPONENT;
 const EXPORTED_FRAGMENT = /\bexport\s+const\s+[\w$]+\s*=\s*html`/;
 
 /**
- * Child component mount point data, passed from the precompiler to the binding compiler. A fragment
- * imported from another module is mounted at a placeholder too.
- */
-export interface ChildMountInfo {
-  /** Component class name, e.g. "MyElementComponent"; for a fragment, the name the file imports it under */
-  componentName: string;
-  /** Kebab-case selector, e.g. "my-element-component" */
-  selector: string;
-  /** Raw source text of the props argument, e.g. "{ color: myColor }" */
-  propsExpression: string;
-  /** Pre-allocated id ("b0", "b1", …): the child's placeholder is `<!--b0.-->` */
-  anchorId: string;
-  /** An imported fragment: mounted before its placeholder, which stays */
-  fragment?: true;
-}
-
-interface ComponentCallInfo {
-  componentName: string;
-  propsExpression: string;
-  startIndex: number;
-  endIndex: number;
-}
-
-const findComponentCalls = (
-  source: string,
-  sourceFile: ts.SourceFile,
-  knownComponents: Map<string, ComponentDefinition>,
-): ComponentCallInfo[] => {
-  const calls: ComponentCallInfo[] = [];
-
-  const visit = (node: ts.Node) => {
-    if (ts.isTaggedTemplateExpression(node)) {
-      const tag = node.tag;
-      if (ts.isIdentifier(tag) && tag.text === 'html') {
-        const template = node.template;
-
-        if (ts.isTemplateExpression(template)) {
-          template.templateSpans.forEach((span) => {
-            const expr = span.expression;
-
-            if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
-              const componentName = expr.expression.text;
-              const componentDef = knownComponents.get(componentName);
-
-              if (componentDef) {
-                // Capture the raw props expression text (even for dynamic/signal props)
-                let propsExpression = '{}';
-                if (expr.arguments.length > 0 && expr.arguments[0]) {
-                  propsExpression = expr.arguments[0].getText(sourceFile);
-                }
-
-                // Compute ${…} range in source file
-                const spanIndex = template.templateSpans.indexOf(span);
-                let dollarBraceStart: number;
-                if (spanIndex === 0) {
-                  dollarBraceStart = template.head.getEnd() - 2;
-                } else {
-                  const prevSpan = template.templateSpans[spanIndex - 1]!;
-                  dollarBraceStart = prevSpan.literal.getEnd() - 2;
-                }
-                const closingBrace = span.literal.getStart(sourceFile) + 1;
-
-                if (dollarBraceStart >= 0 && closingBrace <= source.length) {
-                  calls.push({
-                    componentName,
-                    propsExpression,
-                    startIndex: dollarBraceStart,
-                    endIndex: closingBrace,
-                  });
-                }
-              }
-            }
-          });
-        }
-      }
-    }
-
-    ts.forEachChild(node, visit);
-  };
-
-  visit(sourceFile);
-  return calls;
-};
-
-/** A use of an imported fragment in a template */
-interface FragmentUseInfo {
-  /** The name the file imports it under */
-  name: string;
-  definition: FragmentDefinition;
-  startIndex: number;
-  endIndex: number;
-  /** Written where a directive takes a template (a whenElse() branch): the use becomes a template of its own */
-  asTemplate: boolean;
-}
-
-/**
- * The uses of imported fragments in the file's templates: a whole `${Spinner}`, and `Spinner` where a
- * directive in a template takes a template (`whenElse(loading(), Spinner, html\`…\`)`), at any depth.
- */
-const findFragmentUses = (sourceFile: ts.SourceFile, fragments: Map<string, FragmentDefinition>): FragmentUseInfo[] => {
-  const uses: FragmentUseInfo[] = [];
-  const visit = (node: ts.Node, inTemplate: boolean) => {
-    if (ts.isTaggedTemplateExpression(node) && ts.isIdentifier(node.tag) && node.tag.text === FN.HTML) {
-      const template = node.template;
-      if (ts.isTemplateExpression(template)) {
-        template.templateSpans.forEach((span, index) => {
-          const expr = span.expression;
-          const definition = ts.isIdentifier(expr) ? fragments.get(expr.text) : undefined;
-          if (!definition) return;
-          // The whole `${…}`, from its `${` to its `}`
-          const before = index === 0 ? template.head : template.templateSpans[index - 1]!.literal;
-          uses.push({
-            name: (expr as ts.Identifier).text,
-            definition,
-            startIndex: before.getEnd() - 2,
-            endIndex: span.literal.getStart(sourceFile) + 1,
-            asTemplate: false,
-          });
-        });
-      }
-      ts.forEachChild(node, (child) => visit(child, true));
-      return;
-    }
-    if (inTemplate && ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      for (const at of TEMPLATE_ARGUMENTS.get(node.expression.text) ?? []) {
-        const arg = node.arguments[at];
-        const definition = arg && ts.isIdentifier(arg) ? fragments.get(arg.text) : undefined;
-        if (!arg || !definition) continue;
-        uses.push({
-          name: (arg as ts.Identifier).text,
-          definition,
-          startIndex: arg.getStart(sourceFile),
-          endIndex: arg.getEnd(),
-          asTemplate: true,
-        });
-      }
-    }
-    ts.forEachChild(node, (child) => visit(child, inTemplate));
-  };
-  visit(sourceFile, false);
-  return uses;
-};
-
-/**
  * @param ctx - the build's shared context
- * @param mode - `hotUpdate` for the build of one changed file that `thane dev` sends to the page
+ * @param mode - `hotUpdate` for the build of one module that `thane dev` sends to the page; `packages` receives
+ *   the bindings it reads of each package (packageImports)
  */
-export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate?: boolean } = {}): Plugin => ({
+export const ComponentPrecompilerPlugin = (
+  ctx?: BuildContext,
+  mode: { hotUpdate?: boolean; packages?: Map<string, Map<string, Set<string>>> } = {},
+): Plugin => ({
   name: NAME,
   setup(build) {
     // Which components each file can call; made anew for every build, so it sees the current sources
@@ -191,30 +60,30 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
     const compileOptions = (): CompileOptions => ({ minify: ctx?.minify, selectorMap: ctx?.selectorMap });
     let scanned = false;
 
-    // The component that declares each selector in this build. Two components with one selector share
-    // their host class, and the styles of the one registered first apply to both (THANE013).
+    // The component that declares each selector in this build. Two components with one selector would share
+    // their host class, its styles and its hot swaps: the build fails (THANE013).
     let selectorOwners = new Map<string, { name: string; file: string }>();
-    const reportSharedSelectors = (sourceFile: ts.SourceFile, file: string): void => {
-      for (const { name, selector, call } of findComponentDeclarations(sourceFile)) {
+    const checkSharedSelectors = (sourceFile: ts.SourceFile, file: string): void => {
+      for (const { name, selector, explicitSelector } of findComponentDeclarations(sourceFile)) {
         const owner = selectorOwners.get(selector);
         if (!owner) selectorOwners.set(selector, { name, file });
         if (!owner || (owner.name === name && owner.file === file)) continue;
-        const { line, character } = sourceFile.getLineAndCharacterOfPosition(call.getStart(sourceFile));
-        logger.diagnostic(
-          createWarning(
-            `${name} has the selector '${selector}', and so does ${owner.name} (${owner.file}). The two share ` +
-              'their host class, and the styles of the one registered first apply to both. Give one of them ' +
-              'another name or an explicit selector.',
-            { file, line: line + 1, column: character + 1 },
-            ErrorCode.SHARED_SELECTOR,
-          ),
+        throw new Error(
+          `${ErrorCode.SHARED_SELECTOR}: ${name} has the selector '${selector}', and so does ${owner.name} (${owner.file}). ` +
+            'Two components of an app with one selector would share their host class, its styles and its hot updates. ' +
+            (explicitSelector
+              ? 'Give one of them another selector.'
+              : 'Give one of them another name, or a selector of its own: the first argument of defineComponent.'),
         );
       }
     };
 
+    // `thane dev`: each build resolves the modules' imports afresh, so that a file added meanwhile is found
+    let resolveImport: ModuleResolver | undefined;
     build.onStart(async () => {
       selectorOwners = new Map();
       if (!mode.hotUpdate) ctx?.hot?.changed.clear();
+      if (ctx?.hot && !mode.hotUpdate) resolveImport = createModuleResolver(ctx.projectRoot);
       // A rebuild in watch mode scans again, so that a component file added meanwhile is found
       if (ctx && scanned) await refreshBuildContext(ctx);
       scanned = true;
@@ -225,12 +94,16 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
       }
     });
 
-    // ── Mount-call optimiser (Mode A → mountComponent) ────────────────
-    // Rewrites `import { mount } from 'thane'` + `mount({ component: X, target?: T, props?: P })`
-    // into `import { mountComponent } from 'thane/runtime'` + `mountComponent(X, T, P)` when there is no
-    // `router` key, so the generic mount() wrapper, _routerMount hook, and __setRouterMount
-    // are all tree-shaken away for non-router apps.
-    const rewriteMountToMountComponent = (source: string, sf: ts.SourceFile): string | null => {
+    // ── Mount-call optimiser (a component → mountComponent) ────────────────
+    // Rewrites `import { mount } from 'thane'` + `mount(X)` or `mount(X, { target?: T, props?: P })`, where X
+    // is a component the file can name, into `import { mountComponent } from 'thane/runtime'` +
+    // `mountComponent(X, T, P)`, so the generic mount() wrapper, _routerMount hook, and __setRouterMount
+    // are all tree-shaken away for apps without routes.
+    const rewriteMountToMountComponent = (
+      source: string,
+      sf: ts.SourceFile,
+      components: ReadonlyMap<string, unknown>,
+    ): string | null => {
       // 1. Only thane's `mount`, imported under its own name, and only when it is called once: the
       //    rewrite takes `mount` out of the import, so a second call, or a local function of that
       //    name, would be left without a definition
@@ -268,34 +141,37 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
       findMount(sf);
 
       const mc = mountCalls[0];
-      const objArg = mc?.arguments[0];
+      const [componentArg, optionsArg, ...extra] = mc?.arguments ?? [];
       if (
         !mountImport ||
         mountCalls.length !== 1 ||
         otherReferences > 0 ||
         !mc ||
-        !objArg ||
-        !ts.isObjectLiteralExpression(objArg)
+        extra.length > 0 ||
+        !componentArg ||
+        !ts.isIdentifier(componentArg) ||
+        // Routes, or anything else that is not a component of the file, go through mount()
+        !components.has(componentArg.text) ||
+        (optionsArg && !ts.isObjectLiteralExpression(optionsArg))
       ) {
         return null;
       }
 
-      // 2. Extract component, target, and props values from the object literal (no `router` key)
-      let componentText: string | null = null;
+      // 2. The target and props of the options (any other option, such as routes, keeps mount())
+      const componentText = componentArg.text;
       let targetText: string | null = null;
       let propsText: string | null = null;
-
-      for (const prop of objArg.properties) {
-        if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-          const valueText = prop.initializer.getText(sf);
-          if (prop.name.text === 'component') componentText = valueText;
-          else if (prop.name.text === 'target') targetText = valueText;
-          else if (prop.name.text === 'props') propsText = valueText;
-          else if (prop.name.text === 'router') return null;
-        }
+      for (const prop of optionsArg && ts.isObjectLiteralExpression(optionsArg) ? optionsArg.properties : []) {
+        const name = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : undefined;
+        const valueText = ts.isPropertyAssignment(prop)
+          ? prop.initializer.getText(sf)
+          : ts.isShorthandPropertyAssignment(prop)
+            ? prop.name.text
+            : undefined;
+        if (name === 'target' && valueText) targetText = valueText;
+        else if (name === 'props' && valueText) propsText = valueText;
+        else return null;
       }
-
-      if (!componentText) return null;
 
       // 3. Build the mountComponent(...) call arguments
       const args: string[] = [componentText];
@@ -368,30 +244,33 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
     };
 
     /**
-     * Apply reactive binding transformation, strip template tags, and produce loader result.
-     * When childMounts are present, passes them to the binding compiler so it can
-     * emit mount calls in __b and start its idCounter at the correct offset. `parsed` is the
-     * parse of `modifiedSource`, when the precompiler changed nothing.
+     * Apply reactive binding transformation, strip template tags, and produce loader result. `names` are the
+     * components the file can call and the fragments it imports, which the binding compiler mounts where its
+     * templates use them; `parsed` is the file's one parse.
      */
     const buildTransformedResult = (
       source: string,
-      modifiedSource: string,
       filePath: string,
-      childMounts: ChildMountInfo[] | undefined,
-      parsed: ts.SourceFile | undefined,
+      names: TemplateNames,
+      parsed: ts.SourceFile,
     ): { contents: string; loader: 'ts' } => {
       let keyframes = false;
-      const options = { ...compileOptions(), onKeyframes: () => (keyframes = true) };
+      const options = {
+        ...compileOptions(),
+        onKeyframes: () => (keyframes = true),
+        // `thane dev`: the components' signals keep their values through hot updates
+        hotModule: ctx?.hot ? hotModuleKey(filePath, ctx.projectRoot) : undefined,
+      };
       // The binding compiler strips the templates' tags along with its other edits
       const transformed =
         extendsComponentQuick(source) || EXPORTED_FRAGMENT.test(source)
-          ? transformDefineComponentSource(modifiedSource, filePath, childMounts, options, parsed)
+          ? transformDefineComponentSource(source, filePath, names, options, parsed)
           : null;
       // Binding code that repeats a template expression as written (a when() used as text) can hold a
       // tag of its own, which only a parse of the compiled code finds
       const result =
         transformed === null
-          ? stripTemplateTags(modifiedSource, filePath, options, parsed)
+          ? stripTemplateTags(source, filePath, options, parsed)
           : transformed.includes(FN.HTML + '`')
             ? stripTemplateTags(transformed, filePath, options)
             : transformed;
@@ -418,10 +297,12 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
         const parse = (): ts.SourceFile => cached?.sourceFile ?? sourceCache.parse(args.path, source);
 
         // ── Mount-call optimiser ──
-        // For Mode A (component-only), rewrite mount({component: X}) → mountComponent(X)
-        // so the generic mount() wrapper + router hook are tree-shaken away entirely.
-        if (source.includes('mount(') && !source.includes('router') && !source.includes(FN.HTML + '`')) {
-          const rewritten = rewriteMountToMountComponent(source, parse());
+        // A component's mount, mount(X) → mountComponent(X), so the generic mount() wrapper + router hook
+        // are tree-shaken away entirely.
+        if (source.includes('mount(') && !source.includes(FN.HTML + '`')) {
+          const sf = parse();
+          const components = resolver ? await resolver.componentsInScope(sf) : new Map();
+          const rewritten = rewriteMountToMountComponent(source, sf, components);
           if (rewritten) {
             logger.info(NAME, `Optimised mount() → mountComponent() in ${args.path}`);
             return createLoaderResult(source.includes(FN.CSS + '`') ? compileCssOnly(rewritten, args.path) : rewritten);
@@ -437,67 +318,13 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
           return undefined;
         }
 
-        // ── Child component calls: the components this file declares or imports ──
-        let modifiedSource = source;
-
-        // Child mount data to pass to the binding compiler
-        let childMounts: ChildMountInfo[] | undefined;
-
+        // The components this file declares or imports, and the fragments it imports: the binding compiler
+        // mounts each where a template calls or uses it
         const sourceFile = parse();
-        reportSharedSelectors(sourceFile, args.path);
-        const componentsInScope = resolver ? await resolver.componentsInScope(sourceFile) : new Map();
-        const fragmentsInScope = resolver ? await resolver.fragmentsInScope(sourceFile) : new Map();
-        const componentCalls =
-          componentsInScope.size > 0 ? findComponentCalls(source, sourceFile, componentsInScope) : [];
-        const fragmentUses = fragmentsInScope.size > 0 ? findFragmentUses(sourceFile, fragmentsInScope) : [];
-
-        if (componentCalls.length > 0 || fragmentUses.length > 0) {
-          // Allocates b0, b1, … for child component placeholders, comments the binding compiler turns
-          // into the child's host element or anchor, and for imported fragments' placeholders, before
-          // which they are mounted. It starts its own ids after these. A fragment without `${}` is
-          // written out in its place instead.
-          let childIdCounter = 0;
-          const mounts: ChildMountInfo[] = [];
-          const replacements = [
-            ...componentCalls.map((call) => ({ call, use: undefined })),
-            ...fragmentUses.map((use) => ({ call: undefined, use })),
-          ].sort((a, b) => (b.call ?? b.use)!.startIndex - (a.call ?? a.use)!.startIndex);
-
-          for (const { call, use } of replacements) {
-            let text: string;
-            if (call) {
-              const anchorId = `b${childIdCounter++}`;
-              text = anchorMark(anchorId, '.');
-              mounts.push({
-                componentName: call.componentName,
-                selector: componentsInScope.get(call.componentName)!.selector,
-                propsExpression: call.propsExpression,
-                anchorId,
-              });
-            } else {
-              const { staticText } = use!.definition;
-              if (staticText !== null) text = staticText;
-              else {
-                const anchorId = `b${childIdCounter++}`;
-                text = anchorMark(anchorId, '.');
-                mounts.push({ componentName: use!.name, selector: '', propsExpression: '', anchorId, fragment: true });
-              }
-              if (use!.asTemplate) text = `${FN.HTML}\`${text}\``;
-            }
-            const { startIndex, endIndex } = (call ?? use)!;
-            modifiedSource = modifiedSource.substring(0, startIndex) + text + modifiedSource.substring(endIndex);
-          }
-
-          childMounts = mounts;
-        }
-
-        return buildTransformedResult(
-          source,
-          modifiedSource,
-          args.path,
-          childMounts,
-          modifiedSource === source ? sourceFile : undefined,
-        );
+        checkSharedSelectors(sourceFile, args.path);
+        const components = resolver ? await resolver.componentsInScope(sourceFile) : new Map();
+        const fragments = resolver ? await resolver.fragmentsInScope(sourceFile) : new Map();
+        return buildTransformedResult(source, args.path, { components, fragments }, sourceFile);
       } catch (error) {
         const diagnostic = createError(
           `Error processing ${args.path}: ${error instanceof Error ? error.message : error}`,
@@ -513,13 +340,23 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
     build.onLoad({ filter: /\.ts$/ }, async (args) => {
       const result = await load(args);
       // `thane dev`: every project module registers itself in the page, for hot updates to import, and
-      // the build records whether it changed (see hot-modules.ts)
+      // the build records whether it changed, what it imports, and whether the page can swap it (see
+      // hot-modules.ts). A module the compiler leaves as it is keeps its signals through hot updates, as a
+      // component file does.
       const hot = ctx?.hot;
-      if (!hot || mode.hotUpdate || args.path.includes('node_modules') || result?.errors) return result;
+      if (!hot || args.path.includes('node_modules') || result?.errors) return result;
       const cached = await sourceCache.get(args.path);
       if (!cached) return result;
-      trackHotInput(hot, args.path, cached.source, () => isSwappable(cached.sourceFile));
-      const code = typeof result?.contents === 'string' ? result.contents : cached.source;
+      const code =
+        typeof result?.contents === 'string'
+          ? result.contents
+          : keepModuleSignals(cached.source, cached.sourceFile, hotModuleKey(args.path, ctx.projectRoot));
+      if (mode.hotUpdate) {
+        mode.packages?.set(path.resolve(args.path), packageImports(cached.sourceFile, code));
+        return code === cached.source ? result : createLoaderResult(code);
+      }
+      trackHotInput(hot, args.path, cached.source);
+      if (resolveImport) recordHotModule(hot, args.path, cached.sourceFile, resolveImport);
       return createLoaderResult(hotRegistration(args.path, code, cached.sourceFile, ctx.projectRoot));
     });
   },

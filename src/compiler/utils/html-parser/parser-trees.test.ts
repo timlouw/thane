@@ -242,12 +242,12 @@ describe('text', () => {
   ]);
   tree(
     'bare, complex, whenElse and repeat expressions in one text node',
-    '<p>${count()} and ${count() * 2} ${whenElse(on(), html`<i>y</i>`, html`<i>n</i>`)} ${repeat(items(), (it) => html`<li>${it}</li>`)}</p>',
+    '<p>${count()} and ${count() * 2} ${when(on(), html`<i>y</i>`, html`<i>n</i>`)} ${repeat(items(), (it) => html`<li>${it}</li>`)}</p>',
     [
-      '<p> tag 0-2 open-end 3 close 131-135',
-      '  text "${count()} and ${count() * 2} ${whenElse(on(), html`<i>y</i>`, html`<i>n</i>`)} ${repeat(items(), (it) => html`<li>${it}</li>`)}" 3-131',
-      'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=33 expressionEnd=82 fullExpression="${whenElse(on(), html`<i>y</i>`, html`<i>n</i>`)}" jsExpression="on()" thenTemplate="<i>y</i>" elseTemplate="<i>n</i>"',
-      'binding repeat on <p@0> signalName="items" signalNames=["items"] expressionStart=83 expressionEnd=131 fullExpression="${repeat(items(), (it) => html`<li>${it}</li>`)}" itemsExpression="items()" itemVar="it" itemTemplate="<li>${it}</li>"',
+      '<p> tag 0-2 open-end 3 close 127-131',
+      '  text "${count()} and ${count() * 2} ${when(on(), html`<i>y</i>`, html`<i>n</i>`)} ${repeat(items(), (it) => html`<li>${it}</li>`)}" 3-127',
+      'binding repeat on <p@0> signalName="items" signalNames=["items"] expressionStart=79 expressionEnd=127 fullExpression="${repeat(items(), (it) => html`<li>${it}</li>`)}" itemsExpression="items()" itemVar="it" itemTemplate="<li>${it}</li>"',
+      'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=33 expressionEnd=78 fullExpression="${when(on(), html`<i>y</i>`, html`<i>n</i>`)}" jsExpression="on()" thenTemplate="<i>y</i>" elseTemplate="<i>n</i>"',
       'binding text on <p@0> signalName="count" expressionStart=3 expressionEnd=13 fullExpression="${count()}"',
       'binding text on <p@0> signalName="count" signalNames=["count"] expressionStart=18 expressionEnd=32 fullExpression="${count() * 2}" jsExpression="count() * 2"',
     ],
@@ -489,27 +489,27 @@ describe('binding shapes', () => {
   );
   tree(
     'text: expressions inside whenElse and repeat arguments are not text bindings of the parent',
-    '<p>${whenElse(on(), html`<b>${x()}</b>`, html`<i>${y() + 1}</i>`)} ${repeat(items(), (it) => html`<li>${it.n} ${z()}</li>`)} ${w() + 1}</p>',
+    '<p>${when(on(), html`<b>${x()}</b>`, html`<i>${y() + 1}</i>`)} ${repeat(items(), (it) => html`<li>${it.n} ${z()}</li>`)} ${w() + 1}</p>',
     [
-      '<p> tag 0-2 open-end 3 close 135-139',
-      '  text "${whenElse(on(), html`<b>${x()}</b>`, html`<i>${y() + 1}</i>`)} ${repeat(items(), (it) => html`<li>${it.n} ${z()}</li>`)} ${w() + 1}" 3-135',
-      'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=3 expressionEnd=66 fullExpression="${whenElse(on(), html`<b>${x()}</b>`, html`<i>${y() + 1}</i>`)}" jsExpression="on()" thenTemplate="<b>${x()}</b>" elseTemplate="<i>${y() + 1}</i>"',
-      'binding repeat on <p@0> signalName="items" signalNames=["items"] expressionStart=67 expressionEnd=124 fullExpression="${repeat(items(), (it) => html`<li>${it.n} ${z()}</li>`)}" itemsExpression="items()" itemVar="it" itemTemplate="<li>${it.n} ${z()}</li>"',
-      'binding text on <p@0> signalName="w" signalNames=["w"] expressionStart=125 expressionEnd=135 fullExpression="${w() + 1}" jsExpression="w() + 1"',
+      '<p> tag 0-2 open-end 3 close 131-135',
+      '  text "${when(on(), html`<b>${x()}</b>`, html`<i>${y() + 1}</i>`)} ${repeat(items(), (it) => html`<li>${it.n} ${z()}</li>`)} ${w() + 1}" 3-131',
+      'binding repeat on <p@0> signalName="items" signalNames=["items"] expressionStart=63 expressionEnd=120 fullExpression="${repeat(items(), (it) => html`<li>${it.n} ${z()}</li>`)}" itemsExpression="items()" itemVar="it" itemTemplate="<li>${it.n} ${z()}</li>"',
+      'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=3 expressionEnd=62 fullExpression="${when(on(), html`<b>${x()}</b>`, html`<i>${y() + 1}</i>`)}" jsExpression="on()" thenTemplate="<b>${x()}</b>" elseTemplate="<i>${y() + 1}</i>"',
+      'binding text on <p@0> signalName="w" signalNames=["w"] expressionStart=121 expressionEnd=131 fullExpression="${w() + 1}" jsExpression="w() + 1"',
     ],
   );
   // The directive ranges end at the call's `)`, so `${q() + 1}` after it is still reached as its own
   // expression. Skipping each whole `${…}` that starts in a directive range would lose it.
   tree(
     'text: a directive call inside a larger expression, and a space before the closing brace',
-    '<p>${repeat(items(), (it) => html`<li>${it}</li>`) || `${q() + 1}`} ${whenElse(on(), html`a`, html`b`) } ${r() * 2}</p>',
+    '<p>${repeat(items(), (it) => html`<li>${it}</li>`) || `${q() + 1}`} ${when(on(), html`a`, html`b`) } ${r() * 2}</p>',
     [
-      '<p> tag 0-2 open-end 3 close 115-119',
-      '  text "${repeat(items(), (it) => html`<li>${it}</li>`) || `${q() + 1}`} ${whenElse(on(), html`a`, html`b`) } ${r() * 2}" 3-115',
-      'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=68 expressionEnd=102 fullExpression="${whenElse(on(), html`a`, html`b`)" jsExpression="on()" thenTemplate="a" elseTemplate="b"',
+      '<p> tag 0-2 open-end 3 close 111-115',
+      '  text "${repeat(items(), (it) => html`<li>${it}</li>`) || `${q() + 1}`} ${when(on(), html`a`, html`b`) } ${r() * 2}" 3-111',
       'binding repeat on <p@0> signalName="items" signalNames=["items"] expressionStart=3 expressionEnd=50 fullExpression="${repeat(items(), (it) => html`<li>${it}</li>`)" itemsExpression="items()" itemVar="it" itemTemplate="<li>${it}</li>"',
+      'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=68 expressionEnd=98 fullExpression="${when(on(), html`a`, html`b`)" jsExpression="on()" thenTemplate="a" elseTemplate="b"',
       'binding text on <p@0> signalName="q" signalNames=["q"] expressionStart=55 expressionEnd=65 fullExpression="${q() + 1}" jsExpression="q() + 1"',
-      'binding text on <p@0> signalName="r" signalNames=["r"] expressionStart=105 expressionEnd=115 fullExpression="${r() * 2}" jsExpression="r() * 2"',
+      'binding text on <p@0> signalName="r" signalNames=["r"] expressionStart=101 expressionEnd=111 fullExpression="${r() * 2}" jsExpression="r() * 2"',
     ],
   );
 });
@@ -566,10 +566,10 @@ describe('quotes and escapes in directive arguments', () => {
   );
   // Before it was fixed, the escaped backtick ended the branch template: no whenElse, and the rest of the
   // template was read as one expression (an unclosed <p>)
-  tree('a branch template with an escaped backtick', '<p>${whenElse(on(), html`<i>\\`</i>`, html`<b>{</b>`)}</p>', [
-    '<p> tag 0-2 open-end 3 close 53-57',
-    '  text "${whenElse(on(), html`<i>\\\\`</i>`, html`<b>{</b>`)}" 3-53',
-    'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=3 expressionEnd=53 fullExpression="${whenElse(on(), html`<i>\\\\`</i>`, html`<b>{</b>`)}" jsExpression="on()" thenTemplate="<i>\\\\`</i>" elseTemplate="<b>{</b>"',
+  tree('a branch template with an escaped backtick', '<p>${when(on(), html`<i>\\`</i>`, html`<b>{</b>`)}</p>', [
+    '<p> tag 0-2 open-end 3 close 49-53',
+    '  text "${when(on(), html`<i>\\\\`</i>`, html`<b>{</b>`)}" 3-49',
+    'binding whenElse on <p@0> signalName="on" signalNames=["on"] expressionStart=3 expressionEnd=49 fullExpression="${when(on(), html`<i>\\\\`</i>`, html`<b>{</b>`)}" jsExpression="on()" thenTemplate="<i>\\\\`</i>" elseTemplate="<b>{</b>"',
   ]);
 });
 

@@ -33,10 +33,12 @@ components must be rebuilt with the matching version.
 - `__registerComponent(selector, setup, template)` / `__registerComponentLean(selector, setup, template)`
   return `{ __f(target, props?, extras?) }`. The factory clones `template`, lists the clone's elements
   (`querySelectorAll('*')`, before the clone is inserted, because the target may hold other nodes),
-  appends the clone to `target` and calls the setup result's `__b(ctx, elements)`.
+  appends the clone to `target` and calls the setup result's `__b(ctx, elements)`. `__registerComponent`
+  also owns what the setup and `onMount` create (computeds, effects, `onCleanup()` functions) and disposes them
+  when the instance is destroyed, after `onDestroy`; the compiler emits it for a setup that may create one.
 - `__b(ctx, elements) → cleanup?`: the component's binding function. `elements[i]` is the template's
   i-th element in document order; compiled code reaches every node it binds by that position or by a
-  path from it, never by id. Inside a `when()` / `whenElse()` branch, the branch initializer reaches
+  path from it, never by id. Inside a `when()` branch, the branch initializer reaches
   its nodes by path from the branch's first node, and a row factory from the row's element.
 - Compiled templates carry no generated id. A text binding writes the text node that follows an empty
   comment (`<!---->`); a list's rows go before its anchor, an empty comment; a child component's host
@@ -44,9 +46,9 @@ components must be rebuilt with the matching version.
   an element there (directly in a table row, inside svg), an empty comment that the compiled code
   replaces with a host it creates.
 - `__bindIf(start, end, signal, template, initNested)` and
-  `__bindIfExpr(start, end, signals, evalExpr, template, initNested)`: a `when()` / `whenElse()` branch
-  is everything between the comment anchors `start` and `end` (a `whenElse()` has three anchors, its
-  branches share the middle one), with any number of root nodes. Whatever is between them when the
+  `__bindIfExpr(start, end, signals, evalExpr, template, initNested)`: a `when()` branch
+  is everything between the comment anchors `start` and `end` (a `when()` with two branches has three
+  anchors, its branches share the middle one), with any number of root nodes. Whatever is between them when the
   binding starts is the pre-rendered branch. Show inserts `template` before `end`; hide removes every
   node between the anchors, then runs the branch's cleanups. `initNested(first)` receives the branch's
   first node and returns its cleanups.
@@ -64,9 +66,15 @@ components must be rebuilt with the matching version.
 - An exported fragment (`` export const Badge = html`…` ``) compiles to `{ t, b? }`: `t` its template, `b(ctx,
   elements) → cleanup` its binding function, which reaches its nodes in the copy (`ctx.root`, `elements` as for
   `__b`), calls `ctx.place()` to insert the copy, then binds. `__mf(anchor, fragment) → cleanup` mounts a copy
-  before `anchor`, a comment that stays; the nodes are removed with the template around them.
-- `__dc(instance) → destroy`; `__sig` = `signal`; `__enableComponentStyles()`; `__enableKeyframeScoping()` (called by a module whose stylesheet defines `@keyframes`; it enables component styles too);
+  before `anchor`, a comment that stays; the nodes are removed with the template around them. A template a parent
+  passes to a child as a prop (a slot) compiles to the same `{ t, b? }`, bound in the parent, and the child mounts it
+  with `__mf`, which takes `undefined` for a slot the parent left out.
+- `__dc(instance) → destroy`; `__rc(component, host, props) → { u, d }` mounts a child of a list row whose
+  props read the row: `u(props)` mounts it again when one of them is not the value it has (`Object.is`), `d()`
+  destroys it; `__sig` = `signal`; `__enableComponentStyles()`; `__enableKeyframeScoping()` (called by a module whose stylesheet defines `@keyframes`; it enables component styles too);
   `mountComponent(component, target?, props?)`.
+- `thane dev` only: `__hotSignal(signal, name, module?) → signal` registers a setup's (or, with `module`, a module's)
+  signal with the page's hot state, and starts it from the value of the signal of that name it replaces.
 
 ## Policy
 

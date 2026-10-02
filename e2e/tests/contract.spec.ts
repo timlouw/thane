@@ -479,9 +479,16 @@ test('inter-component reactivity and child-parent interaction with remount', asy
   await expect(section.getByTestId('child-local')).toHaveText('2');
   await expect(page.getByTestId('child-to-parent-events')).toHaveText('2');
 
+  // A prop that is the parent's signal: the child reads it, and follows the parent without mounting again
+  await expect(section.getByTestId('child-label')).toHaveText('child');
+  await expect(section.getByTestId('child-parent-count')).toHaveText('10');
+
   // Parent increment doesn't reset child-to-parent count
   await page.getByTestId('parent-inc').click();
   await expect(page.getByTestId('child-to-parent-events')).toHaveText('2');
+  await expect(section.getByTestId('child-parent-count')).toHaveText('11');
+  await expect(section.getByTestId('child-local')).toHaveText('2');
+  await expect(page.getByTestId('child-mount-count')).toHaveText('1');
 });
 
 test('edge cases: nullish fallback, rapid updates, and isolated DOM updates', async ({ page }) => {

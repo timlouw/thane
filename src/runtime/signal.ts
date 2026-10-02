@@ -244,6 +244,48 @@ export function batch(fn: () => void): void {
 }
 
 // ─────────────────────────────────────────────────────────────
+//  Ownership
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * The cleanups of what is running now: a component's setup or `onMount`, or a run of an effect. A `computed()`
+ * or an `effect()` created while it runs adds its dispose, and `onCleanup()` adds its function; the component
+ * runs them when it is destroyed, the effect before its next run and when it is disposed. Null anywhere else
+ * (an event handler, a store module), where what is created lives until it is disposed.
+ */
+let _owner: (() => void)[] | null = null;
+
+/** Runs `fn` with `owner` as the owner of what it creates, and returns its value. @internal */
+export const __owning = <T>(owner: (() => void)[], fn: () => T): T => {
+  const prev = _owner;
+  _owner = owner;
+  try {
+    return fn();
+  } finally {
+    _owner = prev;
+  }
+};
+
+/**
+ * Registers `fn` to run when what is running now ends: the component whose setup or `onMount` is running, when it
+ * is destroyed, or the effect whose run this is, before its next run and when it is disposed.
+ *
+ * @example
+ * onMount: () => {
+ *   window.addEventListener('resize', layout);
+ *   onCleanup(() => window.removeEventListener('resize', layout));
+ * },
+ */
+export function onCleanup(fn: () => void): void {
+  if (_owner) _owner.push(fn);
+  else if (typeof __THANE_DEV__ === 'undefined' || __THANE_DEV__) {
+    throw new Error(
+      "[thane] onCleanup() is called while a component's setup or onMount runs, or inside an effect: here nothing would call it.",
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 //  Computed
 // ─────────────────────────────────────────────────────────────
 
@@ -258,7 +300,8 @@ const _computedPendingQueue: (() => void)[] = [];
  *
  * Dirty-marked by its sources and computed again on the next read, which is always fresh; a diamond
  * notifies the join once, with the final value.
- * Returned value is a ReadonlySignal with `.dispose()` to unsubscribe.
+ * Returned value is a ReadonlySignal with `.dispose()` to unsubscribe. One created in a component's setup is
+ * disposed with the component, and one created in an effect's run before the effect runs again.
  *
  * @example
  * const firstName = signal('John');
@@ -461,6 +504,7 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
     slots._s.length = 0;
     slots._nn = 0;
   };
+  _owner?.push(fn.dispose);
 
   return fn;
 }
@@ -471,15 +515,24 @@ export function computed<T>(derivation: () => T): ReadonlySignal<T> & { dispose:
 
 /**
  * Auto-tracked side effect that re-runs when any read signal changes.
- * Returns a dispose function.
+ * Returns a dispose function. The function may return a cleanup, which runs before the next run and when the
+ * effect is disposed, as do the `onCleanup()` functions, computeds and effects of the run. An effect created in a
+ * component's setup is disposed with the component.
  *
  * @example
  * const name = signal('world');
  * const dispose = effect(() => console.log(`Hello, ${name()}!`));
  * name('Thane'); // logs: "Hello, Thane!"
  * dispose();
+ *
+ * effect(() => {
+ *   const id = setInterval(tick, delay());
+ *   return () => clearInterval(id);
+ * });
  */
-export function effect(fn: () => void): () => void {
+export function effect(fn: () => void | (() => void)): () => void {
+  // What the current run made, run before the next run and on dispose: first what the run created (its
+  // cleanup, its onCleanup() functions, its computeds' and effects' disposes), then its dependencies' unsubscribes
   const unsubs: (() => void)[] = [];
   let disposed = false;
 
@@ -491,19 +544,22 @@ export function effect(fn: () => void): () => void {
     },
   };
 
-  const run = () => {
-    if (disposed) return;
-
-    // Unsubscribe from old deps
+  const stop = () => {
     for (let i = 0; i < unsubs.length; i++) unsubs[i]!();
     unsubs.length = 0;
+  };
+
+  const run = () => {
+    if (disposed) return;
+    stop();
 
     // Track new deps
     deps.clear();
     const prev = _activeTracker;
     _activeTracker = tracker;
     try {
-      fn();
+      const cleanup = __owning(unsubs, fn);
+      if (typeof cleanup === 'function') unsubs.push(cleanup);
     } catch (err) {
       // Surface error without killing the effect — re-subscription below
       // keeps it alive for recovery on next dependency change
@@ -513,7 +569,8 @@ export function effect(fn: () => void): () => void {
     } finally {
       _activeTracker = prev;
     }
-    if (disposed) return;
+    // Disposed by its own run: what the run made goes now
+    if (disposed) return stop();
 
     // Subscribe to tracked deps (MUST run even after error)
     for (const dep of deps) {
@@ -523,11 +580,12 @@ export function effect(fn: () => void): () => void {
 
   run();
 
-  return () => {
+  const dispose = (): void => {
     disposed = true;
-    for (let i = 0; i < unsubs.length; i++) unsubs[i]!();
-    unsubs.length = 0;
+    stop();
   };
+  _owner?.push(dispose);
+  return dispose;
 }
 
 // ─────────────────────────────────────────────────────────────

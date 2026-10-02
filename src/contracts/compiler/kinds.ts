@@ -13,7 +13,7 @@ export const PARSER_STATE = {
 
 export type ParserStateKind = (typeof PARSER_STATE)[keyof typeof PARSER_STATE];
 
-export type ParserBindingKind = 'text' | 'style' | 'attr' | 'when' | 'whenElse' | 'repeat' | 'event';
+export type ParserBindingKind = 'text' | 'style' | 'attr' | 'when' | 'whenElse' | 'repeat' | 'event' | 'ref';
 
 export type ReactiveBindingKind = 'text' | 'style' | 'attr';
 

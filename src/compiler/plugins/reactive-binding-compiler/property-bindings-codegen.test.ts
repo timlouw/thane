@@ -14,7 +14,7 @@ export const App = defineComponent('test-app', () => {
     template: html\`<div>${markup}</div>\`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 const rowApp = (row: string): string => `
@@ -23,10 +23,10 @@ import { defineComponent, signal, mount } from 'thane';
 export const App = defineComponent('test-app', () => {
   const rows = signal([{ id: 1, label: 'A', on: false, note: null }]);
   return {
-    template: html\`<ul>\${repeat(rows(), (item) => html\`${row}\`, null, (item) => item.id)}</ul>\`,
+    template: html\`<ul>\${repeat(rows(), (item) => html\`${row}\`, { key: "id" })}</ul>\`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 const componentTemplate = (js: string): string => js.match(/__tpl = __T\(`([^`]*)`\)/)?.[1] ?? '';
@@ -72,7 +72,7 @@ describe('Form attributes are written as DOM properties and left out of the stat
 describe('null and undefined render as empty text', () => {
   test('component text bindings coalesce the value', async () => {
     const js = await buildAndReadJs(componentApp('<p>${maybe()}</p><p>[${maybe()}]</p>'));
-    expect(js).toMatch(/\bb\d+\.data = maybe\(\) \?\? ""/);
+    expect(js).toMatch(/\b_b\d+\.data = maybe\(\) \?\? ""/);
   });
 
   test('row text bindings coalesce on fill and on update', async () => {

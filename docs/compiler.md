@@ -4,7 +4,7 @@ Thane's compiler is an esbuild-based plugin pipeline that transforms your TypeSc
 
 ## Build Pipeline
 
-Before esbuild starts, the build finds the project (the nearest folder above the entry file with a `tsconfig.json` or `package.json`) and scans the working directory, and the project folder when it lies outside it, for every exported `defineComponent()`. That list is how the compiler recognises a child component call such as `${Card({ … })}` in a template. Under `thane dev` every rebuild scans again, so a component file added while it runs is recognised on the next rebuild; files that did not change are not parsed again.
+Before esbuild starts, the build finds the project (the nearest folder above the entry file with a `tsconfig.json` or `package.json`) and scans the working directory, and the project folder when it lies outside it, for every `defineComponent()`. That list is how the compiler recognises a child component call such as `${Card({ … })}` in a template. Under `thane dev` every rebuild scans again, so a component file added while it runs is recognised on the next rebuild; files that did not change are not parsed again.
 
 A folder without its own `tsconfig.json` or `package.json` therefore builds as part of the enclosing project, whose type check and generated types then cover it; the build warns when that project lies above the folder `thane` runs in (a scratch app inside a repository, for example). Add a `package.json` to build such a folder on its own.
 
@@ -14,7 +14,7 @@ esbuild then runs these plugins, in this order:
 Source (.ts, .css)
   │
   ├─ 1. Type Checker       → (build start) writes .thane/types, then runs the TypeScript check
-  ├─ 2. Thane Linter       → 13 lint rules (THANE400–THANE413) on each component and entry file
+  ├─ 2. Thane Linter       → 12 lint rules (THANE400–THANE416) on each component and entry file
   ├─ 3. Component Compiler → html`` → static template + __b() binding function; css`` compiled
   ├─ 4. Global CSS Bundler → .css imports → string exports
   ├─ 5. Minification       → (build start, prod only) plans selector renames from the sources
@@ -24,9 +24,9 @@ Source (.ts, .css)
 Output (dist/)
 ```
 
-- **Type Checker.** At the start of every build it generates the hidden type files in `.thane/types` (the `.css` declarations and the route types) and then type-checks the project with its own `tsconfig.json`, with each template event handler typed for its event ([Event Handling](event-handling.md#event-object)). esbuild waits for it. Type errors are warnings, or fail the build with `--strict-type-check`.
+- **Type Checker.** At the start of every build it generates the hidden type files in `.thane/types` (the `.css` declarations and the route types) and then type-checks the project with its own `tsconfig.json`, with each template value typed for its position: a handler for its event, content and attribute values, refs and `bind:` signals ([Templates](templates.md#what-a--takes)). esbuild waits for it. Type errors are warnings, or fail the build with `--strict-type-check`. Its parse of each source is the one the rest of the build reads, and under `thane dev` every parse of a file that has not changed is kept for the next rebuild.
 - **Thane Linter.** Runs the lint rules on each `.ts` file that defines a component or calls `mount()`. An error stops that file; warnings are printed.
-- **Component Compiler** (log tag `component-compiler`). For each `.ts` file that holds an `html` template it replaces child component calls with anchors, compiles the component (see [Template Compilation](#template-compilation)), compiles its `css` templates and removes the `html` tags. A module that holds only `css` templates has them compiled too. In a file without templates that calls `mount({ component })` once (usually the entry file), it rewrites the call to a direct mount that leaves the router out of the bundle. A component it cannot compile fails the build with the error, once.
+- **Component Compiler** (log tag `component-compiler`). For each `.ts` file that holds an `html` template it replaces child component calls with anchors, compiles the component (see [Template Compilation](#template-compilation)), compiles its `css` templates and removes the `html` tags. A module that holds only `css` templates has them compiled too. In a file without templates that calls `mount(App)` once (usually the entry file), with a component it can name and no routes, it rewrites the call to a direct mount that leaves the router out of the bundle. A component it cannot compile fails the build with the error, once.
 - **Global CSS Bundler.** Loads every imported `.css` file, applies the same stylesheet transforms as `css` templates, and exports the result as a string.
 - **Minification.** In production builds, decides before anything is compiled which component selectors can be shortened (see [Selector minification](#selector-minification)).
 - **Post-Build.** At the start it empties the output directory (unless `--no-empty-out-dir`). At the end it copies the assets, writes `index.html` with a `<script>` for each entry, compresses the output with `--gzip`, prints the size report and starts the server for `dev` and `serve`.
@@ -42,49 +42,34 @@ The core transformation is converting `html` tagged templates into static DOM te
 ```typescript
 export const Counter = defineComponent(() => {
   const count = signal(0);
-  const inc = () => count(count() + 1);
-
-  return {
-    template: html` <button @click=${inc}> Clicks: ${count()} </button> `,
-  };
+  return html`<button @click=${count(count() + 1)}>Clicks: ${count()}</button>`;
 });
 ```
 
-### Output (conceptual)
+### Output
 
 ```javascript
 // 1. Static template — parsed once, cloned for each instance
-const __tpl = __T(`<button> Clicks: <!---->0<!----></button>`);
+const __tpl = __T(`<button>Clicks: <!---->0<!----></button>`);
 
 // 2. Component registration with binding function
-export const Counter = __registerComponentLean(
-  'counter',
-  (ctx) => {
-    const count = signal(0);
-    const inc = () => count(count() + 1);
-
-    return {
-      // _ns: the clone's elements in document order, listed before it is inserted
-      __b: (ctx, _ns) => {
-        // Each bound node is reached by a path computed at build time
-        const text = _ns[0].lastChild.previousSibling;
-
-        // Direct event binding
-        _ns[0].addEventListener('click', inc);
-
-        // Signal subscription — updates only the text node
-        const unsub = count.subscribe((v) => {
-          text.data = v;
-        }, true);
-
-        return () => {
-          unsub();
-        };
-      },
-    };
-  },
-  __tpl,
-);
+export const Counter = __registerComponentLean('counter', () => {
+  const count = signal(0);
+  return ({
+    // _ns: the clone's elements in document order, listed before it is inserted
+    __b: (_ctx, _ns) => {
+      const _subs = [];
+      // Each bound node is reached by a path computed at build time
+      const _b0 = _ns[0].lastChild.previousSibling;
+      _b0.data = count() ?? '';
+      // Signal subscription — updates only the text node
+      _subs.push(count.subscribe(v => { _b0.data = v ?? ''; }, true));
+      // Direct event binding: the call runs on the event
+      _ns[0].addEventListener('click', () => { count(count() + 1); });
+      return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };
+    },
+  });
+}, __tpl);
 ```
 
 Key points:
@@ -100,17 +85,21 @@ A template whose markup the browser would rebuild differently from how it is wri
 
 The compiler detects and generates different binding types from the contracts:
 
-| Kind        | Source syntax       | Generated code                                                   |
-| :---------- | :------------------ | :--------------------------------------------------------------- |
-| Text        | `${signal()}`       | `signal.subscribe(v => textNode.data = v)`                       |
-| Attribute   | `attr=${value}`     | `signal.subscribe(v => el.setAttribute(attr, v))`                |
-| Style       | `style=${expr}`     | `signal.subscribe(v => el.style.cssText = v)`                    |
-| Event       | `@click=${handler}` | `el.addEventListener('click', handler)`                          |
-| Conditional | `${when(cond())}`   | `__bindIf(start, end, signal, template, initNested)`             |
-| IfElse      | `${whenElse(...)}`  | `__bindIfExpr(start, end, signals, evalExpr, …)`, once per branch |
-| Repeat      | `${repeat(...)}`    | `createKeyedReconciler(container, anchor, ...)`                  |
+| Kind        | Source syntax                    | Generated code                                                   |
+| :---------- | :------------------------------- | :--------------------------------------------------------------- |
+| Text        | `${signal()}`                    | `signal.subscribe(v => textNode.data = v)`                       |
+| Attribute   | `attr=${value}`                  | `el.setAttribute(attr, v)`, or a property (`el.disabled = v`, `el.className = v`) |
+| Class       | `class:name=${cond}`             | `el.classList.toggle('name', !!(cond))`                          |
+| Two-way     | `bind:value=${signal}`           | the property's binding and a listener that writes the signal     |
+| Style       | `style=${expr}`                  | `el.style.cssText = v`, or `el.style.setProperty(name, v)` per declaration |
+| Event       | `@click=${handler}`              | `el.addEventListener('click', handler)`; modifiers are written into the listener |
+| Ref         | `<input ${input}>`               | `input.el = el`                                                  |
+| Conditional | `<p ${when(cond())}>`            | `__bindIf(start, end, signal, template, initNested)`             |
+| Branches    | `${when(c, a, b)}`, `${c ? a : b}`, `${c && a}` | `__bindIfExpr(start, end, signals, evalExpr, …)`, once per branch |
+| Repeat      | `${repeat(...)}`, `${items.map(...)}` | `createKeyedReconciler(container, anchor, ...)`                  |
+| Slot        | `${props.body}`                  | the parent's compiled template, mounted at a comment (`__mf`)      |
 
-A `when()` or `whenElse()` branch sits between two empty comments, `start` and `end`; the two branches of a `whenElse()` share the comment between them. A list's rows go before its anchor comment.
+A branch sits between two empty comments, `start` and `end`; the two branches of a `when()` share the comment between them. A list's rows go before its anchor comment. A ternary, an `&&` and a `.map()` of templates are rewritten to `when()` and `repeat()` before the template is compiled, so they compile the same.
 
 ## Component Registration
 
@@ -118,10 +107,10 @@ The compiler emits one of two registration functions depending on what the compo
 
 | Function                  | When emitted                                    |
 | :------------------------ | :---------------------------------------------- |
-| `__registerComponent`     | Component has styles or lifecycle hooks         |
-| `__registerComponentLean` | No styles, no lifecycle hooks — minimal overhead |
+| `__registerComponent`     | Component has styles or lifecycle hooks, or its setup may create what the component owns: a `computed()`, an `effect()`, an `onCleanup()`, or a call to a function that may create one |
+| `__registerComponentLean` | None of those — minimal overhead                |
 
-The lean variant (`__registerComponentLean`) tree-shakes the entire style subsystem when no component in the app uses `styles`. The runtime `defineComponent` is only used by code that was not compiled, such as the runtime's own unit tests.
+The lean variant (`__registerComponentLean`) leaves out the style subsystem and the ownership code when no component of the app needs them. The runtime `defineComponent` only throws: every call is compiled into a registration, so one that runs means a component the compiler did not compile.
 
 Compiled components import these helpers from `thane/runtime`, the compiler's own entry. Applications never import it.
 
@@ -215,6 +204,18 @@ The compiler is designed for aggressive tree-shaking:
 - Lifecycle hooks are optimized away when absent
 - Each component imports exactly the runtime helpers its compiled code calls
 
-This is why the runtime stays at ~3 KB gzip for minimal applications.
+This is why a counter app is about 1 KB gzipped.
+
+## Development Builds and Hot Updates
+
+A `thane dev` build adds what hot updates need, and a production build has none of it:
+
+- Each module registers its namespace in the page, and the bindings it imports of each package, for an update to
+  import them from.
+- Each `const name = signal(…)` at the top level of a component's setup or of a module is wrapped as
+  `__hotSignal(signal(…), 'name')`, so that the signal that replaces it starts from its value.
+- The build records each module's imports. When files change, it compiles the changed modules and every module that
+  imports them, up to the component files, each on its own with its imports left to the page, and sends them; the
+  page runs them and swaps the components. A change that reaches the entry reloads the page ([CLI](cli.md#thane-dev)).
 
 ← [Back to Docs](README.md)

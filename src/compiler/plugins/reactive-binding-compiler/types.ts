@@ -4,6 +4,30 @@
 
 import type { ReactiveBindingKind, TextBindingMode } from '../../../contracts/index.js';
 
+/**
+ * A child component mounted where its template calls it (`${Card({…})}`), or a fragment imported from another
+ * module mounted where its template uses it. The binding compiler gives it a placeholder, `<!--b0.-->`, as
+ * it reads the template, and mounts it there.
+ */
+export interface ChildMountInfo {
+  /** The name the file calls the component by; for a fragment, the name the file imports it under */
+  componentName: string;
+  /** Kebab-case selector, e.g. "my-element-component" ('' for a fragment) */
+  selector: string;
+  /** Raw source text of the props argument, e.g. "{ color: myColor }" */
+  propsExpression: string;
+  /** Its placeholder's id ("b0", "b1", …): the placeholder is `<!--b0.-->` */
+  anchorId: string;
+  /** An imported fragment: mounted before its placeholder, which stays */
+  fragment?: true;
+}
+
+/** What a file's templates call and use by name: the components the file can call, and the fragments it imports */
+export interface TemplateNames {
+  components: ReadonlyMap<string, { selector: string }>;
+  fragments: ReadonlyMap<string, { staticText: string | null }>;
+}
+
 /** What the code generator emits differently in a production build. */
 export interface EmitOptions {
   /**
@@ -62,8 +86,11 @@ export interface RepeatBlock {
   itemVar: string; // e.g., "country"
   indexVar?: string | undefined; // e.g., "index" (optional)
   itemTemplate: string; // HTML template for each item (processed)
-  /** A row that is a component call: the component and its props, as written */
-  componentRow?: { componentName: string; propsExpression: string } | undefined;
+  /**
+   * A row that is a component call: the component and its props, as written, and the signals of the rows
+   * around this list that its props read (see RowChildMount)
+   */
+  componentRow?: { componentName: string; propsExpression: string; follows?: string[] } | undefined;
   emptyTemplate?: string | undefined; // HTML template shown when list is empty
   trackByFn?: string | undefined; // Custom trackBy function source: the reconciler's row key (its property name for `(x) => x.prop`)
   startIndex: number; // Position in HTML where ${repeat starts
@@ -118,8 +145,10 @@ export interface EventBinding {
   id: string; // Unique ID for this event handler (e.g., 'e0', 'e1')
   eventName: string; // Event type (e.g., 'click', 'mouseenter')
   modifiers: string[]; // Event modifiers (e.g., ['stop', 'prevent'])
-  handlerExpression: string; // The handler code (method reference or arrow function)
+  handlerExpression: string; // The handler code (method reference or arrow function); for a ref, its name
   elementId: string; // ID of the element with the event binding
+  /** An element ref in the tag (`<input ${input}>`): the binding assigns the element to the ref's `el` */
+  ref?: boolean;
   startIndex: number; // Position in HTML where @event= starts
   endIndex: number; // Position after closing quote
 }

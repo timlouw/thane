@@ -16,6 +16,7 @@ export {
 } from './file-utils.js';
 
 export { applyEdits } from './source-editor.js';
+export { closestName } from './closest-name.js';
 export type { SourceEdit } from './source-editor.js';
 
 export {
@@ -23,6 +24,8 @@ export {
   isFunctionCall,
   isDefineComponentCall,
   isSignalCall,
+  constSignalDeclarations,
+  hotSignalEdits,
   extractComponentDefinitions,
   findComponentDeclarations,
   type ComponentDeclaration,

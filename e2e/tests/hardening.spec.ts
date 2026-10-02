@@ -80,7 +80,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('click handlers in a whenElse() branch inside a row fire', async ({ page }) => {
+  test('click handlers in a when() branch inside a row fire', async ({ page }) => {
     const probe = await mountProbe(page, 'rowWhenElseEvent');
     await expect(page.locator('.branch-event-clicks')).toHaveText('0');
 
@@ -91,7 +91,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a child component in a whenElse() nested in a when() is mounted', async ({ page }) => {
+  test('a child component in a when() nested in a when() is mounted', async ({ page }) => {
     const probe = await mountProbe(page, 'nestedWhenElseChild');
     await expect(page.locator('.nested-branch-then .card')).toHaveText(['branch-card']);
 
@@ -147,7 +147,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('hyphenated tags keep their name as a whenElse() root and with when()', async ({ page }) => {
+  test('hyphenated tags keep their name as a when() root and with when()', async ({ page }) => {
     const probe = await mountProbe(page, 'hyphenatedTag');
     await expect(page.locator('.hyphenated-we-else')).toHaveText('B');
     await expect(page.locator('section.hyphenated my-tag')).toHaveCount(0);
@@ -307,7 +307,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('multi-root and text-only whenElse() branches show and hide completely', async ({ page }) => {
+  test('multi-root and text-only when() branches show and hide completely', async ({ page }) => {
     const probe = await mountProbe(page, 'multiRootBranch');
     const two = page.locator('section.multi-root-two');
     const text = page.locator('section.multi-root-text');
@@ -344,7 +344,7 @@ test.describe('hardening probes', () => {
   test("attribute bindings in a row's when() land on that row's elements", async ({ page }) => {
     // A shape that never failed, kept as a regression test. Four shapes: the
     // attribute on the when() element (A), on an element inside its content (B), bound to a component
-    // signal (C), and inside a whenElse() branch (D). Row 2 starts hidden.
+    // signal (C), and inside a when() branch (D). Row 2 starts hidden.
     const probe = await mountProbe(page, 'rowWhenAttribute');
     const toggle = (id: number) => page.evaluate((rowId) => (window as any).__probe.rowWhenAttribute.toggle(rowId), id);
     const titles = (shape: 'a' | 'b' | 'd') =>
@@ -605,7 +605,7 @@ test.describe('lookups and branches', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('when() / whenElse() alone in an element, next to text and three deep, toggled five times', async ({ page }) => {
+  test('when() / when() alone in an element, next to text and three deep, toggled five times', async ({ page }) => {
     const probe = await mountProbe(page, 'branchPositions');
     const set = (key: string, value: unknown) => setProbe(page, 'branchPositions', key, value);
     const clicks = page.locator('.branches-clicks');
@@ -634,7 +634,7 @@ test.describe('lookups and branches', () => {
       await expect(page.locator('.branches-only-w')).toHaveText(`o${round}+only`);
       await click('.branches-only-btn');
 
-      // whenElse() between text
+      // when() between text
       await set('text', false);
       await expect(page.locator('.branches-text')).toHaveText(`before o${round} after`);
       await expect(page.locator('.branches-else')).toHaveAttribute('title', `o${round}`);
@@ -683,7 +683,7 @@ test.describe('lookups and branches', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('when() and whenElse() at the top level of the template, between static nodes', async ({ page }) => {
+  test('when() and when() at the top level of the template, between static nodes', async ({ page }) => {
     const probe = await mountProbe(page, 'topLevelBranches');
     const set = (key: string, value: unknown) => setProbe(page, 'topLevelBranches', key, value);
     const children = () =>
@@ -740,7 +740,7 @@ test.describe('lookups and branches', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a text-only whenElse() branch that starts hidden shows its text and toggles', async ({ page }) => {
+  test('a text-only when() branch that starts hidden shows its text and toggles', async ({ page }) => {
     const probe = await mountProbe(page, 'hiddenTextBranch');
     const section = page.locator('section.hidden-text');
     await expect(section).toHaveText('else');
@@ -1038,9 +1038,7 @@ test.describe('nested directives in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('handlers in both whenElse() branches of a row fire; .stop keeps a click from the row handler', async ({
-    page,
-  }) => {
+  test('handlers in both when() branches of a row fire; .stop keeps a click from the row handler', async ({ page }) => {
     const probe = await mountProbe(page, 'rowDirectives');
     await page.locator('.row-dirs-then').click();
     await page.locator('.row-dirs-else').click();
@@ -1057,7 +1055,7 @@ test.describe('nested directives in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('child components in a row when() and whenElse() mount, and go and come back with their branch', async ({
+  test('child components in a row when() and when() mount, and go and come back with their branch', async ({
     page,
   }) => {
     const probe = await mountProbe(page, 'rowDirectives');
@@ -1092,7 +1090,7 @@ test.describe('nested directives in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a whenElse() and a list inside a row when(), and a list inside a row whenElse() branch', async ({ page }) => {
+  test('a when() and a list inside a row when(), and a list inside a row when() branch', async ({ page }) => {
     const probe = await mountProbe(page, 'rowDirectives');
     await expect.poll(() => texts(page, '.row-dirs-in-then')).toEqual(['John']);
     await expect.poll(() => texts(page, '.row-dirs-in-else')).toEqual(['off']);
@@ -1275,7 +1273,7 @@ test.describe('nested lists in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a when() and a whenElse() in inner rows', async ({ page }) => {
+  test('a when() and a when() in inner rows', async ({ page }) => {
     const probe = await mountProbe(page, 'nestedLists');
     await expect.poll(() => texts(page, '.lists-branch-on')).toEqual(['a1', 'b1']);
     await expect.poll(() => texts(page, '.lists-branch-t')).toEqual(['A', 'B']);
@@ -1295,7 +1293,7 @@ test.describe('nested lists in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('repeat › whenElse › repeat › when() and whenElse()', async ({ page }) => {
+  test('repeat › whenElse › repeat › when() and when()', async ({ page }) => {
     const probe = await mountProbe(page, 'nestedLists');
     await expect.poll(() => texts(page, '.lists-mx-row')).toEqual(['A:a1on', 'off', 'B:b1on']);
     await setProbe(page, 'nestedLists', 'show', false);
@@ -1499,6 +1497,396 @@ test.describe('a keyed list reordered while a row goes', () => {
     await expect(rows).toHaveText(['C', 'A', 'T']);
     await setProbe(page, 'reorderBeforeAnchor', 'items', [{ id: 'C' }, { id: 'A' }, { id: 'D' }]);
     await expect(rows).toHaveText(['C', 'A', 'D', 'T']);
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe('JavaScript control flow in templates', () => {
+  test('a ternary, &&, a chain of ternaries and .map() rows show and update like the directives they mean', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'controlFlow');
+    const set = (key: string, value: unknown) => setProbe(page, 'controlFlow', key, value);
+    await expect(page.locator('.flow-ternary')).toHaveText('off');
+    await expect(page.locator('.flow-and')).toHaveText('');
+    await expect(page.locator('.flow-chain')).toHaveText('none');
+    await expect(page.locator('.flow-row')).toHaveText(['0:a', '1:b']);
+    await expect(page.locator('.flow-cards .card')).toHaveText(['a', 'b']);
+    await expect(page.locator('.flow-text')).toHaveText('no');
+
+    await set('open', true);
+    await set('n', 1);
+    await expect(page.locator('.flow-on')).toHaveText('on 1');
+    await expect(page.locator('.flow-and-on')).toHaveText('shown');
+    await expect(page.locator('.flow-chain')).toHaveText('some');
+    await expect(page.locator('.flow-text')).toHaveText('yes');
+    await set('n', 3);
+    await expect(page.locator('.flow-on')).toHaveText('on 3');
+    await expect(page.locator('.flow-chain')).toHaveText('many');
+
+    // .map() rows are keyed by index: the rows stay, and show the items now at their positions
+    await set('items', ['c', 'a', 'b']);
+    await expect(page.locator('.flow-row')).toHaveText(['0:c', '1:a', '2:b']);
+    await expect(page.locator('.flow-cards .card')).toHaveText(['c', 'a', 'b']);
+    await set('items', []);
+    await expect(page.locator('.flow-row')).toHaveCount(0);
+
+    await set('open', false);
+    await expect(page.locator('.flow-ternary')).toHaveText('off');
+    await expect(page.locator('.flow-and-on')).toHaveCount(0);
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe("when()'s narrowing form", () => {
+  test('the branch gets the value: its bindings, handlers and child props read it, and follow it', async ({ page }) => {
+    const probe = await mountProbe(page, 'narrowing');
+    const set = (key: string, value: unknown) => setProbe(page, 'narrowing', key, value);
+    await expect(page.locator('.narrow-none')).toHaveText('none');
+    await expect(page.locator('.narrow-tag')).toHaveText(['x']);
+
+    await set('user', { name: 'Ada', tags: ['a', 'b'] });
+    await expect(page.locator('.narrow-name')).toHaveText('Ada (2)');
+    await expect(page.locator('.narrow-name')).toHaveAttribute('title', 'Ada');
+    await expect(page.locator('.narrow .card')).toHaveText('Ada');
+    await page.locator('.narrow-greet').click();
+    await expect(page.locator('.narrow-greeted')).toHaveText('Ada');
+
+    // Another value while the branch shows: its bindings and handlers read the new one
+    await set('user', { name: 'Grace', tags: [] });
+    await expect(page.locator('.narrow-name')).toHaveText('Grace (0)');
+    await page.locator('.narrow-greet').click();
+    await expect(page.locator('.narrow-greeted')).toHaveText('Grace');
+
+    await set('user', null);
+    await expect(page.locator('.narrow-name')).toHaveCount(0);
+    await expect(page.locator('.narrow-none')).toHaveText('none');
+
+    // In rows, the condition reads the row's item
+    await set('rows', [
+      { id: 1, tag: null },
+      { id: 2, tag: 'y' },
+    ]);
+    await expect(page.locator('.narrow-tag')).toHaveText(['y']);
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe('a child component in a row reads the row in its props', () => {
+  test("a row's new item mounts its child again; the same item keeps it", async ({ page }) => {
+    const probe = await mountProbe(page, 'rowChildProps');
+    await expect(page.locator('.child-props-in-row .ckid')).toHaveText(['a', 'b']);
+    await expect(page.locator('.child-props-as-row .ckid')).toHaveText(['row-a', 'row-b']);
+
+    // Row 1 gets a new object with the same key; row 2 keeps its object
+    await page.evaluate(() => {
+      const { rows } = (window as any).__probe.rowChildProps;
+      rows([{ id: 1, label: 'c' }, rows()[1]]);
+    });
+    await expect(page.locator('.child-props-in-row .ckid')).toHaveText(['c', 'b']);
+    await expect(page.locator('.child-props-as-row .ckid')).toHaveText(['row-c', 'row-b']);
+    expect(await countingKidCounts(page)).toEqual({
+      mount: { 'a': 1, 'b': 1, 'c': 1, 'row-a': 1, 'row-b': 1, 'row-c': 1 },
+      destroy: { 'a': 1, 'row-a': 1 },
+    });
+
+    await setProbe(page, 'rowChildProps', 'rows', []);
+    await expect(page.locator('.ckid')).toHaveCount(0);
+    expect((await countingKidCounts(page)).destroy).toEqual({
+      'a': 1,
+      'b': 1,
+      'c': 1,
+      'row-a': 1,
+      'row-b': 1,
+      'row-c': 1,
+    });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe("a row's code reads its item and index as they are now", () => {
+  /** Row 1 gets a new object with the label 'c' under its key; row 2 keeps its object */
+  const relabel = (page: Page) =>
+    page.evaluate(() => {
+      const { rows } = (window as any).__probe.rowClosures;
+      rows([{ ...rows()[0], label: 'c' }, rows()[1]]);
+    });
+  const swap = (page: Page) =>
+    page.evaluate(() => {
+      const { rows } = (window as any).__probe.rowClosures;
+      rows([rows()[1], rows()[0]]);
+    });
+  const picked = (page: Page) => page.evaluate(() => (window as any).__probe.rowClosures.picked());
+
+  test('a binding that reads the item and another signal', async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await expect(page.locator('.rc-mixed li')).toHaveText(['a!', 'b!']);
+    await relabel(page);
+    await expect(page.locator('.rc-mixed li')).toHaveText(['c!', 'b!']);
+    await setProbe(page, 'rowClosures', 'suffix', '?');
+    await expect(page.locator('.rc-mixed li')).toHaveText(['c?', 'b?']);
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('a listener on a row element (.self) reads the new item', async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await relabel(page);
+    await page.locator('.rc-self li').first().click();
+    expect(await picked(page)).toBe('self c');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('a delegated handler and a listener read the index after the rows move', async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await page.locator('.rc-index li').nth(1).click();
+    expect(await picked(page)).toBe('index 1');
+    await page.locator('.rc-self-index li').nth(1).click();
+    expect(await picked(page)).toBe('self index 1');
+    await swap(page);
+    await expect(page.locator('.rc-index li')).toHaveText(['b', 'a']);
+    await page.locator('.rc-index li').nth(1).click();
+    expect(await picked(page)).toBe('index 1');
+    await page.locator('.rc-index li').first().click();
+    expect(await picked(page)).toBe('index 0');
+    await page.locator('.rc-self-index li').first().click();
+    expect(await picked(page)).toBe('self index 0');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test("a child in a row's when() branch, and in an inner row, gets the row's new item", async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await expect(page.locator('.rc-branch-kid .ckid')).toHaveText(['branch a', 'branch b']);
+    await expect(page.locator('.rc-inner-kid .ckid')).toHaveText(['a/k', 'b/k']);
+    // The branch stays (on is still true) and the inner row's item is the same object
+    await relabel(page);
+    await expect(page.locator('.rc-branch-kid .ckid')).toHaveText(['branch c', 'branch b']);
+    await expect(page.locator('.rc-inner-kid .ckid')).toHaveText(['c/k', 'b/k']);
+    expect(await countingKidCounts(page)).toEqual({
+      mount: { 'branch a': 1, 'branch b': 1, 'branch c': 1, 'a/k': 1, 'b/k': 1, 'c/k': 1 },
+      destroy: { 'branch a': 1, 'a/k': 1 },
+    });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe('event modifiers', () => {
+  const log = (page: Page) => page.evaluate(() => (window as any).__probe.eventModifiers.log());
+  const clear = (page: Page) => page.evaluate(() => (window as any).__probe.eventModifiers.log([]));
+
+  test('.once runs the handler on the first event only: at component level, in a branch and in each row', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'eventModifiers');
+    for (let i = 0; i < 2; i++) {
+      await page.locator('.em-once').click();
+      await page.locator('.em-branch-once').click();
+      await page.locator('.em-rows button').first().click();
+      await page.locator('.em-rows button').nth(1).click();
+    }
+    expect(await log(page)).toEqual(['once', 'branch once', 'row once 1', 'row once 2']);
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('.capture runs before the handlers of the element clicked', async ({ page }) => {
+    await mountProbe(page, 'eventModifiers');
+    await page.locator('.em-capture-inner').click();
+    expect(await log(page)).toEqual(['outer capture', 'inner', 'outer bubble']);
+  });
+
+  test('.passive: the handler cannot prevent the default; .prevent does', async ({ page }) => {
+    await mountProbe(page, 'eventModifiers');
+    await page.locator('.em-passive').click();
+    await page.locator('.em-prevent').click();
+    expect(await log(page)).toEqual(['passive prevented false', 'prevented true']);
+    // The passive link followed its href; the prevented one did not
+    await expect(page).toHaveURL(/#passive$/);
+  });
+
+  test('key modifiers run on their keys only, with .once on the first of them', async ({ page }) => {
+    await mountProbe(page, 'eventModifiers');
+    await page.locator('.em-keys').press('a');
+    await page.locator('.em-keys').press('Enter');
+    await page.locator('.em-keys').press('Escape');
+    await clear(page);
+    await page.locator('.em-key-once').press('a');
+    await page.locator('.em-key-once').press('Enter');
+    await page.locator('.em-key-once').press('Enter');
+    expect(await log(page)).toEqual(['enter once']);
+  });
+});
+
+test.describe('ownership', () => {
+  const state = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as any;
+      return { subscribers: w.__probe.ownership.subscribers(), counts: { ...(w.__counts?.ownership ?? {}) } };
+    });
+
+  test("a page's computed, effect and listener go with it: five visits leave nothing on the store", async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'ownership');
+    await expect(page.locator('.own-count')).toHaveText('3');
+    expect(await state(page)).toEqual({ subscribers: 1, counts: { 'effect 3': 1 } });
+
+    for (let visit = 0; visit < 5; visit++) {
+      await setProbe(page, 'ownership', 'open', false);
+      await expect(page.locator('.own-count')).toHaveCount(0);
+      await setProbe(page, 'ownership', 'open', true);
+      await expect(page.locator('.own-count')).toHaveText('3');
+    }
+    // The page on screen holds the one subscription; the five destroyed ones ran their effect's cleanup
+    expect(await state(page)).toEqual({ subscribers: 1, counts: { 'effect 3': 6, 'effect cleanup': 5 } });
+
+    // The store changes: only the page on screen follows it
+    await setProbe(page, 'ownership', 'products', [1, 2, 3, 4]);
+    await expect(page.locator('.own-count')).toHaveText('4');
+    expect((await state(page)).counts).toEqual({ 'effect 3': 6, 'effect cleanup': 6, 'effect 4': 1 });
+
+    // The listener onMount added is removed with the page
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+    await setProbe(page, 'ownership', 'open', false);
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+    expect(await state(page)).toEqual({
+      subscribers: 0,
+      counts: { 'effect 3': 6, 'effect cleanup': 7, 'effect 4': 1, 'resize': 1 },
+    });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe('element refs', () => {
+  test('onMount reaches the element through its ref, and a handler reads one', async ({ page }) => {
+    const probe = await mountProbe(page, 'elementRefs');
+    await expect(page.locator('.refs-input')).toBeFocused();
+    await page.locator('.refs-input').fill('changed');
+    await page.locator('.refs-copy').click();
+    await expect(page.locator('.refs-copied')).toHaveText('changed');
+    // The ref is the element itself: a canvas ref has the canvas's API
+    expect(
+      await page.evaluate(() => {
+        const { canvas } = (window as any).__probe.elementRefs;
+        return [canvas.el.tagName, typeof canvas.el.getContext, canvas.el.width];
+      }),
+    ).toEqual(['CANVAS', 'function', 20]);
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('a ref in a when() branch is its element while the branch shows, and null while it is hidden', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'elementRefs');
+    const panel = () =>
+      page.evaluate(() => {
+        const el = (window as any).__probe.elementRefs.panel.el as HTMLElement | null;
+        return el && { connected: el.isConnected, className: el.className };
+      });
+    expect(await panel()).toEqual({ connected: true, className: 'refs-panel' });
+    await setProbe(page, 'elementRefs', 'open', false);
+    await expect(page.locator('.refs-panel')).toHaveCount(0);
+    expect(await panel()).toBeNull();
+    await setProbe(page, 'elementRefs', 'open', true);
+    await expect(page.locator('.refs-panel')).toHaveCount(1);
+    expect(await panel()).toEqual({ connected: true, className: 'refs-panel' });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe('slots', () => {
+  test("a template passed as a prop renders in the child, follows the parent's signals and calls its handlers", async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'slots');
+    const panel = page.locator('.slot-panel').first();
+    await expect(panel.locator('h3')).toHaveText('Panel');
+    await expect(panel.locator('.slot-body .slot-count')).toHaveText('count 1');
+    await expect(panel.locator('.slot-footer .slot-note')).toHaveText('few');
+    await panel.locator('.slot-bump').click();
+    await panel.locator('.slot-bump').click();
+    await expect(panel.locator('.slot-count')).toHaveText('count 3');
+    await expect(panel.locator('.slot-note')).toHaveText('many');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test("a slot in the child's when() branch goes and comes back with it; a slot left out renders nothing", async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'slots');
+    await page.evaluate(() => (window as any).__probe.slotPanelPanel.expanded(false));
+    await expect(page.locator('.slot-note')).toHaveCount(0);
+    await page.evaluate(() => (window as any).__probe.slotPanelPanel.expanded(true));
+    await expect(page.locator('.slot-note')).toHaveCount(1);
+    // The bare panel has no footer slot: its footer is empty
+    await expect(page.locator('.slot-bare .slot-body')).toHaveText('bare');
+    await expect(page.locator('.slot-bare .slot-footer')).toHaveText('');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test("the slots' bindings go with the child", async ({ page }) => {
+    const probe = await mountProbe(page, 'slots');
+    const subscribers = () => page.evaluate(() => (window as any).__probe.slots.subscribers());
+    const shown = await subscribers();
+    await setProbe(page, 'slots', 'shown', false);
+    await expect(page.locator('.slot-count')).toHaveCount(0);
+    // The body's and the footer's bindings on count are released
+    expect(await subscribers()).toBe(shown - 2);
+    await setProbe(page, 'slots', 'shown', true);
+    await expect(page.locator('.slot-count')).toHaveText('count 1');
+    expect(await subscribers()).toBe(shown);
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe('bind: and class:', () => {
+  test('a field shows its signal, and what is typed, ticked or chosen writes it', async ({ page }) => {
+    const probe = await mountProbe(page, 'bindAndClass');
+    await expect(page.locator('.bc-name')).toHaveValue('ada');
+    await expect(page.locator('.bc-size')).toHaveValue('m');
+    await page.locator('.bc-name').fill('grace');
+    await page.locator('.bc-agree').check();
+    await page.locator('.bc-size').selectOption('l');
+    await expect(page.locator('.bc-out')).toHaveText('grace agreed l');
+    // The signals written from code show in the fields
+    await setProbe(page, 'bindAndClass', 'name', 'lin');
+    await setProbe(page, 'bindAndClass', 'agree', false);
+    await setProbe(page, 'bindAndClass', 'size', 's');
+    await expect(page.locator('.bc-name')).toHaveValue('lin');
+    await expect(page.locator('.bc-agree')).not.toBeChecked();
+    await expect(page.locator('.bc-size')).toHaveValue('s');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('class:name toggles one class, next to the static ones', async ({ page }) => {
+    await mountProbe(page, 'bindAndClass');
+    const field = page.locator('.bc-name');
+    await expect(field).toHaveClass('bc-name field');
+    await field.fill('');
+    await expect(field).toHaveClass('bc-name field empty');
+    await field.fill('margaret');
+    await expect(field).toHaveClass('bc-name field long');
+  });
+});
+
+test.describe('row attributes that read a signal of the component', () => {
+  test('a boolean attribute and a property are written as properties; a class keeps the next attribute', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'rowSignalAttributes');
+    // disabled=${off()} with off() false: enabled (the row template once kept a bare disabled=)
+    await expect(page.locator('.rsa-box')).toHaveCount(2);
+    for (const box of await page.locator('.rsa-box').all()) await expect(box).toBeEnabled();
+    await setProbe(page, 'rowSignalAttributes', 'off', true);
+    for (const box of await page.locator('.rsa-box').all()) await expect(box).toBeDisabled();
+    await setProbe(page, 'rowSignalAttributes', 'off', false);
+    for (const box of await page.locator('.rsa-box').all()) await expect(box).toBeEnabled();
+    // class=${tone()} before type="checkbox": the input is a checkbox with the class
+    await expect(page.locator('input.calm[type="checkbox"]')).toHaveCount(2);
+    await setProbe(page, 'rowSignalAttributes', 'tone', 'loud');
+    await expect(page.locator('input.loud[type="checkbox"]')).toHaveCount(2);
+    // value=${note()}: the field's value, written again when the signal changes
+    for (const note of await page.locator('.rsa-note').all()) await expect(note).toHaveValue('n');
+    await setProbe(page, 'rowSignalAttributes', 'note', 'm');
+    for (const note of await page.locator('.rsa-note').all()) await expect(note).toHaveValue('m');
     expect(probe.pageErrors).toEqual([]);
   });
 });

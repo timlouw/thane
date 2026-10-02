@@ -5,7 +5,5 @@ import { expose } from '../shared/expose.js';
 export const RootList = defineComponent('hardening-root-list', () => {
   const items = signal(['r1', 'r2']);
   expose('rootList', { items });
-  return {
-    template: html`${repeat(items(), (it) => html`<p class="root-list-row">${it}</p>`)}`,
-  };
+  return html`${repeat(items(), (it) => html`<p class="root-list-row">${it}</p>`)}`;
 });

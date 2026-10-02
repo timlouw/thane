@@ -1,18 +1,19 @@
 /**
  * HTML Parser — Binding detection
  *
- * Finds signal bindings, events, when/whenElse/repeat directives in parsed HTML.
+ * Finds signal bindings, events, and the when() and repeat() directives in parsed HTML.
  */
 
 import type { HtmlElement, BindingInfo } from './types.js';
 import ts from 'typescript';
-import { WHEN_ELSE_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX } from './types.js';
-import { logger } from '../logger.js';
+import { WHEN_CONTENT_REGEX, REPEAT_REGEX, SIGNAL_EXPR_REGEX } from './types.js';
 import { parseArrowFunction } from '../ast-utils.js';
 import { ErrorCode } from '../../errors.js';
+import { closestName } from '../closest-name.js';
+import { EVENT_MODIFIERS } from '../event-modifiers.js';
 
 /**
- * Shared argument parser for both whenElse and repeat expressions.
+ * Shared argument parser for both when() and repeat() expressions.
  *
  * Parses a comma-separated argument list from a `${directive(` call: strings and template
  * literals are skipped whole by the expression scanner, and a comma splits only outside
@@ -57,26 +58,46 @@ function parseDirectiveArgs(text: string, startPos: number): { args: string[]; e
   return null;
 }
 
-function extractHtmlTemplateContent(arg: string): string {
-  const htmlMatch = arg.match(/^html`([\s\S]*)`$/);
-  if (htmlMatch && htmlMatch[1] !== undefined) {
-    return htmlMatch[1];
-  }
-
-  const plainMatch = arg.match(/^`([\s\S]*)`$/);
-  if (plainMatch && plainMatch[1] !== undefined) {
-    return plainMatch[1];
-  }
-
-  return arg;
+/** The markup of a directive's template argument, html`…` or a plain `…`; null for anything else */
+function templateContent(arg: string): string | null {
+  const match = /^(?:html)?`([\s\S]*)`$/.exec(arg.trim());
+  return match ? match[1]! : null;
 }
 
 /** What the signal detector knows of the names a component's templates see (see template-scope.ts) */
+/**
+ * Throws THANE015 for an event attribute's modifier the compiler does not know (`@click.prevnet`), with the one
+ * it is close to, and for `.passive` with `.prevent`: a passive listener cannot prevent the default.
+ */
+const checkModifiers = (attribute: string, modifiers: readonly string[]): void => {
+  for (const modifier of modifiers) {
+    if (EVENT_MODIFIERS.includes(modifier)) continue;
+    const near = modifier ? closestName(modifier, EVENT_MODIFIERS) : undefined;
+    throw new Error(
+      `${ErrorCode.EVENT_MODIFIER}: ${attribute} — '${modifier}' is not an event modifier` +
+        (near ? `: did you mean '${near}'?` : '.') +
+        ` The modifiers are ${EVENT_MODIFIERS.join(', ')}.`,
+    );
+  }
+  if (modifiers.includes('passive') && modifiers.includes('prevent')) {
+    throw new Error(
+      `${ErrorCode.EVENT_MODIFIER}: ${attribute} — a passive listener cannot prevent the default: remove .passive or .prevent.`,
+    );
+  }
+};
+
 export interface TemplateScope {
   /** Whether the name is a function the component declares (not a signal) */
   isFunction(name: string): boolean;
   /** The signals such a function reads, its helpers' included */
   readsOf(name: string): string[];
+  /** Whether the name is a ref the component declares (`const input = ref()`) */
+  isRef(name: string): boolean;
+  /**
+   * Whether the name is a value the component or its file declares that is neither a signal, a function nor a
+   * ref (`const found = items().find(…)`): `found?.()` reads a signal that may be missing
+   */
+  isValue(name: string): boolean;
 }
 
 /** The scope of the component being compiled; the component compiler sets it around its compile */
@@ -110,6 +131,15 @@ export function extractSignalsFromExpression(expression: string): string[] {
     } else if (ts.isCallExpression(node) && node.arguments.length === 0) {
       // `count()` reads a signal in scope; `props.count()` reads a signal passed as a prop
       const callee = node.expression;
+      // `found?.()` on a value that may be missing: the binding would subscribe to a signal that is not there
+      if (node.questionDotToken && ts.isIdentifier(callee) && templateScope?.isValue(callee.text)) {
+        const name = callee.text;
+        throw new Error(
+          `${ErrorCode.MAYBE_MISSING_SIGNAL}: ${name}?.() reads a signal that may be missing, and a binding cannot follow ` +
+            `a signal that is not there. Show what reads it inside when(${name}, (s) => html\`…\${s()}…\`), which ` +
+            'binds the branch only while there is one.',
+        );
+      }
       const signalName = ts.isIdentifier(callee)
         ? callee.text
         : ts.isPropertyAccessExpression(callee) &&
@@ -271,7 +301,12 @@ function splitStyleDeclarations(styleValue: string, expressions: TemplateExpress
   return declarations;
 }
 
-function parseWhenElseExpression(
+/**
+ * `${when(condition, then, otherwise?)}` in content: the condition and the two templates (an else-branch left out
+ * is empty). Each template is html`…` or a plain template literal; a fragment, a child component call and an
+ * arrow `(value) => html`…`` were turned into one before the parser reads the text.
+ */
+function parseWhenContentExpression(
   text: string,
   startPos: number,
 ): {
@@ -281,20 +316,32 @@ function parseWhenElseExpression(
   elseTemplate: string;
   signals: string[];
 } | null {
-  const argsStart = startPos + '${whenElse('.length;
+  const argsStart = startPos + '${when('.length;
   const parsed = parseDirectiveArgs(text, argsStart);
   if (!parsed) return null;
 
-  const filteredArgs = parsed.args.filter((a) => a.trim() !== '');
-  if (filteredArgs.length !== 3) return null;
-
-  const condition = filteredArgs[0];
-  const arg1 = filteredArgs[1];
-  const arg2 = filteredArgs[2];
-  if (!condition || !arg1 || !arg2) return null;
-
-  const thenTemplate = extractHtmlTemplateContent(arg1);
-  const elseTemplate = extractHtmlTemplateContent(arg2);
+  const args = parsed.args.filter((a) => a.trim() !== '');
+  const written = text.slice(startPos, parsed.end);
+  if (args.length === 1) {
+    throw new Error(
+      `${ErrorCode.WHEN_ARGUMENTS}: ${written} has no template to show. In an element's tag, when(condition) shows the element: <p \${when(open())}>; in content it takes a template: \${when(open(), html\`<p>Open</p>\`)}.`,
+    );
+  }
+  if (args.length > 3) {
+    throw new Error(
+      `${ErrorCode.WHEN_ARGUMENTS}: when() takes a condition and one or two templates, the second shown while the condition is false: ${written}`,
+    );
+  }
+  const condition = args[0]!;
+  const branches = args.slice(1).map(templateContent);
+  const notTemplate = branches.findIndex((branch) => branch === null);
+  if (notTemplate !== -1) {
+    throw new Error(
+      `${ErrorCode.WHEN_ARGUMENTS}: when()'s ${notTemplate === 0 ? 'second' : 'third'} argument is not a template: ${args[notTemplate + 1]}. A branch is an html template, a fragment, a component call, or a function (value) => html\`…\` of the condition's value.`,
+    );
+  }
+  const thenTemplate = branches[0]!;
+  const elseTemplate = branches[1] ?? '';
   const signals = extractSignalsFromExpression(condition);
 
   return {
@@ -304,6 +351,66 @@ function parseWhenElseExpression(
     elseTemplate,
     signals,
   };
+}
+
+/**
+ * A repeat()'s options, `{ key, empty }`: the key as a function of the item (a property name becomes
+ * `(_k) => _k.name`), and the empty template's markup. Anything else in the third argument is THANE010.
+ */
+function parseRepeatOptions(options: string, written: string): { trackByFn?: string; emptyTemplate?: string } {
+  const fail = (what: string): never => {
+    throw new Error(
+      `${ErrorCode.REPEAT_OPTIONS}: ${what}. repeat()'s third argument is its options, written in the call: repeat(items, row, { key: 'id', empty: html\`<li>None</li>\` }). In ${written}`,
+    );
+  };
+  const file = ts.createSourceFile(
+    '__repeat_options.ts',
+    `(${options})`,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const statement = file.statements[0];
+  let object = statement && ts.isExpressionStatement(statement) ? statement.expression : undefined;
+  while (object && ts.isParenthesizedExpression(object)) object = object.expression;
+  if (!object || !ts.isObjectLiteralExpression(object) || file.statements.length !== 1) {
+    return fail(`the third argument, ${options.trim()}, is not an object of options`);
+  }
+  const result: { trackByFn?: string; emptyTemplate?: string } = {};
+  for (const property of object.properties) {
+    const name =
+      property.name && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
+        ? property.name.text
+        : undefined;
+    // `key: …`, or a shorthand `{ key }` of a variable holding it
+    const value = ts.isPropertyAssignment(property)
+      ? property.initializer
+      : ts.isShorthandPropertyAssignment(property)
+        ? property.name
+        : undefined;
+    if (!name || !value) {
+      fail(`'${property.getText(file)}' is not an option: write each one as a property, key: … or empty: …`);
+      continue;
+    }
+    if (name === 'key') {
+      if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+        result.trackByFn = /^[A-Za-z_$][\w$]*$/.test(value.text)
+          ? `(_k) => _k.${value.text}`
+          : `(_k) => _k[${JSON.stringify(value.text)}]`;
+      } else if (ts.isArrowFunction(value) || ts.isFunctionExpression(value) || ts.isIdentifier(value)) {
+        result.trackByFn = value.getText(file);
+      } else {
+        fail(`the key, ${value.getText(file)}, is neither a property name nor a function of the item`);
+      }
+    } else if (name === 'empty') {
+      const markup = templateContent(value.getText(file));
+      if (markup === null) fail(`the empty template, ${value.getText(file)}, is not a template`);
+      result.emptyTemplate = markup!;
+    } else {
+      fail(`'${name}' is not an option of repeat(): its options are key and empty`);
+    }
+  }
+  return result;
 }
 
 function parseRepeatExpression(
@@ -325,8 +432,11 @@ function parseRepeatExpression(
 
   const filteredArgs = parsed.args.filter((a) => a.trim() !== '');
 
-  if (filteredArgs.length < 2 || filteredArgs.length > 4) {
-    return null;
+  if (filteredArgs.length < 2) return null;
+  if (filteredArgs.length > 3) {
+    throw new Error(
+      `${ErrorCode.REPEAT_OPTIONS}: repeat() takes the items, the row and its options: repeat(items, row, { key: 'id', empty: html\`<li>None</li>\` }). In ${text.slice(startPos, parsed.end)}`,
+    );
   }
 
   const itemsExpression = filteredArgs[0];
@@ -345,28 +455,13 @@ function parseRepeatExpression(
   if (!itemVar) return null;
   const indexVar = params[1];
 
+  // A row that is a template, or a child component call (read as one: `(item) => Card({ item })`)
   const templateBody = arrowParsed.body.trim();
-  const itemTemplate = extractHtmlTemplateContent(templateBody);
+  const itemTemplate = templateContent(templateBody) ?? templateBody;
 
-  let emptyTemplate: string | undefined;
-  const arg2 = filteredArgs[2];
-  if (filteredArgs.length >= 3 && arg2 && arg2.trim() !== 'null' && arg2.trim() !== 'undefined') {
-    emptyTemplate = extractHtmlTemplateContent(arg2.trim());
-  }
-
-  let trackByFn: string | undefined;
-  const arg3 = filteredArgs[3];
-  if (filteredArgs.length === 4 && arg3) {
-    const trimmed = arg3.trim();
-    const parsed2 = parseArrowFunction(trimmed);
-    if (!parsed2) {
-      logger.warn(
-        'html-parser',
-        `trackBy function should be an arrow function returning a key property, e.g., (item) => item.id`,
-      );
-    }
-    trackByFn = trimmed;
-  }
+  const { emptyTemplate, trackByFn } = filteredArgs[2]
+    ? parseRepeatOptions(filteredArgs[2], text.slice(startPos, parsed.end))
+    : { emptyTemplate: undefined, trackByFn: undefined };
 
   const signals = extractSignalsFromExpression(itemsExpression);
 
@@ -400,30 +495,6 @@ export function findBindingsInText(
 
   const complexExprPositions: Array<{ start: number; end: number }> = [];
 
-  const whenElseRegex = WHEN_ELSE_REGEX();
-  let whenElseMatch: RegExpExecArray | null;
-
-  while ((whenElseMatch = whenElseRegex.exec(text)) !== null) {
-    const startPos = whenElseMatch.index;
-    const parsed = isEscaped(text, startPos) ? null : parseWhenElseExpression(text, startPos);
-    if (parsed) {
-      complexExprPositions.push({ start: startPos, end: parsed.end });
-
-      bindings.push({
-        element: parent,
-        type: 'whenElse',
-        signalName: parsed.signals[0] || '',
-        signalNames: parsed.signals,
-        expressionStart: textStart + startPos,
-        expressionEnd: textStart + parsed.end,
-        fullExpression: text.substring(startPos, parsed.end),
-        jsExpression: parsed.condition,
-        thenTemplate: parsed.thenTemplate,
-        elseTemplate: parsed.elseTemplate,
-      });
-    }
-  }
-
   const repeatRegex = REPEAT_REGEX();
   let repeatMatch: RegExpExecArray | null;
 
@@ -447,6 +518,35 @@ export function findBindingsInText(
         itemTemplate: parsed.itemTemplate,
         emptyTemplate: parsed.emptyTemplate,
         trackByFn: parsed.trackByFn,
+      });
+    }
+  }
+
+  // A conditional in content. One inside a list's row, or inside another conditional's templates, is its
+  // template's own (a `${when(cond)}` there is in an element's tag), so the scan steps over them.
+  const repeatRanges = [...complexExprPositions];
+  const whenRegex = WHEN_CONTENT_REGEX();
+  let whenMatch: RegExpExecArray | null;
+
+  while ((whenMatch = whenRegex.exec(text)) !== null) {
+    const startPos = whenMatch.index;
+    if (repeatRanges.some((r) => startPos > r.start && startPos < r.end)) continue;
+    const parsed = isEscaped(text, startPos) ? null : parseWhenContentExpression(text, startPos);
+    if (parsed) {
+      complexExprPositions.push({ start: startPos, end: parsed.end });
+      whenRegex.lastIndex = parsed.end;
+
+      bindings.push({
+        element: parent,
+        type: 'whenElse',
+        signalName: parsed.signals[0] || '',
+        signalNames: parsed.signals,
+        expressionStart: textStart + startPos,
+        expressionEnd: textStart + parsed.end,
+        fullExpression: text.substring(startPos, parsed.end),
+        jsExpression: parsed.condition,
+        thenTemplate: parsed.thenTemplate,
+        elseTemplate: parsed.elseTemplate,
       });
     }
   }
@@ -481,7 +581,7 @@ export function findBindingsInText(
   // ── Complex expression text bindings ──
   // Detect ${expr} interpolations that contain signal calls but aren't bare ${sig()}.
   // Examples: ${count() + 1}, ${isActive() ? 'Yes' : 'No'}, ${a() + b()}
-  // A `${` inside a whenElse/repeat/bare-signal range is stepped over, not the whole `${…}` it
+  // A `${` inside a when/repeat/bare-signal range is stepped over, not the whole `${…}` it
   // opens: a directive's range ends at its `)`, and an expression after that is still reached.
   const allSkipRanges = [...complexExprPositions, ...bareSignalPositions];
   let searchPos = 0;
@@ -586,7 +686,37 @@ export function findBindingsInAttributes(
     }
   }
 
+  // A ${…} alone in the tag other than when(): an element ref the component declares
+  for (const value of element.tagValues ?? []) {
+    const name = /^\$\{\s*([A-Za-z_$][\w$]*)\s*\}$/.exec(value.text)?.[1];
+    if (!name || !templateScope?.isRef(name)) {
+      throw new Error(
+        `${ErrorCode.TAG_VALUE}: ${value.text} in <${element.tagName}> — a \${…} alone in a tag is when(condition) or an element ref the component declares (const input = ref()). ` +
+          'For an attribute, write name=${…}.',
+      );
+    }
+    bindings.push({
+      element,
+      type: 'ref',
+      signalName: '',
+      handlerExpression: name,
+      expressionStart: value.start,
+      expressionEnd: value.end,
+      fullExpression: value.text,
+    });
+  }
+
   for (const [name, attr] of element.attributes) {
+    if (name.startsWith('bind:')) {
+      throw new Error(
+        `${ErrorCode.DIRECTIVE_ATTRIBUTE}: ${name} on <${element.tagName}> — the two-way bindings are bind:value=\${signal} and bind:checked=\${signal}.`,
+      );
+    }
+    if (name.startsWith('class:') && !/^\$\{[\s\S]+\}$/.test(attr.value.trim())) {
+      throw new Error(
+        `${ErrorCode.DIRECTIVE_ATTRIBUTE}: ${name} on <${element.tagName}> — class:name takes a condition: ${name}=\${condition}.`,
+      );
+    }
     if (name.startsWith(':')) {
       throw new Error(
         `${ErrorCode.PREFIXED_ATTRIBUTE}: attribute "${name}" — the ":" prefix is not a binding syntax. Write ${name.slice(1)}=\${…} instead.`,
@@ -596,6 +726,7 @@ export function findBindingsInAttributes(
       const eventParts = name.slice(1).split('.');
       const eventName = eventParts[0];
       const modifiers = eventParts.slice(1);
+      checkModifiers(name, modifiers);
 
       const eventExprMatch = attr.value.match(/^\$\{(.+)\}$/s);
       if (eventExprMatch && eventExprMatch[1]) {

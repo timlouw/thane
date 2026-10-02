@@ -15,7 +15,7 @@ export const App = defineComponent('test-app', () => {
   const a = signal(0);
   return { template: html\`<ul>\${repeat(items(), (item) => html\`${row}\`)}</ul>\` };
 });
-mount({ component: App });
+mount(App);
 `;
 
 /** The emitted static row template (the `__T(\`…\`)` of the list's `__tpl_bN`). */

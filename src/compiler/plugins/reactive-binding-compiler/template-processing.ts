@@ -202,7 +202,9 @@ const processTemplate = (
       (b) => b.type !== 'whenElse' || !isOwnedByNestedProcessing(b.expressionStart, b.expressionEnd),
     ),
   };
-  const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, processSubTemplate);
+  const branches = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, processSubTemplate);
+  const whenElseBlocks = branches.whenElseBlocks;
+  conditionals.push(...branches.conditionals);
 
   // ── Repeats ──
   for (const binding of parsed.bindings) {
@@ -237,15 +239,17 @@ const processTemplate = (
   const expressionBindingSpans = new Map<number, { spanId: string; exprEnd: number }>();
   /** Non-text expression bindings (${...} in attr/style) that must be neutralized in static template HTML */
   const inlineExpressionReplacements = new Map<number, { exprEnd: number; replacement: string }>();
+  // An event attribute's listener, or an element ref (`<input ${input}>`), which assigns the element to the ref
   const pushEvent = (binding: ParsedBindingInfo, elementId: string): void => {
     eventBindings.push({
       id: `e${state.eventIdCounter.value++}`,
-      eventName: binding.eventName!,
+      eventName: binding.eventName ?? '',
       modifiers: binding.eventModifiers || [],
       handlerExpression: binding.handlerExpression!,
       elementId,
       startIndex: binding.expressionStart,
       endIndex: binding.expressionEnd,
+      ...(binding.type === 'ref' ? { ref: true } : {}),
     });
   };
   const componentEvents: ParsedBindingInfo[] = [];
@@ -254,7 +258,7 @@ const processTemplate = (
     if (conditionalElementSet.has(binding.element)) continue;
     if (binding.type === 'when' || binding.type === 'whenElse' || binding.type === 'repeat') continue;
     // The component template binds its events after every other binding (id allocation order)
-    if (binding.type === 'event' && parentId === null) {
+    if ((binding.type === 'event' || binding.type === 'ref') && parentId === null) {
       componentEvents.push(binding);
       continue;
     }
@@ -300,8 +304,8 @@ const processTemplate = (
     if (!elementIdMap.has(binding.element)) elementIdMap.set(binding.element, `b${state.idCounter++}`);
     const elementId = elementIdMap.get(binding.element)!;
 
-    if (binding.type === 'event') {
-      if (binding.eventName && binding.handlerExpression) pushEvent(binding, elementId);
+    if (binding.type === 'event' || binding.type === 'ref') {
+      if (binding.handlerExpression && (binding.eventName || binding.type === 'ref')) pushEvent(binding, elementId);
       continue;
     }
 
@@ -348,7 +352,7 @@ const processTemplate = (
     );
   }
   for (const binding of componentEvents) {
-    if (!binding.eventName || !binding.handlerExpression) continue;
+    if (!binding.handlerExpression || (!binding.eventName && binding.type !== 'ref')) continue;
     if (!elementIdMap.has(binding.element)) {
       elementIdMap.set(binding.element, `b${state.idCounter++}`);
     }

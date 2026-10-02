@@ -20,7 +20,7 @@ const MAIN = `
 import { mount } from 'thane';
 import Routes from './routes.js';
 
-mount({ router: { routes: Routes } });
+mount(Routes);
 `;
 
 const PAGE = `

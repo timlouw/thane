@@ -49,6 +49,18 @@ test.describe('1. Basic Rendering', () => {
 // ─────────────────────────────────────────────────────────────
 
 test.describe('2. Client-Side Navigation', () => {
+  test('markActiveLinks: the links to the current path have aria-current="page", and only they', async ({ page }) => {
+    await goto(page, '/');
+    await expect(page.getByTestId('nav-home')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('nav-about')).not.toHaveAttribute('aria-current', 'page');
+    await page.getByTestId('nav-about').click();
+    await expect(page.getByTestId('about-page')).toBeVisible();
+    await expect(page.getByTestId('nav-about')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('nav-home')).not.toHaveAttribute('aria-current', 'page');
+    await page.goBack();
+    await expect(page.getByTestId('nav-home')).toHaveAttribute('aria-current', 'page');
+  });
+
   test('clicking nav links navigates without full page reload', async ({ page }) => {
     await goto(page, '/');
     await expect(page.getByTestId('home-page')).toBeVisible();
@@ -437,7 +449,7 @@ test.describe('10. Route Swap', () => {
       const frames: Array<{ page: string | null; scrollY: number }> = [];
       (window as any).__frames = frames;
       const tick = () => {
-        const outlet = document.getElementById('router-outlet');
+        const outlet = document.querySelector('router-outlet');
         const current = outlet?.querySelector('[data-testid$="-page"]')?.getAttribute('data-testid') ?? null;
         frames.push({ page: current, scrollY: Math.round(window.scrollY) });
         requestAnimationFrame(tick);
@@ -495,7 +507,7 @@ test.describe('10. Route Swap', () => {
     await page.waitForTimeout(1000);
     await expect(page.getByTestId('user-page')).toBeVisible();
     await expect(page.getByTestId('about-page')).toHaveCount(0);
-    await expect(page.locator('#router-outlet [data-testid$="-page"]')).toHaveCount(1);
+    await expect(page.locator('router-outlet [data-testid$="-page"]')).toHaveCount(1);
     await expect(page).toHaveURL(/\/users\/42$/);
     await expect(page).toHaveTitle('User');
   });

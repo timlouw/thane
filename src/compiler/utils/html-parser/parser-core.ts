@@ -33,6 +33,8 @@ interface MutableHtmlElement {
   whenDirective?: string | undefined;
   whenDirectiveStart?: number | undefined;
   whenDirectiveEnd?: number | undefined;
+  /** The other `${…}`s alone in the tag (an element ref), as written, with their spans */
+  tagValues?: { text: string; start: number; end: number }[] | undefined;
 }
 
 function createEmptyElement(tagName: string, tagStart: number, tagNameEnd: number): MutableHtmlElement {
@@ -270,6 +272,12 @@ export function parseHtmlTemplate(html: string, options?: BindingDetectionOption
             currentElement!.whenDirectiveStart = pos;
             currentElement!.whenDirectiveEnd = directiveEnd;
             pos = directiveEnd - 1;
+          }
+        } else if (char === '$' && nextChar === '{') {
+          const valueEnd = templateExpressionEnd(html, pos);
+          if (valueEnd !== -1) {
+            (currentElement!.tagValues ??= []).push({ text: html.substring(pos, valueEnd), start: pos, end: valueEnd });
+            pos = valueEnd - 1;
           }
         } else if (/[a-zA-Z_:@]/.test(char)) {
           state = PARSER_STATE.ATTR_NAME;

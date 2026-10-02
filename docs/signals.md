@@ -35,6 +35,20 @@ count(5);
 count(5); // no notification — same value
 ```
 
+## Read-Only Signals
+
+`ReadonlySignal<T>` is a signal that can be read and subscribed to, but not written: a `computed()` is one, and so is a
+signal handed out by a store that keeps its writes to itself. `Signal<T>` is a `ReadonlySignal<T>` that can be written too,
+so it goes where a `ReadonlySignal<T>` is asked for, but not the other way round: a `computed()` where a `Signal<T>` is
+asked for is a type error.
+
+```typescript
+const count = signal(0);
+const doubled = computed(() => count() * 2);
+const view: ReadonlySignal<number> = count; // ✅
+const write: Signal<number> = doubled;      // ❌ type error: a computed cannot be written
+```
+
 ## Subscribing Manually
 
 Use `.subscribe()` for explicit observation outside of `computed`/`effect`:
@@ -155,6 +169,39 @@ Effects:
 - Return a **dispose function** — call it to stop the effect and unsubscribe from all dependencies.
 - **Survive errors** — if the effect function throws, the error is surfaced asynchronously via `queueMicrotask` but the effect stays alive and continues tracking.
 
+### Cleaning Up Between Runs
+
+The effect's function may return a cleanup: it runs before the next run, and when the effect is disposed. So does an
+`onCleanup()` function the run registers, and a `computed()` or `effect()` the run creates is disposed then:
+
+```typescript
+effect(() => {
+  const id = setInterval(tick, delay());
+  return () => clearInterval(id); // a new delay() starts a new interval, and the old one stops
+});
+```
+
+---
+
+## Ownership
+
+A `computed()` or an `effect()` created while a component's setup or its `onMount` runs belongs to the component:
+destroying the component disposes it, so it stops following its signals. `onCleanup(fn)` called there runs `fn` when the
+component is destroyed ([Components](components.md#oncleanup)); called in an effect's run, before the next run.
+
+```typescript
+export const Clock = defineComponent(() => {
+  const now = signal(Date.now());
+  const id = setInterval(() => now(Date.now()), 1000);
+  onCleanup(() => clearInterval(id));
+  const time = computed(() => new Date(now()).toLocaleTimeString()); // disposed with the component
+  return html`<time>${time()}</time>`;
+});
+```
+
+Anywhere else, in an event handler or a store module, nothing owns what is created: it lives until it is disposed, and
+`onCleanup()` throws in a development build, since nothing would call its function.
+
 ---
 
 ## Batch
@@ -236,5 +283,6 @@ The same holds for a `computed` whose subscriber sets the computed's own source;
 | `effect(fn)`      | Side effect, auto-tracked, immediate | `() => void` (dispose)            |
 | `batch(fn)`       | Defer notifications until complete   | `void`                            |
 | `untrack(fn)`     | Read signals without tracking        | `T` (return value of fn)          |
+| `onCleanup(fn)`   | Run `fn` when the component or the effect run that calls it ends | `void`                |
 
 ← [Back to Docs](README.md)

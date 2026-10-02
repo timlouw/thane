@@ -1,7 +1,7 @@
 /**
  * THANE413 — no-aliased-thane-import
  *
- * The compiler finds the template markers (`html`, `css`, `when`, `whenElse`, `repeat`) and
+ * The compiler finds the template markers (`html`, `css`, `when`, `repeat`) and
  * `defineComponent` by their names, so they are imported under those names:
  *
  *   import { defineComponent, html, repeat } from 'thane';  // ✅
@@ -24,9 +24,9 @@ const COMPILED_BY_NAME: ReadonlySet<string> = new Set([
   FN.HTML,
   FN.CSS,
   FN.WHEN,
-  FN.WHEN_ELSE,
   FN.REPEAT,
   FN.DEFINE_COMPONENT,
+  'ref',
 ]);
 
 const importLine = (name: string): string => `import { ${name} } from 'thane'`;
@@ -39,7 +39,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     if (statement.moduleSpecifier.text !== 'thane') continue;
     const clause = statement.importClause;
-    if (!clause || clause.isTypeOnly) continue;
+    if (!clause || clause.phaseModifier === ts.SyntaxKind.TypeKeyword) continue;
     const bindings = clause.namedBindings;
     if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
     if (!bindings || !ts.isNamedImports(bindings)) continue;
