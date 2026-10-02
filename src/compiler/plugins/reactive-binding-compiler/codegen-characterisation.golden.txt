@@ -1432,10 +1432,10 @@
         const _s1 = _el;
         let _p0;
         _e0.textContent = (_p0 = it.x) ?? ''; let _t0;
-        _s0.setAttribute('class', cls()); _s1.style.setProperty('top', top());
+        _s0.className = cls(); _s1.style.setProperty('top', top());
         _insertBefore.call(_ct_b0, _el, _ref);
         const _cleanups = [];
-        _cleanups.push(cls.subscribe(() => { _s0.setAttribute('class', cls()); }, true));
+        _cleanups.push(cls.subscribe(() => { _s0.className = cls(); }, true));
         _cleanups.push(top.subscribe(() => { _s1.style.setProperty('top', top()); }, true));
         return { el: _el, cleanups: _cleanups, value: it,
           update: (it) => { if (_p0 !== (_p0 = it.x)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); } };

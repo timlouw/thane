@@ -488,6 +488,48 @@ export const stripPropertyBoundAttributes = (
   return out;
 };
 
+/**
+ * Markup whose unquoted attribute values that a removed `${…}` left empty (`<input class= type="checkbox">`) are
+ * written as `""`: the browser would read the next attribute as the value. Only the tags are read, outside
+ * their quoted values and outside comments.
+ */
+export const quoteEmptiedValues = (html: string): string => {
+  let out = '';
+  let i = 0;
+  while (i < html.length) {
+    if (html.startsWith('<!--', i)) {
+      const end = html.indexOf('-->', i + 4);
+      const stop = end === -1 ? html.length : end + 3;
+      out += html.slice(i, stop);
+      i = stop;
+      continue;
+    }
+    if (html[i] !== '<' || !/[A-Za-z]/.test(html[i + 1] ?? '')) {
+      out += html[i++];
+      continue;
+    }
+    // A start tag: copied up to its `>`, quoted values as they are
+    for (; i < html.length; i++) {
+      const ch = html[i]!;
+      if (ch === '"' || ch === "'") {
+        const close = html.indexOf(ch, i + 1);
+        const stop = close === -1 ? html.length : close + 1;
+        out += html.slice(i, stop);
+        i = stop - 1;
+        continue;
+      }
+      out += ch;
+      if (ch === '>') {
+        i++;
+        break;
+      }
+      // An unquoted value that is not empty (`href=/about`) is the developer's, and stays
+      if (ch === '=' && (/[\s>]/.test(html[i + 1] ?? '') || html.startsWith('/>', i + 1))) out += '""';
+    }
+  }
+  return out;
+};
+
 /** Build edits that mark each bound element outside the directive ranges with its binding id (BOUND_MARK). */
 export const buildBoundMarkEdits = (elementIdMap: Map<HtmlElement, string>, allRanges: Range[]): TemplateEdit[] => {
   const isInsideRange = buildRangeOverlapChecker(allRanges);

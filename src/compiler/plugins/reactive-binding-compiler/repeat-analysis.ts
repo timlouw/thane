@@ -40,6 +40,7 @@ import {
   BOUND_MARK,
   applyTemplateEdits,
   stripPropertyBoundAttributes,
+  quoteEmptiedValues,
   toRepeatBlock,
   type IdState,
   type TemplateEdit,
@@ -215,9 +216,10 @@ export const generateStaticRepeatTemplate = (
   // extracted. The only ${...} expressions left are item-variable bindings,
   // which are handled at runtime via the element binding paths — so they must
   // all be removed from the static template.
-  staticHtml = stripTemplateExpressions(staticHtml);
-  // Property-bound attributes (checked, disabled, value, …) must not ship in the template
-  staticHtml = stripPropertyBoundAttributes(staticHtml, itemBindings);
+  staticHtml = quoteEmptiedValues(stripTemplateExpressions(staticHtml));
+  // Property-bound attributes (checked, disabled, value, …) must not ship in the template, whether they read
+  // the item or a signal of the component
+  staticHtml = stripPropertyBoundAttributes(staticHtml, [...itemBindings, ...(signalBindings ?? [])]);
 
   // The marks stay: the row's code finds its text markers, anchors and child hosts by them in the
   // template as emitted, which is written without them
@@ -484,11 +486,18 @@ const classifyParsedBindings = (
       // The parser records a bare read as its full ${…} text; strip the braces before deciding
       const exprText = fullExpr.replace(/^\s*\$\{([\s\S]*)\}\s*$/, '$1').trim();
       const bareRead = /^[A-Za-z_$][\w$]*\(\)$/.test(exprText);
+      // A property with the attribute's meaning is written instead (`disabled`, `checked`, `value`), as at a
+      // component's top level: setAttribute('disabled', false) would disable the element
+      const domProperty =
+        binding.type === 'attr' && binding.property
+          ? attributeDomProperty(binding.property, binding.element)
+          : undefined;
       signalBindings.push({
         id: bindingId,
         signalName: binding.signalName,
         type: binding.type,
         ...(binding.property ? { property: binding.property } : {}),
+        ...(domProperty ? { domProperty } : {}),
         ...(bareRead || !exprText
           ? {}
           : { expression: exprText, signalNames: binding.signalNames ?? [binding.signalName] }),

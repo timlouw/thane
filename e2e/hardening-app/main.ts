@@ -51,6 +51,7 @@ import { Ownership } from './probes/ownership.js';
 import { ElementRefs } from './probes/element-refs.js';
 import { Slots } from './probes/slots.js';
 import { BindAndClass } from './probes/bind-and-class.js';
+import { RowSignalAttributes } from './probes/row-signal-attributes.js';
 import { RowDirectives } from './probes/row-directives.js';
 import { RowMethodCall } from './probes/row-method-call.js';
 import { RowTextSpace } from './probes/row-text-space.js';
@@ -111,6 +112,7 @@ const probes: Record<string, ComponentHTMLSelector<any>> = {
   elementRefs: ElementRefs,
   slots: Slots,
   bindAndClass: BindAndClass,
+  rowSignalAttributes: RowSignalAttributes,
   rowDirectives: RowDirectives,
   rowMethodCall: RowMethodCall,
   rowTextSpace: RowTextSpace,

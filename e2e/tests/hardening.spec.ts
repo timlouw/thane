@@ -1866,3 +1866,27 @@ test.describe('bind: and class:', () => {
     await expect(field).toHaveClass('bc-name field long');
   });
 });
+
+test.describe('row attributes that read a signal of the component', () => {
+  test('a boolean attribute and a property are written as properties; a class keeps the next attribute', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'rowSignalAttributes');
+    // disabled=${off()} with off() false: enabled (the row template once kept a bare disabled=)
+    await expect(page.locator('.rsa-box')).toHaveCount(2);
+    for (const box of await page.locator('.rsa-box').all()) await expect(box).toBeEnabled();
+    await setProbe(page, 'rowSignalAttributes', 'off', true);
+    for (const box of await page.locator('.rsa-box').all()) await expect(box).toBeDisabled();
+    await setProbe(page, 'rowSignalAttributes', 'off', false);
+    for (const box of await page.locator('.rsa-box').all()) await expect(box).toBeEnabled();
+    // class=${tone()} before type="checkbox": the input is a checkbox with the class
+    await expect(page.locator('input.calm[type="checkbox"]')).toHaveCount(2);
+    await setProbe(page, 'rowSignalAttributes', 'tone', 'loud');
+    await expect(page.locator('input.loud[type="checkbox"]')).toHaveCount(2);
+    // value=${note()}: the field's value, written again when the signal changes
+    for (const note of await page.locator('.rsa-note').all()) await expect(note).toHaveValue('n');
+    await setProbe(page, 'rowSignalAttributes', 'note', 'm');
+    for (const note of await page.locator('.rsa-note').all()) await expect(note).toHaveValue('m');
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
