@@ -60,7 +60,8 @@ interface InternalComponentResult extends ComponentReturnType {
 }
 
 /** Setup function signature for defineComponent. */
-type SetupFunction<P = {}, S extends string = string> = (ctx: ComponentContext<P, S>) => ComponentReturnType;
+/** A component's setup: its template, styles and hooks, or its template alone (`() => html`…``) */
+type SetupFunction<P = {}, S extends string = string> = (ctx: ComponentContext<P, S>) => ComponentReturnType | Fragment;
 
 /** @internal */
 interface ComponentInstance {

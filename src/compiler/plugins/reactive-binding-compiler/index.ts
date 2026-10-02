@@ -85,6 +85,30 @@ export const findReturnObjects = (setup: ts.ArrowFunction | ts.FunctionExpressio
   return objects;
 };
 
+/**
+ * The html template a setup returns alone, `() => html`…`` or `return html`…``, when that is what it returns
+ * (it has no return object): the component's template, as if it returned `{ template }`.
+ */
+export const findReturnedTemplate = (
+  setup: ts.ArrowFunction | ts.FunctionExpression,
+): ts.TaggedTemplateExpression | undefined => {
+  const isHtml = (node: ts.Expression | undefined): node is ts.TaggedTemplateExpression =>
+    !!node &&
+    ts.isTaggedTemplateExpression(unwrapParens(node)) &&
+    isHtmlTemplate(unwrapParens(node) as ts.TaggedTemplateExpression);
+  if (!ts.isBlock(setup.body))
+    return isHtml(setup.body) ? (unwrapParens(setup.body) as ts.TaggedTemplateExpression) : undefined;
+  let found: ts.TaggedTemplateExpression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionLike(node)) return;
+    if (ts.isReturnStatement(node) && isHtml(node.expression))
+      found = unwrapParens(node.expression) as ts.TaggedTemplateExpression;
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(setup.body, visit);
+  return found;
+};
+
 /** Calls a setup makes that create nothing a component owns: thane's signals, components and template markers */
 const OWNERLESS_CALLS: ReadonlySet<string> = new Set([
   'signal',
@@ -1108,7 +1132,19 @@ const compileComponent = (
   // decides the features, loses its dead properties and receives the binding function.
   const returnObjects = setupArg ? findReturnObjects(setupArg) : [];
   const returnObj = returnObjects[returnObjects.length - 1];
-  const htmlTemplates = setupArg ? findHtmlTemplates(sourceFile, setupArg, returnObjects) : [];
+  // A setup that returns its template alone: the template is the component's, and the returned value its object
+  const returnedTemplate = setupArg && !returnObj ? findReturnedTemplate(setupArg) : undefined;
+  const htmlTemplates = returnedTemplate
+    ? [
+        {
+          node: returnedTemplate,
+          templateStart: returnedTemplate.getStart(sourceFile),
+          templateEnd: returnedTemplate.getEnd(),
+        },
+      ]
+    : setupArg
+      ? findHtmlTemplates(sourceFile, setupArg, returnObjects)
+      : [];
 
   // htmlTemplates is empty without a setup function
   const compiled = compileTemplates(
@@ -1120,8 +1156,10 @@ const compileComponent = (
     false,
     slotPropsOf(dcCall, sourceFile),
   );
-  for (const templateInfo of htmlTemplates) {
-    edits.push({ start: templateInfo.templateStart, end: templateInfo.templateEnd, replacement: '``' });
+  if (!returnedTemplate) {
+    for (const templateInfo of htmlTemplates) {
+      edits.push({ start: templateInfo.templateStart, end: templateInfo.templateEnd, replacement: '``' });
+    }
   }
 
   // An explicit selector is a string literal in the source: write the emitted name over it
@@ -1149,6 +1187,7 @@ const compileComponent = (
 
   // The binding function goes into the component's return object
   const injectBindings = compiled.hasAnyBindings && returnObj !== undefined;
+  const injectReturnedBindings = compiled.hasAnyBindings && returnedTemplate !== undefined;
 
   // `defineComponent<…>(` becomes the registration call; a selector derived from the name goes in
   // as its first argument
@@ -1182,16 +1221,30 @@ const compileComponent = (
     }
   }
 
-  // The compiled template is the registration call's last argument
+  // A returned template becomes the object the setup returns, with the binding function in it
+  if (returnedTemplate) {
+    const params = compiled.elementList ? '_ctx, _ns' : '_ctx';
+    edits.push({
+      start: returnedTemplate.getStart(sourceFile),
+      end: returnedTemplate.getEnd(),
+      replacement: injectReturnedBindings
+        ? `({\n  __b: (${params}) => {\n  ${compiled.bindingsBody.trim()}\n  },\n})`
+        : '({})',
+    });
+  }
+
+  // The compiled template is the registration call's last argument: after the last one written, so that a
+  // trailing comma stays one
   if (compiled.template) {
-    const at = dcCall.getEnd() - 1;
+    const last = dcCall.arguments[dcCall.arguments.length - 1];
+    const at = last ? last.getEnd() : dcCall.getEnd() - 1;
     edits.push({ start: at, end: at, replacement: `, ${templateName}` });
   }
 
   return {
     statement,
     declarations: compiled.staticTemplateCode,
-    helpers: [registerFnName, ...(injectBindings ? compiled.helpers : [])],
+    helpers: [registerFnName, ...(injectBindings || injectReturnedBindings ? compiled.helpers : [])],
     hasStyles,
     domPrototype: compiled.domPrototype,
   };

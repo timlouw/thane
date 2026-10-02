@@ -338,14 +338,19 @@ export const Profile = defineComponent(() => {
 
 Returns inside nested functions, such as event handlers and helpers defined in the setup, are not affected.
 
-## Expression-Body Syntax
+## A Template Alone
 
-For simple components, use an expression-body arrow function:
+A component with nothing but a template returns the template itself:
 
 ```typescript
-export const Badge = defineComponent<{ text: string }>('ui-badge', ({ props }) => ({
-  template: html`<span class="badge">${props.text}</span>`,
-}));
+export const Badge = defineComponent<{ text: string }>(({ props }) => html`<span class="badge">${props.text}</span>`);
+
+export const Counter = defineComponent(() => {
+  const count = signal(0);
+  return html`<button @click=${() => count(count() + 1)}>${count()}</button>`;
+});
 ```
+
+It is the same as returning `{ template }`. A component with styles or hooks returns the object.
 
 ← [Back to Docs](README.md)

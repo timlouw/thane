@@ -39,6 +39,33 @@ mount(App);
   };
 };
 
+describe('setup shapes: the template returned alone', () => {
+  test("a concise body that is a template: lean, the template is the component's", async () => {
+    const r = await compile('export const App = defineComponent(() => html`<p>a</p>`);');
+    expect(r.registration).toBe('var App = __registerComponentLean("app", () => ({}), __tpl);');
+    expect(r.tpl).toBe('<p>a</p>');
+  });
+
+  test('a return of a template in a block body, with bindings: the returned value is the binding object', async () => {
+    const r = await compile(`export const App = defineComponent(() => {
+  const n = signal(1);
+  return html\`<button @click=\${() => n(n() + 1)}>\${n()}</button>\`;
+});`);
+    expect(r.registration).toMatch(
+      /^var App = __registerComponentLean\("app", \(\) => \{\n  const n = signal\(1\);\n  return \{\n    __b: \(_ctx, _ns\) => \{/,
+    );
+    expect(r.tpl).toBe('<button><!---->1<!----></button>');
+  });
+
+  test("a template returned in a nested function is not the setup's", async () => {
+    const r = await compile(`export const App = defineComponent(() => {
+  const make = () => html\`<i>x</i>\`;
+  return { template: html\`<p>a</p>\` };
+});`);
+    expect(r.tpl).toBe('<p>a</p>');
+  });
+});
+
 describe('setup shapes: concise and block bodies', () => {
   test('concise body: lean, template stripped', async () => {
     const r = await compile('export const App = defineComponent(() => ({ template: html`<p>a</p>` }));');
@@ -94,6 +121,17 @@ describe('setup shapes: concise and block bodies', () => {
         '}, __tpl);',
       ].join('\n'),
     );
+  });
+
+  test('a trailing comma after the last argument: the template goes after the argument, before the comma', async () => {
+    const js = await buildAndReadJs(`import { defineComponent, mount } from 'thane';
+export const App = defineComponent(
+  'x-app',
+  () => html\`<p>a</p>\`,
+);
+mount(App);
+`);
+    expect(js).toMatch(/var App = __registerComponentLean\(\s*"x-app",\s*\(\) => \(\{\}\),\s*__tpl\s*\);/);
   });
 
   test('explicit selector: the setup is the second argument', async () => {
