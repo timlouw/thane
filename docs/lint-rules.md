@@ -1,6 +1,6 @@
 # Lint Rules
 
-Thane includes 11 compile-time lint rules (THANE400–THANE413; THANE406, THANE407 and THANE410 are retired) that catch patterns the compiler cannot process correctly. These rules run during `thane dev` and `thane build` — errors prevent the build from completing, warnings are displayed but don't block.
+Thane includes 9 compile-time lint rules (THANE400–THANE413; THANE401, THANE402, THANE406, THANE407 and THANE410 are retired) that catch patterns the compiler cannot process correctly. These rules run during `thane dev` and `thane build` — errors prevent the build from completing, warnings are displayed but don't block.
 
 The compiler reports a few more problems itself, while it compiles a template: see [Template Errors](#template-errors).
 
@@ -9,8 +9,6 @@ The compiler reports a few more problems itself, while it compiles a template: s
 | Code     | Rule                                                                        | Severity |
 | :------- | :-------------------------------------------------------------------------- | :------- |
 | THANE400 | [no-default-export-component](#thane400--no-default-export-component)       | Error    |
-| THANE401 | [component-property-order](#thane401--component-property-order)             | Error    |
-| THANE402 | [lifecycle-arrow-function](#thane402--lifecycle-arrow-function)             | Error    |
 | THANE403 | [require-const-tagged-templates](#thane403--require-const-tagged-templates) | Error    |
 | THANE404 | [no-nested-html-tags](#thane404--no-nested-html-tags)                       | Error    |
 | THANE405 | [no-conditional-template-init](#thane405--no-conditional-template-init)     | Warning  |
@@ -42,68 +40,18 @@ export const MyCounter = defineComponent(() => ({
 
 ---
 
-## THANE401 — component-property-order
+## THANE401 — retired
 
-**Severity:** Error
-
-Properties in the `defineComponent()` return object must follow canonical order: **template → styles → onMount → onDestroy**.
-
-```typescript
-// ❌ BAD — styles before template
-export const A = defineComponent(() => ({
-  styles: css`
-    :host {
-      color: red;
-    }
-  `,
-  template: html`<div />`,
-}));
-
-// ✅ GOOD
-export const A = defineComponent(() => ({
-  template: html`<div />`,
-  styles: css`
-    :host {
-      color: red;
-    }
-  `,
-  onMount: () => {},
-  onDestroy: () => {},
-}));
-```
+THANE401 (component-property-order) required the return object's properties in the order template, styles,
+onMount, onDestroy. The compiler reads them by name, so their order never mattered. The code is not reused.
 
 ---
 
-## THANE402 — lifecycle-arrow-function
+## THANE402 — retired
 
-**Severity:** Error
-
-Lifecycle hooks (`onMount`, `onDestroy`) must be **arrow functions**. Method shorthand and function expressions are rejected to ensure consistent lexical scoping.
-
-```typescript
-// ❌ BAD — method shorthand
-export const A = defineComponent(() => ({
-  template: html`<div />`,
-  onMount() {
-    console.log('hi');
-  },
-}));
-
-// ❌ BAD — function expression
-export const A = defineComponent(() => ({
-  template: html`<div />`,
-  onDestroy: function () {},
-}));
-
-// ✅ GOOD — arrow functions
-export const A = defineComponent(() => ({
-  template: html`<div />`,
-  onMount: () => {
-    console.log('hi');
-  },
-  onDestroy: () => {},
-}));
-```
+THANE402 (lifecycle-arrow-function) required hooks written as arrow functions. Nothing in a hook uses `this`,
+so a hook may be a method (`onMount() {…}`), a function expression, an arrow function or a reference to a
+function (`onMount: start`, `{ onDestroy }`). The code is not reused.
 
 ---
 
@@ -142,11 +90,15 @@ An `html` template inside another is compiled where it is the whole `${…}` (it
 ```typescript
 // ❌ BAD — an html template in a ternary, and in map()
 template: html`<div>${open() ? html`<p>Open</p>` : ''}</div>`;
-template: html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`;
+template: html`<ul
+  >${items().map((i) => html`<li>${i}</li>`)}</ul
+>`;
 
 // ✅ GOOD — a directive chooses, or repeats
 template: html`<div>${whenElse(open(), html`<p>Open</p>`, html``)}</div>`;
-template: html`<ul>${repeat(items(), (i) => html`<li>${i}</li>`)}</ul>`;
+template: html`<ul
+  >${repeat(items(), (i) => html`<li>${i}</li>`)}</ul
+>`;
 
 // ✅ GOOD — a whole ${…} is inlined, like a const fragment
 template: html`<div>${html`<span>nested</span>`}</div>`;
@@ -210,18 +162,20 @@ export const MyCounter = defineComponent(() => { ... });
 
 **Severity:** Error
 
-Components must be exported directly at their declaration site. Aliased exports and re-exports prevent the compiler from deriving the selector correctly.
+A component is exported where it is declared, under the name it is declared under. The compiler derives the
+selector from that name, so an export under another name, or a separate `export { … }` of a local component,
+would name it differently from its selector.
 
 ```typescript
 // ❌ BAD — aliased export
 const _Internal = defineComponent(() => { ... });
 export { _Internal as MyCounter };
 
-// ❌ BAD — re-export
-export { MyCounter } from './counter.js';
-
 // ✅ GOOD — direct named export
 export const MyCounter = defineComponent(() => { ... });
+
+// ✅ GOOD — a re-export of a component declared in another file (a barrel)
+export { MyCounter } from './counter.js';
 ```
 
 ---
@@ -307,16 +261,16 @@ export const App = defineComponent(() => ({ template: html`<p>Hi</p>` }));
 
 These are reported by the compiler while it compiles a template, as build errors. THANE013 is a warning.
 
-| Code     | What it reports                                                                                                |
-| :------- | :------------------------------------------------------------------------------------------------------------- |
-| THANE006 | An attribute written with a `:` prefix (`:src=${url()}`). Write `src=${url()}` instead                         |
-| THANE007 | A `repeat()` row template without exactly one root element, including a row that is only a directive          |
-| THANE008 | A `when()` on the root element of a `repeat()` row. Filter the list, or put `when()` on an inner element        |
+| Code     | What it reports                                                                                                                                                                                                                               |
+| :------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| THANE006 | An attribute written with a `:` prefix (`:src=${url()}`). Write `src=${url()}` instead                                                                                                                                                        |
+| THANE007 | A `repeat()` row template without exactly one root element, including a row that is only a directive                                                                                                                                          |
+| THANE008 | A `when()` on the root element of a `repeat()` row. Filter the list, or put `when()` on an inner element                                                                                                                                      |
 | THANE009 | A template the compiler cannot bind reliably: markup the browser rebuilds (text directly in a table, an `<a>` inside an `<a>`, non-option content in a `<select>`), or a comment written like one of the compiler's own markers (`<!--b0-->`) |
-| THANE010 | A function as `repeat()`'s third argument, which is the empty template. Pass the key function fourth: `repeat(items, row, null, (it) => it.id)` |
-| THANE011 | A `repeat()` empty template that is not one static element: two roots, text outside an element, or a `${…}` in it. It is inserted as one element while the list is empty |
-| THANE012 | A template reads a name that the compiled bindings declare for themselves (a name starting with `_`, an element name such as `b3`, or `e` and `item` in a row), so it would read the compiler's value. Rename the variable |
-| THANE013 | Two components of the build with one selector (declared under one name, each with a derived selector). They share their host class, and the styles of the one registered first apply to both. Rename one, or give it an explicit selector |
+| THANE010 | A function as `repeat()`'s third argument, which is the empty template. Pass the key function fourth: `repeat(items, row, null, (it) => it.id)`                                                                                               |
+| THANE011 | A `repeat()` empty template that is not one static element: two roots, text outside an element, or a `${…}` in it. It is inserted as one element while the list is empty                                                                      |
+| THANE012 | A template reads a name that the compiled bindings declare for themselves (a name starting with `_`, an element name such as `b3`, or `e` and `item` in a row), so it would read the compiler's value. Rename the variable                    |
+| THANE013 | Two components of the build with one selector (declared under one name, each with a derived selector). They share their host class, and the styles of the one registered first apply to both. Rename one, or give it an explicit selector     |
 
 ### THANE007 — one root element per row
 

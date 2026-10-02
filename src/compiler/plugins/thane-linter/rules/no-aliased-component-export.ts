@@ -1,18 +1,18 @@
 /**
  * THANE409 — no-aliased-component-export
  *
- * Components must be exported directly at the declaration site:
+ * A component is exported where it is declared:
  *
  *   export const MyCounter = defineComponent(() => { ... });  // ✅
  *
- * Aliased or re-exported components prevent the compiler from correctly
- * deriving the selector, since the compiler looks at the variable name
- * at the declaration site, not the exported name:
+ * The compiler derives a component's selector from the name it is declared under, so an export under
+ * another name, or a separate export statement, would name it differently from its selector:
  *
  *   const _Internal = defineComponent(() => { ... });
  *   export { _Internal as MyCounter };  // ❌ THANE409
  *
- *   export { MyCounter } from './counter.js';  // ❌ THANE409 (re-export)
+ * A re-export of a component another file declares is fine: a file of re-exports (a barrel) works, and
+ * child calls follow it to the component's own file.
  */
 
 import ts from 'typescript';
@@ -39,10 +39,14 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   };
   collectComponentVars(sourceFile);
 
-  // Check for aliased exports: export { X as Y } where X is a component
-  // Check for re-exports: export { X } from './file.js' (any re-export of a defineComponent)
+  // An export statement of a local component: export { X as Y }, or export { X }
   for (const stmt of sourceFile.statements) {
-    if (ts.isExportDeclaration(stmt) && stmt.exportClause && ts.isNamedExports(stmt.exportClause)) {
+    if (
+      ts.isExportDeclaration(stmt) &&
+      !stmt.moduleSpecifier &&
+      stmt.exportClause &&
+      ts.isNamedExports(stmt.exportClause)
+    ) {
       // Skip type-only export declarations: export type { ... } from '...'
       if (stmt.isTypeOnly) continue;
 
@@ -52,20 +56,6 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
 
         const localName = (spec.propertyName ?? spec.name).text;
         const exportedName = spec.name.text;
-
-        // Re-export from another module — we can't verify if it's a component,
-        // but if the module specifier is present, it's a re-export
-        if (stmt.moduleSpecifier) {
-          // Only warn if the name looks like a PascalCase component name
-          if (/^[A-Z]/.test(exportedName)) {
-            report(
-              spec,
-              `Component re-exports are not supported. Define the component in this file instead: ` +
-                `export const ${exportedName} = defineComponent(...)`,
-            );
-          }
-          continue;
-        }
 
         // Aliased export of a local component variable
         if (componentVarNames.has(localName) && localName !== exportedName) {
@@ -100,7 +90,7 @@ export const noAliasedComponentExport: LintRuleDefinition = {
     code: ErrorCode.NO_ALIASED_COMPONENT_EXPORT,
     name: 'no-aliased-component-export',
     severity: 'error',
-    description: 'Components must be exported directly at the declaration site, not aliased or re-exported.',
+    description: 'A component is exported where it is declared, under its own name.',
   },
   check,
 };

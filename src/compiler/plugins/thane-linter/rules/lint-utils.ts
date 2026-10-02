@@ -4,7 +4,6 @@ import ts from 'typescript';
 import type { Diagnostic, DiagnosticSeverity } from '../../../types.js';
 import { createDiagnostic } from '../../../errors.js';
 import { isDefineComponentCall } from '../../../utils/ast-utils.js';
-import { unwrapParens } from '../../../utils/component-ast.js';
 import { FN } from '../../../utils/constants.js';
 
 /** 1-based line and column of a node's first token (after comments and whitespace). */
@@ -59,34 +58,3 @@ export const declarationKeyword = (list: ts.VariableDeclarationList): 'const' | 
       : list.flags & ts.NodeFlags.Using
         ? 'using'
         : 'var';
-
-/**
- * The return objects THANE401 and THANE402 inspect. For each `defineComponent(…)` call, and each arrow
- * or function expression among its arguments: a concise body that is an object literal (in any number
- * of parentheses), or each top-level `return {…}` statement of a block body, `return ({…})` included.
- * Returns inside other statements or nested functions are not included, and the arguments are not
- * searched for further calls. The compiler finds return objects differently.
- */
-export const findReturnObjects = (root: ts.Node): ts.ObjectLiteralExpression[] => {
-  const results: ts.ObjectLiteralExpression[] = [];
-  const visit = (node: ts.Node): void => {
-    if (!isDefineComponentExpr(node)) {
-      ts.forEachChild(node, visit);
-      return;
-    }
-    for (const arg of node.arguments) {
-      if (!ts.isArrowFunction(arg) && !ts.isFunctionExpression(arg)) continue;
-      if (ts.isBlock(arg.body)) {
-        for (const stmt of arg.body.statements) {
-          const returned = ts.isReturnStatement(stmt) && stmt.expression ? unwrapParens(stmt.expression) : null;
-          if (returned && ts.isObjectLiteralExpression(returned)) results.push(returned);
-        }
-      } else {
-        const expr = unwrapParens(arg.body);
-        if (ts.isObjectLiteralExpression(expr)) results.push(expr);
-      }
-    }
-  };
-  visit(root);
-  return results;
-};

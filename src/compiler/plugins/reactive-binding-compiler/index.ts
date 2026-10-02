@@ -39,17 +39,16 @@ const STRIPPABLE_LIFECYCLE = new Set(['onMount', 'onDestroy']);
 /** Properties that should be stripped when a compiled template is injected */
 const STRIPPABLE_TEMPLATE = new Set(['template']);
 
-/**
- * Check if an arrow function or function expression has an empty body.
- * Matches: `() => {}` and `() => { }` (with optional whitespace).
- */
-const isEmptyArrowFunction = (node: ts.Node): boolean => {
-  if (ts.isArrowFunction(node)) {
-    const body = node.body;
-    return ts.isBlock(body) && body.statements.length === 0;
-  }
-  return false;
-};
+/** A hook that does nothing: an arrow function, a function expression or a method whose block body is empty. */
+const isEmptyHook = (node: ts.Node): boolean =>
+  (ts.isArrowFunction(node) || ts.isFunctionExpression(node) || ts.isMethodDeclaration(node)) &&
+  !!node.body &&
+  ts.isBlock(node.body) &&
+  node.body.statements.length === 0;
+
+/** The name of a return object's property, written as an identifier or a string; null for any other */
+const propertyName = (prop: ts.ObjectLiteralElementLike): string | null =>
+  prop.name && (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)) ? prop.name.text : null;
 
 /**
  * The setup function's return objects, in source order: every `return {…}` in its body,
@@ -82,28 +81,13 @@ const detectFeatures = (
   let hasLifecycle = false;
 
   for (const prop of returnObj?.properties ?? []) {
-    // Handle shorthand property assignment: return { styles }
-    if (ts.isShorthandPropertyAssignment(prop)) {
-      if (prop.name.text === 'styles') {
-        hasStyles = true;
-      }
-      continue;
-    }
-
-    if (!ts.isPropertyAssignment(prop)) continue;
-    const name = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : null;
+    const name = propertyName(prop);
     if (!name) continue;
-
-    // ── Feature detection (styles) ──
-    // Supports both inline css`` and imported CSS file strings
-    if (name === 'styles') {
-      hasStyles = true;
-    }
-
-    // ── Feature detection (lifecycle) — non-empty hooks that survive stripping ──
-    if (STRIPPABLE_LIFECYCLE.has(name) && !isEmptyArrowFunction(prop.initializer)) {
-      hasLifecycle = true;
-    }
+    // Inline css``, an imported stylesheet or a variable
+    if (name === 'styles') hasStyles = true;
+    // A hook in any form (`onMount: () => …`, `onMount() {…}`, `onMount: start`, `{ onMount }`), unless it does nothing
+    const hook = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
+    if (STRIPPABLE_LIFECYCLE.has(name) && !isEmptyHook(hook)) hasLifecycle = true;
   }
 
   return { hasStyles, hasLifecycle };
@@ -123,14 +107,15 @@ const deadPropertyRemovals = (
   const removals: SourceEdit[] = [];
 
   for (const prop of returnObj.properties) {
-    // shorthand props are never strippable
-    if (!ts.isPropertyAssignment(prop)) continue;
-    const name = prop.name && ts.isIdentifier(prop.name) ? prop.name.text : null;
+    // A shorthand property is a variable, which may be read elsewhere: it stays
+    if (!ts.isPropertyAssignment(prop) && !ts.isMethodDeclaration(prop)) continue;
+    const name = propertyName(prop);
     if (!name) continue;
 
     // ── Strippable properties ──
-    const shouldStripLifecycle = STRIPPABLE_LIFECYCLE.has(name) && isEmptyArrowFunction(prop.initializer);
-    const shouldStripTemplate = hasCompiledTemplate && STRIPPABLE_TEMPLATE.has(name);
+    const hook = ts.isPropertyAssignment(prop) ? prop.initializer : prop;
+    const shouldStripLifecycle = STRIPPABLE_LIFECYCLE.has(name) && isEmptyHook(hook);
+    const shouldStripTemplate = hasCompiledTemplate && STRIPPABLE_TEMPLATE.has(name) && ts.isPropertyAssignment(prop);
 
     if (!shouldStripLifecycle && !shouldStripTemplate) continue;
 

@@ -31,8 +31,7 @@ export interface ComponentContext<P = {}, S extends string = string> {
 }
 
 /**
- * Object returned from a defineComponent setup function.
- * Lifecycle hooks are typed as arrow-function properties (enforced by THANE402).
+ * Object returned from a defineComponent setup function. A hook is any function: an arrow, a method or a reference.
  */
 export type ComponentReturnType = {
   /** HTML template (html tagged template literal) */

@@ -2,8 +2,9 @@
  * Lint rule diagnostics, pinned in full: severity, message, code and location (file, line, column).
  *
  * lint-rules.test.ts pins codes and counts. These tests pin everything else a user sees, plus the
- * shapes each rule accepts or skips: which return objects THANE401/402 inspect, which calls count as
- * defineComponent, which tags count as html/css, and how THANE411 keys mount targets.
+ * shapes each rule accepts or skips: which calls count as defineComponent, which tags count as html/css,
+ * and how THANE411 keys mount targets. THANE401 (component-property-order) and THANE402
+ * (lifecycle-arrow-function) are retired: the compiler reads properties in any order and hooks in any form.
  * THANE406 (no-element-id) is retired: compiled code no longer uses ids. THANE407 (single-component-per-file)
  * is retired: each component of a file is compiled on its own. THANE410 (no-cross-file-html-template) is
  * retired: a template can use a fragment another module exports.
@@ -16,8 +17,6 @@ import type { Diagnostic } from '../../types.js';
 import type { LintRuleDefinition } from './rules/types.js';
 import {
   noDefaultExportComponent,
-  componentPropertyOrder,
-  lifecycleArrowFunction,
   requireConstTaggedTemplates,
   noNestedHtmlTags,
   noConditionalTemplateInit,
@@ -65,174 +64,6 @@ describe('THANE400 diagnostics', () => {
     expect(run(noDefaultExportComponent, ['export default lib.defineComponent(() => ({}));'])).toStrictEqual([]);
     expect(run(noDefaultExportComponent, ['export default (defineComponent(() => ({})));'])).toStrictEqual([]);
     expect(run(noDefaultExportComponent, ['export = defineComponent(() => ({}));'])).toStrictEqual([]);
-  });
-});
-
-// ============================================================================
-// THANE401: component-property-order
-// ============================================================================
-
-describe('THANE401 diagnostics', () => {
-  const error = diag('error', ErrorCode.COMPONENT_PROPERTY_ORDER);
-  const before = (name: string, last: string) =>
-    `'${name}' must be declared before '${last}' (required order: template → styles → onMount → onDestroy)`;
-
-  test('reports each property that goes back in the order, against the previous lifecycle property', () => {
-    const src = [
-      'export const A = defineComponent(() => ({',
-      '  onMount: () => {},',
-      '  label: "x",',
-      '  template: html`<div/>`,',
-      '  onDestroy: () => {},',
-      '    styles: css`x`,',
-      '}));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 4, 'template', before('template', 'onMount')),
-      error(src, 6, 'styles', before('styles', 'onDestroy')),
-    ]);
-  });
-
-  test('counts shorthand and method properties; skips string, computed, spread and accessor properties', () => {
-    const src = [
-      'export const A = defineComponent(() => {',
-      '  return {',
-      '    onDestroy() {},',
-      '    template,',
-      "    'onMount': m,",
-      '    [styles]: s,',
-      '    ...rest,',
-      '    get onMount() { return m; },',
-      '    styles: s,',
-      '  };',
-      '});',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 4, 'template', before('template', 'onDestroy')),
-    ]);
-  });
-
-  test('inspects concise bodies in any number of parentheses and top-level returns of block bodies', () => {
-    const src = [
-      'const A = defineComponent(() => (({ styles: s, template: t })));',
-      "const B = defineComponent('x-b', function () {",
-      '  const helper = () => ({ onDestroy: d, onMount: m });',
-      '  return { styles: s, template: t };',
-      '});',
-      'const make = () => defineComponent(() => ({ styles: s, template: t }));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 1, 'template', before('template', 'styles')),
-      error(src, 4, 'template', before('template', 'styles')),
-      error(src, 6, 'template', before('template', 'styles')),
-    ]);
-  });
-
-  test('inspects the setup of a parenthesised arrow only if it is a direct argument', () => {
-    // `(() => …)` is a ParenthesizedExpression, not an arrow function: the first line is skipped.
-    const src = [
-      'const A = defineComponent((() => ({ styles: s, template: t })));',
-      'const B = defineComponent(() => ({ styles: s, template: t }));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([error(src, 2, 'template', before('template', 'styles'))]);
-  });
-
-  test('inspects a parenthesised return; skips nested and non-object returns and calls inside another', () => {
-    const src = [
-      'export const A = defineComponent(() => {',
-      '  if (x) {',
-      '    return { styles: s, template: t };',
-      '  }',
-      '  function inner() {',
-      '    return { styles: s, template: t };',
-      '  }',
-      '  const Inner = defineComponent(() => ({ styles: s, template: t }));',
-      '  return ({ styles: s, template: t });',
-      '});',
-      'const B = defineComponent(() => build({ styles: s, template: t }));',
-      'const C = lib.defineComponent(() => ({ styles: s, template: t }));',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([error(src, 9, 'template', before('template', 'styles'))]);
-  });
-
-  test('inspects every function-like argument and every top-level return', () => {
-    const src = [
-      'const A = defineComponent(() => ({ onDestroy: d, onMount: m }), function () {',
-      '  return { styles: s, template: t };',
-      '  return { onMount: m, styles: s };',
-      '});',
-    ];
-    expect(run(componentPropertyOrder, src)).toStrictEqual([
-      error(src, 1, 'onMount', before('onMount', 'onDestroy')),
-      error(src, 2, 'template', before('template', 'styles')),
-      error(src, 3, 'styles', before('styles', 'onMount')),
-    ]);
-  });
-});
-
-// ============================================================================
-// THANE402: lifecycle-arrow-function
-// ============================================================================
-
-describe('THANE402 diagnostics', () => {
-  const error = diag('error', ErrorCode.LIFECYCLE_ARROW_FUNCTION);
-  const method = (n: string) => `'${n}' must be an arrow function, not a method shorthand (use '${n}: () => { ... }')`;
-  const fnExpr = (n: string) =>
-    `'${n}' must be an arrow function, not a function expression (use '${n}: () => { ... }')`;
-  const inline = (n: string) => `'${n}' must be an inline arrow function (use '${n}: () => { ... }')`;
-
-  test('reports method shorthand, function expressions and other values; accepts arrows', () => {
-    const src = [
-      'const A = defineComponent(() => ({',
-      '  template: html`<div/>`,',
-      '    onMount() {},',
-      '  onDestroy: function () {},',
-      '}));',
-      'const B = defineComponent(() => ({ onMount: handler, onDestroy: make() }));',
-      'const C = defineComponent(() => ({ onMount: () => {}, onDestroy: async () => {} }));',
-    ];
-    expect(run(lifecycleArrowFunction, src)).toStrictEqual([
-      error(src, 3, 'onMount', method('onMount')),
-      error(src, 4, 'onDestroy', fnExpr('onDestroy')),
-      error(src, 6, 'onMount', inline('onMount')),
-      error(src, 6, 'onDestroy', inline('onDestroy')),
-    ]);
-  });
-
-  test('reports shorthand, accessor and string-named hooks; skips other properties', () => {
-    const src = [
-      'const A = defineComponent(() => ({',
-      '  onMount,',
-      '  get onDestroy() { return d; },',
-      "  'onMount': function () {},",
-      '  onClick() {},',
-      '}));',
-    ];
-    expect(run(lifecycleArrowFunction, src)).toStrictEqual([
-      error(src, 2, 'onMount', inline('onMount')),
-      error(src, 3, 'get', `'onDestroy' must be an arrow function, not an accessor (use 'onDestroy: () => { ... }')`),
-      error(src, 4, "'onMount'", fnExpr('onMount')),
-    ]);
-  });
-
-  test('inspects the same return objects as THANE401', () => {
-    const src = [
-      'const A = defineComponent((() => (({ onMount() {} }))));',
-      "const B = defineComponent('x-b', function () {",
-      '  if (x) return { onMount() {} };',
-      '  const helper = () => ({ onMount() {} });',
-      '  return ({ onDestroy() {} });',
-      '  return { onDestroy() {} };',
-      '});',
-      'const C = defineComponent(() => ({ onMount() {} }), () => ({ onDestroy() {} }));',
-      'const D = defineComponent(() => ({ template: t, inner: defineComponent(() => ({ onMount() {} })) }));',
-    ];
-    expect(run(lifecycleArrowFunction, src)).toStrictEqual([
-      error(src, 5, 'onDestroy', method('onDestroy')),
-      error(src, 6, 'onDestroy', method('onDestroy')),
-      error(src, 8, 'onMount', method('onMount')),
-      error(src, 8, 'onDestroy', method('onDestroy')),
-    ]);
   });
 });
 
@@ -379,9 +210,6 @@ describe('THANE408 diagnostics', () => {
 
 describe('THANE409 diagnostics', () => {
   const error = diag('error', ErrorCode.NO_ALIASED_COMPONENT_EXPORT);
-  const reExport = (name: string) =>
-    `Component re-exports are not supported. Define the component in this file instead: ` +
-    `export const ${name} = defineComponent(...)`;
   const aliased = (local: string, exported: string) =>
     `Aliased component export is not supported: '${local}' exported as '${exported}'. ` +
     'The compiler derives the selector from the declaration name, not the exported name. ' +
@@ -390,7 +218,7 @@ describe('THANE409 diagnostics', () => {
     `Deferred component export is not supported. The compiler requires the export keyword ` +
     `on the declaration: export const ${name} = defineComponent(...)`;
 
-  test('reports aliased and deferred exports of local components, and PascalCase re-exports', () => {
+  test('reports aliased and deferred exports of local components; a re-export is fine', () => {
     const src = [
       'const Inner = defineComponent(() => ({ template: html`<a/>` }));',
       'const Plain = defineComponent(() => ({ template: html`<b/>` }));',
@@ -407,8 +235,6 @@ describe('THANE409 diagnostics', () => {
       error(src, 7, 'Inner as', aliased('Inner', 'Outer')),
       error(src, 7, 'Plain', deferred('Plain')),
       error(src, 7, 'Deep', deferred('Deep')),
-      error(src, 8, 'Card', reExport('Card')),
-      error(src, 9, 'x as', reExport('Button')),
     ]);
   });
 });

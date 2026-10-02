@@ -183,6 +183,53 @@ describe('setup shapes: lifecycle hooks', () => {
     );
   });
 
+  test('a method, a function expression, a reference and a shorthand hook: full, each kept', async () => {
+    const method = await compile(`export const App = defineComponent(() => ({
+  template: html\`<p>a</p>\`,
+  onMount() { log('m'); },
+  onDestroy: function () { log('d'); },
+}));`);
+    expect(method.registration).toBe(
+      [
+        'var App = __registerComponent("app", () => ({',
+        '  onMount() {',
+        '    log("m");',
+        '  },',
+        '  onDestroy: function() {',
+        '    log("d");',
+        '  }',
+        '}), __tpl);',
+      ].join('\n'),
+    );
+    const reference = await compile(`const start = () => log('m');
+export const App = defineComponent(() => {
+  const onDestroy = () => log('d');
+  return { template: html\`<p>a</p>\`, onMount: start, onDestroy };
+});`);
+    expect(reference.registration).toContain('__registerComponent("app"');
+    expect(reference.registration).toContain('return { onMount: start, onDestroy };');
+  });
+
+  test('an empty method or function expression hook is stripped like an empty arrow: lean', async () => {
+    const r = await compile(`export const App = defineComponent(() => ({
+  template: html\`<p>a</p>\`,
+  onMount() {},
+  onDestroy: function () {},
+}));`);
+    expect(r.registration).toBe('var App = __registerComponentLean("app", () => ({}), __tpl);');
+  });
+
+  test('properties in any order: styles before the template', async () => {
+    const r = await compile(`export const App = defineComponent(() => ({
+  styles: css\`p { color: red; }\`,
+  onMount: () => log('m'),
+  template: html\`<p>a</p>\`,
+}));`);
+    expect(r.tpl).toBe('<p>a</p>');
+    expect([r.stylesCall, r.stylesImported]).toEqual([true, true]);
+    expect(r.registration).toContain('onMount: () => log("m")');
+  });
+
   test('a concise-body hook counts as non-empty: full', async () => {
     const r = await compile(`export const App = defineComponent(() => ({
   template: html\`<p>a</p>\`,

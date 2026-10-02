@@ -1,7 +1,7 @@
 /**
  * Lint rule unit tests
  *
- * Tests the Thane lint rules THANE400–THANE411 (THANE406, THANE407 and THANE410 are retired) by parsing
+ * Tests the Thane lint rules THANE400–THANE411 (THANE401, THANE402, THANE406, THANE407 and THANE410 are retired) by parsing
  * source strings into TS ASTs and running each rule's check function.
  */
 
@@ -15,8 +15,6 @@ import type { Diagnostic } from '../../types.js';
 import { createBuildConfig, resolveCLIOptions } from '../../cli/cli-common.js';
 import {
   noDefaultExportComponent,
-  componentPropertyOrder,
-  lifecycleArrowFunction,
   requireConstTaggedTemplates,
   noNestedHtmlTags,
   noConditionalTemplateInit,
@@ -50,96 +48,6 @@ describe('THANE400 — no-default-export-component', () => {
   test('ignores non-component default exports', () => {
     const src = `export default { foo: 'bar' };`;
     expect(noDefaultExportComponent.check(parse(src), 'test.ts')).toEqual([]);
-  });
-});
-
-// ============================================================================
-// THANE401 — component-property-order
-// ============================================================================
-
-describe('THANE401 — component-property-order', () => {
-  test('passes with correct order: template → styles → onMount → onDestroy', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      styles: css\`:host { color: red }\`,
-      onMount: () => {},
-      onDestroy: () => {},
-    }));`;
-    expect(componentPropertyOrder.check(parse(src), 'test.ts')).toEqual([]);
-  });
-
-  test('passes with partial properties in order', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onDestroy: () => {},
-    }));`;
-    expect(componentPropertyOrder.check(parse(src), 'test.ts')).toEqual([]);
-  });
-
-  test('fails when styles comes before template', () => {
-    const src = `export const A = defineComponent(() => ({
-      styles: css\`:host { color: red }\`,
-      template: html\`<div/>\`,
-    }));`;
-    const d = componentPropertyOrder.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.COMPONENT_PROPERTY_ORDER]);
-  });
-
-  test('fails when onMount comes before template', () => {
-    const src = `export const A = defineComponent(() => ({
-      onMount: () => {},
-      template: html\`<div/>\`,
-    }));`;
-    const d = componentPropertyOrder.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.COMPONENT_PROPERTY_ORDER]);
-  });
-});
-
-// ============================================================================
-// THANE402 — lifecycle-arrow-function
-// ============================================================================
-
-describe('THANE402 — lifecycle-arrow-function', () => {
-  test('passes with arrow function lifecycle hooks', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onMount: () => {},
-      onDestroy: () => {},
-    }));`;
-    expect(lifecycleArrowFunction.check(parse(src), 'test.ts')).toEqual([]);
-  });
-
-  test('fails on method shorthand onMount', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onMount() { console.log('hi'); },
-    }));`;
-    const d = lifecycleArrowFunction.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.LIFECYCLE_ARROW_FUNCTION]);
-  });
-
-  test('fails on function expression onDestroy', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onDestroy: function() {},
-    }));`;
-    const d = lifecycleArrowFunction.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.LIFECYCLE_ARROW_FUNCTION]);
-  });
-
-  test('reports both lifecycle hooks if both are wrong', () => {
-    const src = `export const A = defineComponent(() => ({
-      template: html\`<div/>\`,
-      onMount() {},
-      onDestroy: function() {},
-    }));`;
-    const d = lifecycleArrowFunction.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(2);
-    expect(codes(d)).toEqual([ErrorCode.LIFECYCLE_ARROW_FUNCTION, ErrorCode.LIFECYCLE_ARROW_FUNCTION]);
   });
 });
 
@@ -289,11 +197,9 @@ describe('THANE409 — no-aliased-component-export', () => {
     expect(codes(d)).toEqual([ErrorCode.NO_ALIASED_COMPONENT_EXPORT]);
   });
 
-  test('fails with re-export from another module', () => {
+  test('passes with a re-export from another module (a barrel)', () => {
     const src = `export { MyCounter } from './counter.js';`;
-    const d = noAliasedComponentExport.check(parse(src), 'test.ts');
-    expect(d).toHaveLength(1);
-    expect(codes(d)).toEqual([ErrorCode.NO_ALIASED_COMPONENT_EXPORT]);
+    expect(noAliasedComponentExport.check(parse(src), 'test.ts')).toEqual([]);
   });
 
   test('passes with non-PascalCase re-export', () => {

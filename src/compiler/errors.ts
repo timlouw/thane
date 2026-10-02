@@ -24,8 +24,9 @@ export enum ErrorCode {
 
   // Lint rules
   NO_DEFAULT_EXPORT_COMPONENT = 'THANE400',
-  COMPONENT_PROPERTY_ORDER = 'THANE401',
-  LIFECYCLE_ARROW_FUNCTION = 'THANE402',
+  // THANE401 (component-property-order) is retired and not reused: the order of a component's properties
+  // never mattered to the compiler
+  // THANE402 (lifecycle-arrow-function) is retired and not reused: a hook may be written in any form
   REQUIRE_CONST_TAGGED_TEMPLATES = 'THANE403',
   NO_NESTED_HTML_TAGS = 'THANE404',
   NO_CONDITIONAL_TEMPLATE_INIT = 'THANE405',

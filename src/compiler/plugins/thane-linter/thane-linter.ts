@@ -26,7 +26,7 @@ export interface ThaneLinterOptions {
   extraRules?: LintRuleDefinition[];
 
   /**
-   * Rule codes to suppress (e.g. ['THANE401'] to silence property-order warnings).
+   * Rule codes to suppress (e.g. ['THANE405'] to silence the conditional-template warning).
    */
   suppress?: string[];
 }
