@@ -24,13 +24,10 @@ import { defineComponent, signal, html, when } from 'thane';
 
 export const Toggle = defineComponent(() => {
   const show = signal(true);
-
-  return {
-    template: html`
-      <button @click=${() => show(!show())}>Toggle</button>
-      <p ${when(show())}>Now you see me</p>
-    `,
-  };
+  return html`
+    <button @click=${show(!show())}>Toggle</button>
+    <p ${when(show())}>Now you see me</p>
+  `;
 });
 ```
 
@@ -43,16 +40,13 @@ that carries it: to show text, or several elements, use the content form.
 ```typescript
 export const LoginStatus = defineComponent(() => {
   const isLoggedIn = signal(false);
-
-  return {
-    template: html`
-      ${when(
-        isLoggedIn(),
-        html`<p>Welcome back! <button @click=${() => isLoggedIn(false)}>Log out</button></p>`,
-        html`<p>Please <button @click=${() => isLoggedIn(true)}>log in</button></p>`,
-      )}
-    `,
-  };
+  return html`
+    ${when(
+      isLoggedIn(),
+      html`<p>Welcome back! <button @click=${isLoggedIn(false)}>Log out</button></p>`,
+      html`<p>Please <button @click=${isLoggedIn(true)}>log in</button></p>`,
+    )}
+  `;
 });
 ```
 
@@ -63,7 +57,7 @@ A branch is an `html` template, a fragment (a `const` holding one, or one anothe
 component call: `when(open(), Dialog({ title }))`. It may hold any number of nodes, text included:
 
 ```typescript
-template: html`
+html`
   ${when(
     isLoggedIn(),
     html`<h2>Welcome back, ${name()}</h2>
@@ -88,11 +82,11 @@ The then-branch can be a function of the condition's value. It receives the valu
 ```typescript
 const user = signal<User | null>(null);
 
-template: html`
+html`
   ${when(
     user(),
     (u) => html`<h2>${u.name}</h2>
-      <button @click=${() => greet(u)}>Greet</button>
+      <button @click=${greet(u)}>Greet</button>
       ${Avatar({ url: u.avatarUrl })}`,
     html`<p>Signed out</p>`,
   )}
@@ -125,7 +119,7 @@ else is a build error (THANE014). In a `repeat()` row the condition can read the
 A condition is any expression; it is read for its truthiness, as in JavaScript:
 
 ```typescript
-template: html`
+html`
   <div ${when(count() > 0)}>Count is positive</div>
   <div ${when(items().length === 0)}>No items</div>
   ${when(!isLoading() && error() === null, html`<p>Content loaded</p>`)}
@@ -153,32 +147,27 @@ or a branch that is not a template is a build error (THANE014).
 
 ## Lifecycle
 
-When `when()` hides a child component, that component's `onDestroy` runs. When shown again, it mounts as a new
-instance:
+When `when()` hides a child component, the component is destroyed: its `onDestroy` and `onCleanup()` functions run.
+When shown again, it mounts as a new instance:
 
 ```typescript
 export const Timer = defineComponent(() => {
   const elapsed = signal(0);
-  let id: number;
-
   return {
     template: html`<p>Elapsed: ${elapsed()}s</p>`,
     onMount: () => {
-      id = setInterval(() => elapsed(elapsed() + 1), 1000);
+      const id = setInterval(() => elapsed(elapsed() + 1), 1000);
+      onCleanup(() => clearInterval(id));
     },
-    onDestroy: () => clearInterval(id),
   };
 });
 
 export const Parent = defineComponent(() => {
   const showTimer = signal(true);
-
-  return {
-    template: html`
-      <button @click=${() => showTimer(!showTimer())}>Toggle Timer</button>
-      ${when(showTimer(), Timer())}
-    `,
-  };
+  return html`
+    <button @click=${showTimer(!showTimer())}>Toggle Timer</button>
+    ${when(showTimer(), Timer())}
+  `;
 });
 ```
 
@@ -191,7 +180,7 @@ components, and other directives. A `when()` can in turn be inside `repeat()` ro
 at any depth:
 
 ```typescript
-template: html`
+html`
   <div ${when(isLoggedIn())}>
     <p>Welcome back!</p>
     <button @click=${logout}>Log out</button>
@@ -205,7 +194,7 @@ template: html`
 From the [e-commerce app](../examples/e-commerce-app.md):
 
 ```typescript
-template: html`
+html`
   <div class="cartContainer">
     ${when(
       cartCount() === 0,
@@ -218,7 +207,7 @@ template: html`
               <li class="cartItem">
                 <h3>${product().title}</h3>
                 <p>Price: R${(product().price * product().cartCount).toFixed(2)}</p>
-                <button @click=${() => removeItem(product().id)}>Remove</button>
+                <button @click=${removeFromCart(product().id)}>Remove</button>
               </li>
             `,
             { key: (product) => product().id },

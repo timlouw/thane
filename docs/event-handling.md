@@ -7,7 +7,7 @@ Bind DOM events using the `@event` syntax inside `html` templates.
 ```typescript
 const handleClick = () => console.log('Clicked!');
 
-template: html`<button @click=${handleClick}>Click me</button>`;
+html`<button @click=${handleClick}>Click me</button>`;
 ```
 
 The compiler transforms `@click=${handler}` into an `addEventListener('click', handler)` call.
@@ -23,10 +23,11 @@ called, and so would `@click=${open() ? close : show}`. Pass the handler itself,
 
 ## Inline Handlers
 
-Use inline arrow functions directly:
+Use inline arrow functions directly, or the call itself, which runs on the event:
 
 ```typescript
-template: html`<button @click=${() => count(count() + 1)}>+1</button>`;
+html`<button @click=${() => count(count() + 1)}>+1</button>`;
+html`<button @click=${count(count() + 1)}>+1</button>`; // the same
 ```
 
 ## Event Object
@@ -37,7 +38,7 @@ Handlers receive the standard DOM event object. The type check that `thane build
 type error there:
 
 ```typescript
-template: html`<button @click=${(e: KeyboardEvent) => e.key}>Go</button>`;
+html`<button @click=${(e: KeyboardEvent) => e.key}>Go</button>`;
 // error TS1360: Type '(e: KeyboardEvent) => string' does not satisfy the expected type 'ThaneEventListener<"click">'.
 ```
 
@@ -45,8 +46,9 @@ Outside a list row the handler is the element's own listener, so `e.currentTarge
 
 ### In the Editor
 
-The editor sees the same types with Thane's TypeScript plugin: hovers, completions and errors inside handlers.
-Add it to `tsconfig.json`, and in VS Code choose "Use Workspace Version" of TypeScript:
+The editor sees the same types with Thane's TypeScript plugin: hovers, completions and errors inside handlers. A
+`tsconfig.json` that extends `thane/tsconfig.json` has it already; otherwise add it, and in VS Code choose "Use Workspace
+Version" of TypeScript:
 
 ```json
 {
@@ -59,7 +61,8 @@ Add it to `tsconfig.json`, and in VS Code choose "Use Workspace Version" of Type
 The plugin keeps a second language service over the sources with the template values typed, and answers from it
 for a file with templates (its errors) and for a position inside a `${…}` (hovers, completions, signature help);
 everything else is the editor's own. Without the plugin an untyped parameter is `any` in the editor, and the
-build's type check still reports a wrong one. A handler can also be typed explicitly:
+build's type check still reports a wrong one. For a field's value, `bind:value` needs no handler at all
+([Two-Way Bindings](templates.md#two-way-bindings)). A handler can also be typed explicitly:
 
 ```typescript
 const handleInput = (event: Event) => {
@@ -67,7 +70,7 @@ const handleInput = (event: Event) => {
   query(target.value);
 };
 
-template: html`<input @input=${handleInput} />`;
+html`<input @input=${handleInput} />`;
 ```
 
 For mouse events:
@@ -77,13 +80,13 @@ const handleClick = (event: MouseEvent) => {
   console.log(event.clientX, event.clientY);
 };
 
-template: html`<div @click=${handleClick}>Click anywhere</div>`;
+html`<div @click=${handleClick}>Click anywhere</div>`;
 ```
 
 ## Common Events
 
 ```typescript
-template: html`
+html`
   <input @input=${onInput} @change=${onChange} @focus=${onFocus} @blur=${onBlur} />
   <form @submit=${onSubmit}>
     <button @click=${onClick}>Submit</button>
@@ -97,9 +100,9 @@ template: html`
 Modifiers after the event name do the common work of a handler, written once in the attribute:
 
 ```typescript
-template: html`
+html`
   <form @submit.prevent=${save}>…</form>
-  <button @click.stop=${() => addToCart(product.id)}>Add to Cart</button>
+  <button @click.stop=${addToCart(product.id)}>Add to Cart</button>
   <input @keydown.enter=${search} @keydown.esc=${() => query('')} />
   <div class="backdrop" @click.self=${close}>…</div>
   <button @click.once=${start}>Start</button>
@@ -143,7 +146,7 @@ With the router, a plain `<a href="/about">` to a route already navigates in the
 ```typescript
 import { navigate } from 'thane/router';
 
-template: html`
+html`
   <button @click=${navigate('/')}>Home</button>
   <tr @click=${navigate('/users/:id', { id: user.id })}>…</tr>
 `;
@@ -152,7 +155,7 @@ template: html`
 On a link with an `href`, add `.prevent` so the browser does not follow it as well:
 
 ```typescript
-template: html`<a href="/" @click.prevent=${navigate('/')}>Home</a>`;
+html`<a href="/" @click.prevent=${navigate('/')}>Home</a>`;
 ```
 
 ← [Back to Docs](README.md)

@@ -9,11 +9,7 @@ Define signals inside `defineComponent` for state that belongs to a single compo
 ```typescript
 export const Counter = defineComponent(() => {
   const count = signal(0);
-  const increment = () => count(count() + 1);
-
-  return {
-    template: html`<button @click=${increment}>Count: ${count()}</button>`,
-  };
+  return html`<button @click=${count(count() + 1)}>Count: ${count()}</button>`;
 });
 ```
 
@@ -36,9 +32,7 @@ export const doubled = computed(() => count() * 2);
 import { defineComponent, html } from 'thane';
 import { count, doubled } from '../state/global-state.js';
 
-export const Display = defineComponent(() => ({
-  template: html`<p>${count()} × 2 = ${doubled()}</p>`,
-}));
+export const Display = defineComponent(() => html`<p>${count()} × 2 = ${doubled()}</p>`);
 ```
 
 ```typescript
@@ -46,12 +40,26 @@ export const Display = defineComponent(() => ({
 import { defineComponent, html } from 'thane';
 import { count } from '../state/global-state.js';
 
-export const Controls = defineComponent(() => ({
-  template: html`<button @click=${() => count(count() + 1)}>Increment</button>`,
-}));
+export const Controls = defineComponent(() => html`<button @click=${count(count() + 1)}>Increment</button>`);
 ```
 
 Both components react to the same `count` signal. When `Controls` increments it, `Display` updates automatically.
+
+### Writes Kept in the Store
+
+A store can hand out its signals read-only and keep the writes to its own functions: a `ReadonlySignal` can be read
+and followed, but not written, so every change goes through the store.
+
+```typescript
+// state/cart.ts
+import { signal, type ReadonlySignal } from 'thane';
+
+const items = signal<string[]>([]);
+export const cart: ReadonlySignal<string[]> = items;
+export const addToCart = (id: string) => items([...items(), id]);
+```
+
+`cart()` in a template follows the cart; `cart([])` elsewhere is a type error.
 
 ## Nested Signals for Lists
 
@@ -74,10 +82,12 @@ export const products = signal<Signal<Product>[]>([]);
 
 ### Why Nested Signals?
 
-With a flat `Signal<Product[]>`, any change to any product re-renders the entire list. With nested signals, updating a single product's `cartCount` only updates that product's DOM:
+With a flat `Signal<Product[]>`, changing one product means writing a new array: every list that shows it compares
+each row with the new array (by key, which is cheap) and updates the changed row. With nested signals, writing one
+product's signal updates the bindings that read it, and no list is touched:
 
 ```typescript
-// Update one product — only its bindings re-render
+// Update one product: only its bindings update
 const target = products().find((p) => p().id === productId);
 if (target) {
   target({ ...target(), cartCount: target().cartCount + 1 });
@@ -139,7 +149,7 @@ the router leaves it:
 export const CartPage = defineComponent(() => {
   const cartProducts = computed(() => products().filter((p) => p().cartCount > 0));
   effect(() => (document.title = `Cart (${cartProducts().length})`));
-  return { template: html`…` };
+  return html`…`;
 });
 ```
 
@@ -217,5 +227,6 @@ Navigating between routes that import `user` sees the same signal instance. The 
 | Nested signals (`Signal<Signal<T>[]>`) | Lists where individual items update independently   |
 | `computed()`                           | Derived values (totals, filters, formatted strings) |
 | `.subscribe()` + `localStorage`        | Persist state across page reloads                   |
+| A `ReadonlySignal` and actions          | A store whose writes go through its own functions   |
 
 ← [Back to Docs](README.md)

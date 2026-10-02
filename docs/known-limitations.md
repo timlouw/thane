@@ -40,9 +40,11 @@ a signal again, rename it, or reload the page. A change that reaches the entry r
 - `html` and `css` tagged templates must be assigned to `const` (THANE403)
 - Components must use named exports, never default exports (THANE400)
 
-### No Conditional Template Initialization
+### No Conditional Template Variables
 
-Template variables cannot use ternary or logical operators (THANE405). Use `when()` for conditional rendering instead.
+A template variable is one template: `const body = ok ? html`…` : html`…`` is a build error (THANE405). Choose in
+the template instead, where a ternary of templates is compiled as `when()`: `${ok ? html`…` : html`…`}`
+([JavaScript Control Flow](templates.md#javascript-control-flow)).
 
 ### User IDs
 
@@ -52,11 +54,11 @@ A comment written like one of the compiler's own markers (`<!--b0-->`) is report
 
 ### One Root Element per Repeat Row
 
-Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is only a directive (a `when()`, `when()` or nested `repeat()`) is THANE007 as well. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
+Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is only a directive (a `when()` or a nested `repeat()`) is THANE007 as well. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
 
 For the same reason a row's root element cannot carry `when()` (THANE008): filter the list, or put the `when()` on an element inside the row.
 
-Inside the row, anything a component template can hold works, at any depth: bindings, event handlers, child components, `when()`, `when()` and further lists.
+Inside the row, anything a component template can hold works, at any depth: bindings, event handlers, child components, `when()` and further lists. A ref names one element, so a row cannot hold one (THANE016).
 
 ### Empty Templates Are Static
 
@@ -124,7 +126,7 @@ export const Page = defineComponent(() => {
 
 ### Single Router Instance
 
-Only one router instance is supported. Calling `mount()` with a `router` option a second time logs a warning and is ignored.
+Only one router instance is supported. Calling `mount()` with `routes` a second time logs a warning and is ignored.
 
 ### Circular Signal Dependencies
 
@@ -188,5 +190,8 @@ Route patterns starting with `/:param` are rejected at runtime. Every route must
 ### Route Type Generation
 
 Type-safe routing requires running `thane dev`, `thane build`, or `thane types` at least once to generate the `.thane/types/router/` type definitions. Until then, `route.params` is typed as `Record<string, string>` and `navigate()` accepts any string.
+
+A page's `route.params` are typed through its explicit selector, which the route types map to the page's route: a
+page whose selector is derived from its name reads them as `Record<string, string>`.
 
 ← [Back to Docs](README.md)

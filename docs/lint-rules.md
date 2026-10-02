@@ -34,14 +34,13 @@ Components must use **named exports**, not default exports. The compiler auto-de
 
 ```typescript
 // ❌ BAD — default export, no name for the compiler
-export default defineComponent(() => ({
-  template: html`<div>Hello</div>`,
-}));
+export default defineComponent(() => html`<div>Hello</div>`);
 
 // ✅ GOOD — named export, selector derived as "my-counter"
-export const MyCounter = defineComponent(() => ({
-  template: html`<div>Hello</div>`,
-}));
+export const MyCounter = defineComponent(() => html`<div>Hello</div>`);
+
+// ✅ GOOD — a page a lazy route loads may also be its module's default export, by name
+export default MyCounter;
 ```
 
 ---
@@ -101,16 +100,16 @@ ternary in content with a template on one side and text on the other.
 
 ```typescript
 // ❌ BAD — a template passed to a function, and a ternary of a template and text
-template: html`<div>${wrap(html`<p>Open</p>`)}</div>`;
-template: html`<div>${open() ? html`<p>Open</p>` : 'closed'}</div>`;
+html`<div>${wrap(html`<p>Open</p>`)}</div>`;
+html`<div>${open() ? html`<p>Open</p>` : 'closed'}</div>`;
 
 // ✅ GOOD — control flow or a directive chooses, or repeats
-template: html`<div>${open() ? html`<p>Open</p>` : html`<p>Closed</p>`}</div>`;
-template: html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`;
-template: html`<div>${when(open(), html`<p>Open</p>`)}</div>`;
+html`<div>${open() ? html`<p>Open</p>` : html`<p>Closed</p>`}</div>`;
+html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`;
+html`<div>${when(open(), html`<p>Open</p>`)}</div>`;
 
 // ✅ GOOD — a whole ${…} is inlined, like a const fragment
-template: html`<div>${html`<span>nested</span>`}</div>`;
+html`<div>${html`<span>nested</span>`}</div>`;
 ```
 
 ---
@@ -128,8 +127,8 @@ const tpl = isAdmin ? html`<div>Admin</div>` : html`<div>User</div>`;
 // ❌ BAD — logical AND
 const tpl = show && html`<div>Content</div>`;
 
-// ✅ GOOD — when() in the template chooses
-template: html`<div>${when(isAdmin(), html`<p>Admin</p>`, html`<p>User</p>`)}</div>`;
+// ✅ GOOD — the template chooses: a ternary of templates is compiled as when()
+html`<div>${isAdmin() ? html`<p>Admin</p>` : html`<p>User</p>`}</div>`;
 ```
 
 ---
@@ -224,22 +223,20 @@ mount(Nav, { target: document.getElementById('nav')! });
 
 **Severity:** Error
 
-A component's setup function returns **one object**. The compiler builds one static template per component, from the last object returned, so an earlier `return` would render the same template and lose its own hooks and styles. Returns inside nested functions (callbacks, helpers) are not counted.
+A component's setup function returns **once**: one object, or one template alone. The compiler builds one static template per component, from the last return, so an earlier `return` would render the same template and lose its own hooks and styles, or, for a template alone, render nothing. Returns inside nested functions (callbacks, helpers) are not counted.
 
 ```typescript
 // ❌ BAD — an early return with its own template
 export const Card = defineComponent(() => {
   const ready = signal(false);
-  if (!ready()) return { template: html`<p>Loading…</p>` };
-  return { template: html`<p>Ready</p>` };
+  if (!ready()) return html`<p>Loading…</p>`;
+  return html`<p>Ready</p>`;
 });
 
-// ✅ GOOD — one return object; the template chooses
+// ✅ GOOD — one return; the template chooses
 export const Card = defineComponent(() => {
   const ready = signal(false);
-  return {
-    template: html`${when(ready(), html`<p>Ready</p>`, html`<p>Loading…</p>`)}`,
-  };
+  return html`${when(ready(), html`<p>Ready</p>`, html`<p>Loading…</p>`)}`;
 });
 ```
 
@@ -257,11 +254,11 @@ import { defineComponent, html as h } from 'thane';
 
 // ❌ BAD — read through a namespace import
 import * as thane from 'thane';
-export const App = thane.defineComponent(() => ({ template: thane.html`<p>Hi</p>` }));
+export const App = thane.defineComponent(() => thane.html`<p>Hi</p>`);
 
 // ✅ GOOD — imported under their own names
 import { defineComponent, html } from 'thane';
-export const App = defineComponent(() => ({ template: html`<p>Hi</p>` }));
+export const App = defineComponent(() => html`<p>Hi</p>`);
 ```
 
 ---
@@ -276,14 +273,14 @@ event and set to it, and `when()` and `repeat()` would get a function, which is 
 
 ```typescript
 // ❌ BAD
-template: html`<p class=${theme}>${count}</p>`;
-template: html`<input @input=${query} />`;
-template: html`<p ${when(open)}>…</p>`;
+html`<p class=${theme}>${count}</p>`;
+html`<input @input=${query} />`;
+html`<p ${when(open)}>…</p>`;
 
 // ✅ GOOD
-template: html`<p class=${theme()}>${count()}</p>`;
-template: html`<input @input=${(e) => query(e.currentTarget.value)} />`;
-template: html`<p ${when(open())}>…</p>`;
+html`<p class=${theme()}>${count()}</p>`;
+html`<input @input=${(e) => query(e.currentTarget.value)} />`;
+html`<p ${when(open())}>…</p>`;
 ```
 
 It reports a name the file declares as `signal(…)` or `computed(…)`, in the scope the template reads it from: a row's
@@ -320,13 +317,11 @@ and read it in the child's template.
 
 ```typescript
 // ⚠ the count when Badge mounts
-template: html`${Badge({ count: count() })}`;
+html`${Badge({ count: count() })}`;
 
 // ✅ Badge reads the signal: ${props.count()}
-template: html`${Badge({ count })}`;
-export const Badge = defineComponent<{ count: ReadonlySignal<number> }>(({ props }) => ({
-  template: html`<b>${props.count()}</b>`,
-}));
+html`${Badge({ count })}`;
+export const Badge = defineComponent<{ count: ReadonlySignal<number> }>(({ props }) => html`<b>${props.count()}</b>`);
 ```
 
 A read inside a function (`onPick: () => select(count())`) is not reported: the function reads the signal when it
@@ -407,11 +402,11 @@ The binding code the compiler writes into each component declares variables of i
 ```typescript
 // ❌ BAD — `_subs` is a name of the compiled bindings
 const _subs = signal(0);
-return { template: html`<p>${_subs()}</p>` };
+return html`<p>${_subs()}</p>`;
 
 // ✅ GOOD
 const subscribers = signal(0);
-return { template: html`<p>${subscribers()}</p>` };
+return html`<p>${subscribers()}</p>`;
 ```
 
 ### THANE014 — a conditional in content has a template
@@ -431,40 +426,54 @@ ${when(open(), html`<p>${props.label}</p>`)}
 
 ```typescript
 // ❌ BAD — 'prevnet' is not an event modifier: did you mean 'prevent'?
-template: html`<form @submit.prevnet=${save}>…</form>`;
+html`<form @submit.prevnet=${save}>…</form>`;
 // ❌ BAD — a passive listener cannot prevent the default
-template: html`<div @wheel.passive.prevent=${zoom}>…</div>`;
+html`<div @wheel.passive.prevent=${zoom}>…</div>`;
 
 // ✅ GOOD
-template: html`<form @submit.prevent=${save}>…</form>`;
+html`<form @submit.prevent=${save}>…</form>`;
 ```
 
-The modifiers are listed in [Event Handling](event-handling.md#modifiers). An unknown one used to be ignored, so the
-handler ran without the `preventDefault()` it asked for.
+The modifiers are listed in [Event Handling](event-handling.md#modifiers). An unknown one would otherwise be dropped
+without a word, and the handler run without the `preventDefault()` it asked for.
 
 ### THANE016 — a value alone in a tag is when() or a ref
 
 ```typescript
 // ❌ BAD — kept in the template as text; an attribute takes name=${…}
-template: html`<input ${disabled()} />`;
+html`<input ${disabled()} />`;
 // ❌ BAD — a ref in a list row would name one row's element
-template: html`<ul>${repeat(items(), (item) => html`<li ${selected}>${item.name}</li>`)}</ul>`;
+html`<ul>${repeat(items(), (item) => html`<li ${selected}>${item.name}</li>`)}</ul>`;
 
 // ✅ GOOD
-template: html`<input disabled=${disabled()} ${input} ${when(open())} />`;
+html`<input disabled=${disabled()} ${input} ${when(open())} />`;
 ```
 
-A `${…}` alone in a tag used to stay in the template as written. In a row, read the element in a handler
+A `${…}` alone in a tag would otherwise be left in the markup as text. In a row, read the element in a handler
 (`e.currentTarget`), or give the row a component of its own that holds the ref.
 
 ### THANE017 — `bind:` and `class:`
 
 ```typescript
 // ❌ BAD — there is no bind:text; class:name needs its condition
-template: html`<p bind:text=${label} class:active>…</p>`;
+html`<p bind:text=${label} class:active>…</p>`;
 
 // ✅ GOOD
-template: html`<input bind:value=${label} /><p class:active=${selected()}>…</p>`;
+html`<input bind:value=${label} /><p class:active=${selected()}>…</p>`;
 ```
+
+### THANE018 — a signal that may be missing
+
+```typescript
+const found = products().find((p) => p().id === id); // Signal<Product> | undefined
+
+// ❌ BAD — every binding subscribes as the component mounts, to a signal that may not be there
+html`<h1>${found?.().title}</h1>`;
+
+// ✅ GOOD — the branch reads the signal, and subscribes, only while there is one
+html`${when(found, (product) => html`<h1>${product().title}</h1>`, html`<p>Not found</p>`)}`;
+```
+
+A signal the component declares (`const count = signal(0)`) or imports is always there: `count?.()` binds as `count()`.
 
 ← [Back to Docs](README.md)

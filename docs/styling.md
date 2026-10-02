@@ -36,6 +36,8 @@ At runtime, the styles are automatically scoped to the component's selector clas
 ```
 
 This scoping uses `adoptedStyleSheets` — styles are registered once per component type, regardless of how many instances exist.
+The selectors of an app's components differ (two alike fail the build, THANE013), so one component's styles never
+apply to another's host.
 
 ## `:host` Selector
 
@@ -130,7 +132,9 @@ export const Card = defineComponent('ui-card', () => ({
 }));
 ```
 
-The compiler bundles the CSS file and exports its content as a string. TypeScript knows `.css` imports as soon as the project imports `thane`: its declarations include `client.d.ts`, which declares:
+The compiler bundles the CSS file and exports its content as a string. Under `thane dev`, a change to the file replaces
+the component's styles in the open page, and the component keeps its state ([CLI](cli.md#thane-dev)). TypeScript
+knows `.css` imports as soon as the project imports `thane`: its declarations include `client.d.ts`, which declares:
 
 ```typescript
 declare module '*.css' {
@@ -171,6 +175,17 @@ Global styles:
 - Are **not scoped** — they apply to the entire document.
 - Are **deduplicated** — calling `registerGlobalStyles` with the same CSS text twice has no effect.
 - Use `adoptedStyleSheets` on the document for efficient application.
+
+## Toggling Classes
+
+A class that follows a condition is a `class:` toggle in the template, next to the element's static classes, so its
+rule lives in the stylesheet like any other:
+
+```typescript
+html`<li class="item" class:selected=${selected() === item.id}>${item.label}</li>`;
+```
+
+See [Class Toggles](templates.md#class-toggles).
 
 ## Light DOM Implications
 

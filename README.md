@@ -10,7 +10,7 @@
 
 [![package version](https://img.shields.io/npm/v/thane?style=flat-square&color=cb3837&label=package)](https://www.npmjs.com/package/thane)
 [![license](https://img.shields.io/github/license/timlouw/thane?style=flat-square&color=blue)](https://github.com/timlouw/thane/blob/master/LICENSE)
-[![bundle size](https://img.shields.io/badge/runtime-~3KB_gzip-brightgreen?style=flat-square)](https://github.com/timlouw/thane)
+[![bundle size](https://img.shields.io/badge/counter_app-~1KB_gzip-brightgreen?style=flat-square)](https://github.com/timlouw/thane)
 [![TypeScript](https://img.shields.io/badge/TypeScript-first-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![CI](https://img.shields.io/github/actions/workflow/status/timlouw/thane/ci.yml?style=flat-square&label=tests)](https://github.com/timlouw/thane/actions)
 
@@ -43,15 +43,11 @@ so the browser does the **absolute minimum work** at runtime.
 ```typescript
 export const Counter = defineComponent(() => {
   const count = signal(0);
-  const inc = () => count(count() + 1);
-
-  return {
-    template: html`
-      <button @click=${inc}>
-        Clicks: ${count()}
-      </button>
-    `,
-  };
+  return html`
+    <button @click=${count(count() + 1)}>
+      Clicks: ${count()}
+    </button>
+  `;
 });
 ```
 
@@ -62,18 +58,17 @@ export const Counter = defineComponent(() => {
 
 ```javascript
 // Static template (parsed once, cloned per instance)
-const __tpl = __T(`<button> Clicks: <!---->0<!----></button>`);
+const __tpl = __T(`<button>Clicks: <!---->0<!----></button>`);
 
 // _ns: the clone's elements, in document order
-__b: (ctx, _ns) => {
+__b: (_ctx, _ns) => {
   // A compile-time path to the text node, no search
-  const text = _ns[0].lastChild.previousSibling;
+  const _b0 = _ns[0].lastChild.previousSibling;
+  _b0.data = count() ?? '';
 
-  // Direct DOM binding — subscribe with skip-initial
-  count.subscribe(v => {
-    text.data = v;
-  }, true);
-  _ns[0].addEventListener('click', inc);
+  // Direct DOM binding: subscribe, skipping the first call
+  _subs.push(count.subscribe(v => { _b0.data = v ?? ''; }, true));
+  _ns[0].addEventListener('click', () => { count(count() + 1); });
 }
 ```
 
@@ -104,8 +99,9 @@ Signal subscriptions at individual binding level. Only the exact text node, attr
 </td>
 <td width="33%" valign="top">
 
-### 🪶 ~3 KB Runtime
-Most logic runs at compile time. The runtime is just signals, components, and a keyed reconciler.
+### 🪶 A Small Runtime
+Most logic runs at compile time, and an app bundles only the runtime it uses: a counter is about 1 KB gzipped, an app
+with a keyed list, a computed and a conditional under 4 KB.
 
 </td>
 </tr>
@@ -119,13 +115,15 @@ No Shadow DOM. Components render as regular DOM elements with auto-scoped CSS vi
 <td width="33%" valign="top">
 
 ### 📦 Built-in Directives
-`when()`, `when()`, `repeat()` with keyed reconciliation, empty-state fallbacks, and nesting at any depth.
+`when()` with an else branch and a narrowing form, `repeat()` with keyed reconciliation and an empty state, ternaries,
+`&&` and `.map()` in templates, nested at any depth.
 
 </td>
 <td width="33%" valign="top">
 
 ### 🛡️ TypeScript-First
-Full IDE autocompletion, type-safe routing, and 12 compile-time lint rules that catch silent failures.
+Typed templates, handlers and refs in the editor, type-safe routing, and lint rules and build errors that catch
+silent failures.
 
 </td>
 </tr>
@@ -136,22 +134,18 @@ Full IDE autocompletion, type-safe routing, and 12 compile-time lint rules that 
 ## 📦 Quick Start
 
 ```bash
-bun add thane
+bunx thane init my-app
+cd my-app && bun install && bun run dev
 ```
+
+Or in a project of your own, `bun add thane`, and:
 
 ```typescript
 import { defineComponent, signal, mount, html } from 'thane';
 
 export const MyCounter = defineComponent(() => {
   const count = signal(0);
-
-  return {
-    template: html`
-      <button @click=${() => count(count() + 1)}>
-        Count: ${count()}
-      </button>
-    `,
-  };
+  return html`<button @click=${count(count() + 1)}>Count: ${count()}</button>`;
 });
 
 mount(MyCounter);

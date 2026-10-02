@@ -1,19 +1,27 @@
 # Components
 
-Components are the building blocks of a Thane application. Each component is a function that returns a template, optional styles, and optional lifecycle hooks. The compiler transforms them into optimized DOM operations at build time.
+Components are the building blocks of a Thane application. Each component is a setup function that returns its
+template, or an object with the template, styles and lifecycle hooks. The compiler transforms them into optimized DOM
+operations at build time.
 
 ## Defining a Component
 
-Use `defineComponent()` to create a component:
+Use `defineComponent()` to create a component. A setup with nothing but its template returns the template:
 
 ```typescript
 import { defineComponent, html } from 'thane';
 
-export const MyButton = defineComponent(() => {
-  return {
-    template: html`<button>Click me</button>`,
-  };
-});
+export const MyButton = defineComponent(() => html`<button>Click me</button>`);
+```
+
+One with styles or lifecycle hooks returns an object:
+
+```typescript
+export const MyButton = defineComponent(() => ({
+  template: html`<button>Click me</button>`,
+  styles: css`button { padding: 1rem; }`,
+  onMount: () => console.log('mounted'),
+}));
 ```
 
 The compiler auto-derives the CSS selector from the name the component is declared under: `MyButton` → `my-button`. The selector is used as a CSS class on the host element for style scoping.
@@ -23,12 +31,11 @@ The compiler auto-derives the CSS selector from the name the component is declar
 Pass a string as the first argument to set the selector manually:
 
 ```typescript
-export const MyButton = defineComponent('custom-button', () => {
-  return {
-    template: html`<button>Click me</button>`,
-  };
-});
+export const MyButton = defineComponent('custom-button', () => html`<button>Click me</button>`);
 ```
+
+A route's page that reads its typed `route.params` has one: the route types find the page by its selector
+([Routing](routing.md)).
 
 ## Props
 
@@ -41,11 +48,7 @@ type GreeterProps = {
   name: string;
 };
 
-export const Greeter = defineComponent<GreeterProps>('app-greeter', ({ props }) => {
-  return {
-    template: html`<h1>Hello, ${props.name}!</h1>`,
-  };
-});
+export const Greeter = defineComponent<GreeterProps>(({ props }) => html`<h1>Hello, ${props.name}!</h1>`);
 ```
 
 Props are passed when embedding a child component in a parent's template:
@@ -56,21 +59,17 @@ ${Greeter({ name: 'World' })}
 
 ### Signal Props
 
-Props can be signals for reactive references. The child reads the signal and automatically updates when the parent changes it. A zero-argument call on a prop in a template, `props.count()`, is compiled as a signal read, so pass a signal (not a plain function) for any prop the template calls:
+Props can be signals for reactive references. The child reads the signal and automatically updates when the parent changes it. A zero-argument call on a prop in a template, `props.count()`, is compiled as a signal read, so pass a signal (not a plain function) for any prop the template calls. A child that only reads it takes a `ReadonlySignal`, which a `computed()` is too:
 
 ```typescript
 import { defineComponent, html } from 'thane';
-import type { Signal } from 'thane';
+import type { ReadonlySignal } from 'thane';
 
 type CounterDisplayProps = {
-  count: Signal<number>;
+  count: ReadonlySignal<number>;
 };
 
-export const CounterDisplay = defineComponent<CounterDisplayProps>('counter-display', ({ props }) => {
-  return {
-    template: html`<span>Count: ${props.count()}</span>`,
-  };
-});
+export const CounterDisplay = defineComponent<CounterDisplayProps>(({ props }) => html`<span>Count: ${props.count()}</span>`);
 ```
 
 Parent component:
@@ -81,15 +80,15 @@ import { CounterDisplay } from './counter-display.js';
 
 export const Parent = defineComponent(() => {
   const count = signal(0);
-
-  return {
-    template: html`
-      <button @click=${() => count(count() + 1)}>Increment</button>
-      ${CounterDisplay({ count })}
-    `,
-  };
+  return html`
+    <button @click=${count(count() + 1)}>Increment</button>
+    ${CounterDisplay({ count })}
+  `;
 });
 ```
+
+Pass the signal itself, `CounterDisplay({ count })`. A prop that takes a plain value gets the value the signal has when the
+child mounts, and never sees it change: the build warns when a prop reads a signal (THANE416).
 
 ### Slots
 
@@ -105,29 +104,27 @@ interface PanelProps {
   footer?: Fragment;
 }
 
-export const Panel = defineComponent<PanelProps>(({ props }) => ({
-  template: html`
+export const Panel = defineComponent<PanelProps>(
+  ({ props }) => html`
     <section>
       <h3>${props.title}</h3>
       ${props.body}
       <footer>${props.footer}</footer>
     </section>
   `,
-}));
+);
 ```
 
 ```typescript
 export const Cart = defineComponent(() => {
   const count = signal(0);
-  return {
-    template: html`
-      ${Panel({
-        title: 'Cart',
-        body: html`<p>${count()} items</p>
-          <button @click=${() => count(count() + 1)}>Add</button>`,
-      })}
-    `,
-  };
+  return html`
+    ${Panel({
+      title: 'Cart',
+      body: html`<p>${count()} items</p>
+        <button @click=${count(count() + 1)}>Add</button>`,
+    })}
+  `;
 });
 ```
 
@@ -148,7 +145,7 @@ export const MyComponent = defineComponent<MyProps>('my-component', (ctx) => {
   ctx.props; // Readonly<MyProps> — component props
   ctx.route; // Route context — available when mounted via the router
 
-  return { template: html`...` };
+  return html`...`;
 });
 ```
 
@@ -157,6 +154,9 @@ export const MyComponent = defineComponent<MyProps>('my-component', (ctx) => {
 | `root`   | `HTMLElement`  | The host DOM element the component renders into |
 | `props`  | `Readonly<P>`  | Props passed by the parent                      |
 | `route`  | `RouteContext` | Current route info (when used with the router)  |
+
+To reach an element of the template, give it a ref rather than querying `root`
+([Element Refs](templates.md#element-refs)).
 
 ## Lifecycle Hooks
 
@@ -268,13 +268,13 @@ Embed child components inside a parent's template using function-call syntax:
 import { Navbar } from './navbar.js';
 import { Footer } from './footer.js';
 
-export const App = defineComponent(() => ({
-  template: html`
+export const App = defineComponent(
+  () => html`
     ${Navbar()}
     <main>Content</main>
     ${Footer()}
   `,
-}));
+);
 ```
 
 The compiler automatically manages the child's lifecycle. When the parent is destroyed, all children are destroyed too.
@@ -298,15 +298,11 @@ any child, and no other file can import it.
 ```typescript
 import { defineComponent, html, repeat, signal } from 'thane';
 
-const OrderRow = defineComponent<{ order: Order }>(({ props }) => ({
-  template: html`<li>${props.order.name}: ${props.order.total}</li>`,
-}));
+const OrderRow = defineComponent<{ order: Order }>(({ props }) => html`<li>${props.order.name}: ${props.order.total}</li>`);
 
 export const Orders = defineComponent(() => {
   const orders = signal<Order[]>([]);
-  return {
-    template: html`<ul>${repeat(orders(), (o) => OrderRow({ order: o }), { key: 'id' })}</ul>`,
-  };
+  return html`<ul>${repeat(orders(), (o) => OrderRow({ order: o }), { key: 'id' })}</ul>`;
 });
 ```
 
@@ -315,24 +311,22 @@ Selectors must differ across the app: two components with one selector would sha
 and its hot updates, so the build fails for them (THANE013). Give one of them another name or a selector of its
 own.
 
-## One Return Object
+## One Return
 
-A setup function returns one object (lint rule THANE412). The compiler builds one static template per component, so a setup cannot choose between templates with early returns. Choose inside the template instead:
+A setup function returns once: one object, or one template (lint rule THANE412). The compiler builds one static template per component, so a setup cannot choose between templates with early returns. Choose inside the template instead:
 
 ```typescript
-// ❌ BAD — two return objects
+// ❌ BAD — two returns
 export const Profile = defineComponent(() => {
   const user = signal<User | null>(null);
-  if (!user()) return { template: html`<p>Loading…</p>` };
-  return { template: html`<p>${user()!.name}</p>` };
+  if (!user()) return html`<p>Loading…</p>`;
+  return html`<p>${user()!.name}</p>`;
 });
 
-// ✅ GOOD — one return object; when() picks the branch
+// ✅ GOOD — one return; when() picks the branch, and narrows the user
 export const Profile = defineComponent(() => {
   const user = signal<User | null>(null);
-  return {
-    template: html`${when(user() === null, html`<p>Loading…</p>`, html`<p>${user()?.name}</p>`)}`,
-  };
+  return html`${when(user(), (u) => html`<p>${u.name}</p>`, html`<p>Loading…</p>`)}`;
 });
 ```
 
@@ -340,17 +334,7 @@ Returns inside nested functions, such as event handlers and helpers defined in t
 
 ## A Template Alone
 
-A component with nothing but a template returns the template itself:
-
-```typescript
-export const Badge = defineComponent<{ text: string }>(({ props }) => html`<span class="badge">${props.text}</span>`);
-
-export const Counter = defineComponent(() => {
-  const count = signal(0);
-  return html`<button @click=${() => count(count() + 1)}>${count()}</button>`;
-});
-```
-
-It is the same as returning `{ template }`. A component with styles or hooks returns the object.
+A component with nothing but a template returns the template itself, as in the examples above: it is the same as
+returning `{ template }`. A component with styles or hooks returns the object.
 
 ← [Back to Docs](README.md)

@@ -28,17 +28,7 @@ import { defineComponent, signal, html, repeat } from 'thane';
 
 export const TodoList = defineComponent(() => {
   const items = signal(['Buy milk', 'Walk dog', 'Write code']);
-
-  return {
-    template: html`
-      <ul>
-        ${repeat(
-          items(),
-          (item) => html`<li>${item}</li>`,
-        )}
-      </ul>
-    `,
-  };
+  return html`<ul>${repeat(items(), (item) => html`<li>${item}</li>`)}</ul>`;
 });
 ```
 
@@ -88,7 +78,7 @@ const products = signal<Signal<Product>[]>([
   signal({ id: 2, title: 'Hat', price: 15 }),
 ]);
 
-template: html`
+html`
   ${repeat(
     products(),
     (product) => html`
@@ -116,7 +106,7 @@ A row can be a child component call, or hold one:
 ```typescript
 import { ProductCard } from './product-card.js';
 
-template: html`
+html`
   <div class="productGrid">
     ${repeat(
       products(),
@@ -167,7 +157,7 @@ ${repeat(
       <ul>
         ${repeat(
           category.products,
-          (product) => html`<li @click=${() => open(category.id, product.id)}>${product.title}</li>`,
+          (product) => html`<li @click=${open(category.id, product.id)}>${product.title}</li>`,
           { key: 'id', empty: html`<li>No products yet.</li>` },
         )}
       </ul>
@@ -196,27 +186,26 @@ From the [e-commerce app](../examples/e-commerce-app.md):
 
 ```typescript
 import { defineComponent, html, repeat } from 'thane';
-import type { Signal } from 'thane';
+import type { ReadonlySignal, Signal } from 'thane';
 import type { AppStateProduct } from '../../models/app-state.models.js';
 import { ProductCard } from '../ProductCard/ProductCard.js';
+import styles from './ProductGrid.module.css';
 
 type ProductGridProps = {
-  products: () => Signal<AppStateProduct>[];
+  products: ReadonlySignal<Signal<AppStateProduct>[]>;
 };
 
-export const ProductGrid = defineComponent<ProductGridProps>('product-grid', ({ props }) => {
-  return {
-    template: html`
-      <div class="productGrid">
-        ${repeat(
-          props.products(),
-          (product) => ProductCard({ product }),
-          { key: (product) => product().id, empty: html`<p>No products found.</p>` },
-        )}
-      </div>
-    `,
-  };
-});
+export const ProductGrid = defineComponent<ProductGridProps>(({ props }) => ({
+  template: html`
+    <div class="productGrid">
+      ${repeat(props.products(), (product) => ProductCard({ product }), {
+        key: (product) => product().id,
+        empty: html`<p>No products found.</p>`,
+      })}
+    </div>
+  `,
+  styles,
+}));
 ```
 
 ← [Back to Directives](README.md) · [Back to Docs](../README.md)

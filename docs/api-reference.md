@@ -1,13 +1,13 @@
 # API Reference
 
-Complete API surface for the Thane framework, covering all public exports, the template markers, the router globals, and types.
+Complete API surface for the Thane framework, covering all public exports, the template markers, the router, and types.
 
 ## Package Exports
 
 | Entry           | What it holds                                                                                              |
 | :-------------- | :--------------------------------------------------------------------------------------------------------- |
 | `thane`         | Signals, components, mounting, global styles, the template markers, and the types an app writes in its own code |
-| `thane/router`  | `defineRoutes`, `navigate`, `navigateBack`, `href`, `setMeta`, and the head-field helpers `metaName`, `metaProperty`, `linkTag` |
+| `thane/router`  | `defineRoutes`, `navigate`, `navigateBack`, `href`, `currentPath`, `isActive`, `markActiveLinks`, `setMeta`, the search parsers, and the head-field helpers `metaName`, `metaProperty`, `linkTag` |
 | `thane/client`  | Type declarations for `.css` imports, which `thane` includes (see below)                                   |
 | `thane/runtime` | The helpers that compiled code calls. Only the compiler imports it: never import it in an app. It is not an API and changes with every version |
 | `thane/runtime/dom` | Node's `cloneNode` and `insertBefore`, for compiled lists. Only compiled code imports it |
@@ -30,8 +30,8 @@ Complete API surface for the Thane framework, covering all public exports, the t
 
 | Export                 | Signature                                                          | Description                               |
 | :--------------------- | :----------------------------------------------------------------- | :---------------------------------------- |
-| `defineComponent`      | `<P>(setup: (ctx: ComponentContext<P>) => ComponentReturnType) => ComponentHTMLSelector<P>`                   | Define a component                        |
-| `defineComponent`      | `<P>(selector: string, setup: (ctx: ComponentContext<P>) => ComponentReturnType) => ComponentHTMLSelector<P>` | Define a component with explicit selector |
+| `defineComponent`      | `<P>(setup: (ctx: ComponentContext<P>) => ComponentReturnType \| Fragment) => ComponentHTMLSelector<P>`                   | Define a component: its setup returns its object, or its template alone |
+| `defineComponent`      | `<P>(selector: string, setup: (ctx: ComponentContext<P>) => ComponentReturnType \| Fragment) => ComponentHTMLSelector<P>` | Define a component with explicit selector |
 | `mount`                | `(component, options?: MountOptions) => MountHandle`, `(routes, options?) => MountHandle` | Mount a component (with `routes`, the app's shell), or the routes alone |
 | `unmount`              | `(handle: MountHandle) => void`                                    | Destroy a mounted component               |
 | `registerGlobalStyles` | `(...styles: string[]) => void`                                    | Register global styles (deduplicated)     |
@@ -51,7 +51,8 @@ Complete API surface for the Thane framework, covering all public exports, the t
 | `when`     | `<T>(value: T, then: Fragment \| ((value: Truthy<T>) => Fragment), otherwise?: Fragment) => Fragment`: in content                                                                 | Show `then` while the value is truthy, `otherwise` (or nothing) while it is not |
 | `repeat`   | `<T>(items: readonly T[], row: (item: T, index: number) => Fragment, options?: { key?: keyof T \| ((item: T, index: number) => string \| number); empty?: Fragment }) => Fragment` | List rendering with keyed reconciliation     |
 
-A condition is not a function: pass a signal's value, `when(open())`, not the signal. `repeat()`'s options are written in the call (THANE010); its key is the name of a property whose values are strings or numbers, or a function of the item. A directive's templates may also be plain template literals of markup; a component's `template` is an `html` template.
+A condition is not a value that is always a function: pass a signal's value, `when(open())`, not the signal. A value that
+may be missing is a condition, a `Signal | undefined` among them, and the narrowed branch reads it. `repeat()`'s options are written in the call (THANE010); its key is the name of a property whose values are strings or numbers, or a function of the item. A directive's templates may also be plain template literals of markup; a component's `template` is an `html` template.
 
 ### `thane/router` (subpath export)
 
@@ -89,7 +90,8 @@ The entry that compiled code imports its helpers from (`__registerComponent`, `_
 | `ReadonlySignal<T>`        | A signal that others may only read, such as state a service owns and exposes; a `computed()` is one, and is not a `Signal<T>` |
 | `ComponentContext<P>`      | The setup function's parameter, for example in a helper shared by several setup functions  |
 | `ComponentHTMLSelector<P>` | What `defineComponent()` returns: a parameter that receives a component to `mount()`        |
-| `Fragment`                 | An `html` template as a value: a fragment a module exports, a prop that holds one           |
+| `Fragment`                 | An `html` template as a value: a fragment a module exports, a prop that holds one (a slot)  |
+| `Ref<T>`                   | What `ref<T>()` gives: `el`, the element of the tag that holds it                              |
 | `MountHandle`              | The result of `mount()`, kept to destroy the component later                                |
 | `RoutePaths`               | A variable or prop that holds a navigation target                                           |
 
@@ -101,6 +103,7 @@ import type {
   ComponentHTMLSelector,
   Fragment,
   MountHandle,
+  Ref,
   RoutePaths,
 } from 'thane';
 ```
@@ -115,6 +118,7 @@ type ReadonlySignal<T> = {
 
 type Signal<T> = ReadonlySignal<T> & {
   (newValue: T): T; // Write
+  readonly [writable]: true; // A brand a ReadonlySignal lacks: a computed() is not a Signal
 };
 ```
 
@@ -166,7 +170,7 @@ type ComponentReturnType = {
 };
 ```
 
-A setup function returns one such object (THANE412).
+A setup function returns one such object, or its template alone (THANE412).
 
 ### Mount Options (`MountOptions`)
 
@@ -212,9 +216,11 @@ interface UntypedRouteContext {
   readonly pattern: string;
   readonly params: Record<string, string>;
   readonly searchParams: URLSearchParams;
+  readonly search: Record<string, unknown>; // The route's search values, parsed (typed from its schema)
   readonly hash: string;
   readonly title: string;
   readonly state: unknown;
+  readonly error?: unknown; // On the error route: what failed
 }
 ```
 

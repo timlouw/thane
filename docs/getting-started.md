@@ -3,7 +3,6 @@
 ## Prerequisites
 
 - [Bun](https://bun.sh) >= 1.0.0
-- [Node.js](https://nodejs.org/) >= 18 _(only for Playwright E2E tests)_
 
 ## A New Project
 
@@ -39,19 +38,22 @@ Your own options go next to `extends`, and override its.
 
 ## Project Structure
 
-A minimal Thane app looks like this:
+A project `thane init` creates looks like this:
 
 ```
 my-app/
   index.html
+  package.json
+  tsconfig.json
   src/
     main.ts
-    counter.ts
-  tsconfig.json
-  package.json
+    app/
+      app.component.ts
+      app.component.css
 ```
 
 `src/main.ts` and `index.html` are where the CLI looks by default; `--entry` and `--html` (or the config file) point elsewhere.
+A component lives in a folder of its name, its stylesheet next to it, as `thane generate component` writes them.
 
 ### `index.html`
 
@@ -75,42 +77,41 @@ The application entry point mounts the root component:
 
 ```typescript
 import { mount } from 'thane';
-import { Counter } from './counter.js';
+import { App } from './app/app.component.js';
 
-mount(Counter);
+mount(App);
 ```
 
-`mount()` appends the component to `document.body` by default. Pass a `target` option for a different element:
+`mount()` renders the component into `document.body` by default. Pass a `target` option for a different element:
 
 ```typescript
-mount(Counter, { target: document.getElementById('app')! });
+mount(App, { target: document.getElementById('app')! });
 ```
 
-### `src/counter.ts`
+### A Component
 
-Define a component using `defineComponent`. The compiler auto-derives the CSS selector from the export name (`Counter` → `counter`):
+Define a component with `defineComponent`. The compiler derives its selector, the class of its host element, from
+the name it is exported under (`Counter` → `counter`):
 
 ```typescript
 import { defineComponent, signal, html } from 'thane';
 
 export const Counter = defineComponent(() => {
   const count = signal(0);
-  const increment = () => count(count() + 1);
-  const decrement = () => count(count() - 1);
-  const reset = () => count(0);
-
-  return {
-    template: html`
-      <div>
-        <h1>Count: ${count()}</h1>
-        <button @click=${increment}>+</button>
-        <button @click=${decrement}>−</button>
-        <button @click=${reset}>Reset</button>
-      </div>
-    `,
-  };
+  return html`
+    <div>
+      <h1>Count: ${count()}</h1>
+      <button @click=${count(count() + 1)}>+</button>
+      <button @click=${count(count() - 1)}>−</button>
+      <button @click=${count(0)}>Reset</button>
+    </div>
+  `;
 });
 ```
+
+A setup that has nothing but its template returns the template; one with styles or lifecycle hooks returns an object,
+`{ template, styles, onMount }` ([Components](components.md)). A handler is a function, or a call that runs on the event,
+as here.
 
 `html` is imported like the rest: it and the other template markers (`css`, `when`, `repeat`) exist only at build time, where the compiler turns them into DOM code, so they add nothing to the bundle.
 
@@ -122,10 +123,11 @@ thane dev
 
 This starts a development server at `http://localhost:4200` with:
 
-- A rebuild whenever a source file changes, after which the open pages reload
+- A rebuild whenever a source file changes, after which the open pages update in place: a changed component is
+  swapped with its state kept, and a change that cannot be swapped reloads them ([CLI](cli.md#thane-dev))
 - Source maps enabled
 - Browser errors relayed to the terminal — `console.error`, uncaught errors and unhandled rejections
-- All 12 lint rules active
+- The lint rules and the type check, reported as you work
 
 ## Building for Production
 

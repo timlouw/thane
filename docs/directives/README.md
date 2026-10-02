@@ -8,7 +8,10 @@ Directives extend Thane's template syntax with conditional rendering and list re
 |:----------|:--------|:-------|
 | [`when()`](when.md) | Show an element while a condition is truthy | `<div ${when(condition())}>...</div>` |
 | [`when()`](when.md#in-content) | Show a template, or one of two | `${when(cond(), thenHtml, elseHtml?)}` |
+| [`when()`](when.md#narrowing) | Show a template about a value that may be missing | `${when(user(), (u) => html`…${u.name}…`)}` |
 | [`repeat()`](repeat.md) | Render a list with keyed reconciliation | `${repeat(items(), (item) => html`…`, { key: 'id', empty: emptyHtml })}` |
+
+In content, a ternary, an `&&` and a `.map()` of templates compile to these directives too ([JavaScript Control Flow](../templates.md#javascript-control-flow)).
 
 ## How They Work
 

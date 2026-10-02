@@ -8,14 +8,12 @@ Thane uses tagged template literals for HTML. At build time, the compiler transf
 import { html, css, when, repeat } from 'thane';
 ```
 
-They exist only at build time: the compiler turns each use into DOM code, so none of them adds to the bundle. The compiler finds them by name, so import them under their own names ([THANE413](lint-rules.md#thane413--no-aliased-thane-import)). The examples below leave the imports out.
+They exist only at build time: the compiler turns each use into DOM code, so none of them adds to the bundle. The compiler finds them by name, so import them under their own names ([THANE413](lint-rules.md#thane413--no-aliased-thane-import)). The examples below leave the imports out, and show a template as the setup returns it: alone, or as the `template` of the object it returns ([Components](components.md)).
 
 ## Basic Template
 
 ```typescript
-return {
-  template: html`<h1>Hello, world!</h1>`,
-};
+return html`<h1>Hello, world!</h1>`;
 ```
 
 Static content is cloned from a pre-built `<template>` element — no runtime parsing.
@@ -27,7 +25,7 @@ Embed signal reads directly in the template. Only the specific text node updates
 ```typescript
 const count = signal(0);
 
-template: html`<p>Count: ${count()}</p>`;
+html`<p>Count: ${count()}</p>`;
 ```
 
 The compiler places an empty comment on each side of the dynamic text. At runtime, a subscription updates only the text node between them.
@@ -37,7 +35,7 @@ The compiler places an empty comment on each side of the dynamic text. At runtim
 Combine static text with multiple dynamic values in a single element:
 
 ```typescript
-template: html`<p>Name: ${first()} ${last()}</p>`;
+html`<p>Name: ${first()} ${last()}</p>`;
 ```
 
 Each binding gets its own text node — updating `first` doesn't touch the `last` text node.
@@ -55,7 +53,7 @@ const total = () => price() * qty(); // follows price and qty
 const format = (n: number) => `${n} ${currency()}`; // follows its argument's signals, and currency
 const label = () => 'Total'; // reads no signal: rendered once
 
-template: html`<p>${label()}: ${total()}, ${format(price())}</p>`;
+html`<p>${label()}: ${total()}, ${format(price())}</p>`;
 ```
 
 This covers the functions declared in the component's setup and at the top of its file, and the helpers they
@@ -67,7 +65,7 @@ when it is called without arguments (an imported store signal, `${visitCount()}`
 Bind a dynamic value to an attribute by writing the expression as its value:
 
 ```typescript
-template: html`
+html`
   <img src=${imageUrl()} alt=${description()} />
   <input value=${query()} placeholder="Search..." />
   <a class="btn ${kind()}" href="/items/${id()}">Open</a>
@@ -87,7 +85,7 @@ attribute name is rejected at build time (THANE006).
 element's static classes:
 
 ```typescript
-template: html`<input class="field" class:invalid=${errors().email !== ''} class:filled=${email() !== ''} />`;
+html`<input class="field" class:invalid=${errors().email !== ''} class:filled=${email() !== ''} />`;
 ```
 
 Each toggle writes its own class (`classList.toggle`), so the classes do not need to be assembled into one string. A whole
@@ -104,7 +102,7 @@ const email = signal('');
 const subscribe = signal(false);
 const plan = signal('basic');
 
-template: html`
+html`
   <input type="email" bind:value=${email} />
   <input type="checkbox" bind:checked=${subscribe} />
   <select bind:value=${plan}>
@@ -124,7 +122,7 @@ build error (THANE017).
 Bind the whole inline style, or individual properties:
 
 ```typescript
-template: html`
+html`
   <div style=${'color:' + textColor()}>Styled text</div>
   <div style="color: ${textColor()}; width: ${width()}px">Per property</div>
 `;
@@ -140,7 +138,7 @@ expression belongs to the value: `width: ${width()}px` writes `40px`, and
 Use ternary operators for conditional text:
 
 ```typescript
-template: html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`;
+html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`;
 ```
 
 A ternary of templates chooses between them: see [JavaScript Control Flow](#javascript-control-flow).
@@ -150,7 +148,7 @@ A ternary of templates chooses between them: see [JavaScript Control Flow](#java
 Use `??` for fallback values:
 
 ```typescript
-template: html`<p>${username() ?? 'Anonymous'}</p>`;
+html`<p>${username() ?? 'Anonymous'}</p>`;
 ```
 
 ## HTML Fragment Injection
@@ -161,7 +159,7 @@ Assign a template to a `const` variable, then embed it:
 const header = html`<h1>Welcome</h1>`;
 const footer = html`<footer>© 2024</footer>`;
 
-template: html`
+html`
   ${header}
   <main>Content</main>
   ${footer}
@@ -184,7 +182,7 @@ Compiled templates keep the text you write, with whitespace tidied the same way 
 Templates are JavaScript template literals, and their escapes mean what they mean in any template literal: `\${` writes a literal `${`, which is text and not a binding, and `` \` `` writes a backtick.
 
 ```typescript
-template: html`<code>\${price}</code>`; // renders "${price}"
+html`<code>\${price}</code>`; // renders "${price}"
 ```
 
 ## What a `${…}` Takes
@@ -202,9 +200,9 @@ So an object, which would show as `[object Object]`, a promise, and a signal wit
 they are written:
 
 ```typescript
-template: html`<p>${user()}</p>`;
+html`<p>${user()}</p>`;
 // error TS1360: Type '{ name: string; }' does not satisfy the expected type 'ThaneContent'.
-template: html`<p>${user().name}</p>`; // ✅
+html`<p>${user().name}</p>`; // ✅
 ```
 
 ## Element Refs
@@ -240,7 +238,7 @@ Embed child components using their function-call syntax:
 ```typescript
 import { Navbar } from './navbar.js';
 
-template: html`
+html`
   ${Navbar()}
   <main>Page content</main>
 `;
@@ -266,12 +264,10 @@ const spinner = html`<span class="spinner"></span>`;
 export const Orders = defineComponent(() => {
   const loading = signal(true);
   const empty = html`<li>No orders</li>`;
-  return {
-    template: html`
-      ${when(loading(), spinner, html`<p>Ready</p>`)}
-      <ul>${repeat(orders(), (o) => html`<li>${o.name}</li>`, { empty })}</ul>
-    `,
-  };
+  return html`
+    ${when(loading(), spinner, html`<p>Ready</p>`)}
+    <ul>${repeat(orders(), (o) => html`<li>${o.name}</li>`, { empty })}</ul>
+  `;
 });
 ```
 
@@ -280,7 +276,7 @@ export const Orders = defineComponent(() => {
 In content, a ternary, an `&&` or a `.map()` of templates is compiled as the directive it means:
 
 ```typescript
-template: html`
+html`
   ${open() ? html`<p>Open</p>` : html`<p>Closed</p>`}
   ${open() && html`<p>Open</p>`}
   ${error() ? html`<p class="error">${error()}</p>` : null}
@@ -304,6 +300,10 @@ is an `html` template or a child component call, written as the arrow function's
 code is the directive's, so a branch or a row costs the same either way; write `when()` or `repeat()` for what
 only they take: the tag form of `when()`, its narrowing form, and `repeat()`'s `key` and `empty`.
 
+A signal that may be missing (`const found = items().find(…)`) is shown with `when(found, (s) => html`…`)`, whose
+branch reads it while there is one; `found?.()` in a binding is a build error (THANE018,
+[Narrowing](directives/when.md#narrowing)).
+
 A ternary whose branches are both text is a text binding, as before (`${n > 0 ? 'Positive' : 'None'}`). One
 with a template on one side and text on the other is a build error (THANE404): the template would never be
 compiled. A template given to a child component as a prop is a slot ([Slots](components.md#slots)). An `html`
@@ -326,7 +326,7 @@ export const Badge = html`<b class=${theme()}>New</b>`;
 // orders.ts
 import { Spinner, Badge } from './pieces.js';
 
-template: html`<h2>Orders ${Badge}</h2>${when(loading(), Spinner, html`<ul>…</ul>`)}`;
+html`<h2>Orders ${Badge}</h2>${when(loading(), Spinner, html`<ul>…</ul>`)}`;
 ```
 
 A fragment without `${…}` (`Spinner`) is written out where it is used, like a fragment of the same file. One
