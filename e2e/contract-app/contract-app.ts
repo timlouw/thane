@@ -706,12 +706,7 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p data-testid="child-mount-count">${childMounts()}</p>
           <p data-testid="child-to-parent-events">${childToParentEvents()}</p>
 
-          ${ChildCounter({
-            label: 'child-' + parentCount(),
-            parentCount: parentCount(),
-            onChildMount,
-            onChildIncrement,
-          })}
+          ${ChildCounter({ label: 'child', parentCount, onChildMount, onChildIncrement })}
         </section>
 
         <section data-testid="edge-section">
@@ -924,13 +919,13 @@ export const ContractApp = defineComponent('contract-app', () => {
         <section data-testid="multi-child-section">
           ${ChildCounter({
             label: 'multi-A',
-            parentCount: parentCount(),
+            parentCount,
             onChildMount: onChildMountA,
             onChildIncrement: onChildIncrementA,
           })}
           ${ChildCounter({
             label: 'multi-B',
-            parentCount: parentCount(),
+            parentCount,
             onChildMount: onChildMountB,
             onChildIncrement: onChildIncrementB,
           })}

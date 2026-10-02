@@ -39,6 +39,9 @@ export enum ErrorCode {
   DUPLICATE_MOUNT_TARGET = 'THANE411',
   SINGLE_RETURN_OBJECT = 'THANE412',
   NO_ALIASED_THANE_IMPORT = 'THANE413',
+  NO_UNCALLED_SIGNAL = 'THANE414',
+  NO_UNKNOWN_COMPONENT_KEY = 'THANE415',
+  NO_SIGNAL_SNAPSHOT_PROP = 'THANE416',
 }
 
 /** What `lint` in thane.config.json sets a code to: left out, or reported as a warning or an error */

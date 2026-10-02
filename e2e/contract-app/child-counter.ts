@@ -1,16 +1,15 @@
-import { defineComponent, signal, html } from 'thane';
+import { defineComponent, signal, html, type ReadonlySignal } from 'thane';
 
 type ChildCounterProps = {
-  label?: string;
-  parentCount?: number;
+  label: string;
+  /** The parent's count: the child reads the signal, so it follows the parent */
+  parentCount: ReadonlySignal<number>;
   onChildMount?: () => void;
   onChildIncrement?: (value: number) => void;
 };
 
 export const ChildCounter = defineComponent<ChildCounterProps>('child-counter', ({ props }) => {
   const local = signal(0);
-  const label = signal(String(props.label ?? 'child-default'));
-  const parentSnapshot = signal(Number(props.parentCount ?? -1));
 
   const incrementLocal = () => {
     local(local() + 1);
@@ -22,8 +21,8 @@ export const ChildCounter = defineComponent<ChildCounterProps>('child-counter', 
   return {
     template: html`
       <section data-testid="child-root">
-        <div data-testid="child-label">${label()}</div>
-        <div data-testid="child-parent-count">${parentSnapshot()}</div>
+        <div data-testid="child-label">${props.label}</div>
+        <div data-testid="child-parent-count">${props.parentCount()}</div>
         <div data-testid="child-local">${local()}</div>
         <button data-testid="child-inc" @click=${incrementLocal}>child +1</button>
       </section>

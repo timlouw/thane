@@ -118,7 +118,7 @@ This starts a development server at `http://localhost:4200` with:
 - A rebuild whenever a source file changes, after which the open pages reload
 - Source maps enabled
 - Browser errors relayed to the terminal — `console.error`, uncaught errors and unhandled rejections
-- All 13 lint rules active
+- All 12 lint rules active
 
 ## Building for Production
 

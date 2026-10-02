@@ -14,7 +14,7 @@ esbuild then runs these plugins, in this order:
 Source (.ts, .css)
   │
   ├─ 1. Type Checker       → (build start) writes .thane/types, then runs the TypeScript check
-  ├─ 2. Thane Linter       → 13 lint rules (THANE400–THANE413) on each component and entry file
+  ├─ 2. Thane Linter       → 12 lint rules (THANE400–THANE416) on each component and entry file
   ├─ 3. Component Compiler → html`` → static template + __b() binding function; css`` compiled
   ├─ 4. Global CSS Bundler → .css imports → string exports
   ├─ 5. Minification       → (build start, prod only) plans selector renames from the sources

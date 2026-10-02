@@ -1,6 +1,6 @@
 # Lint Rules
 
-Thane includes 9 compile-time lint rules (THANE400–THANE413; THANE401, THANE402, THANE406, THANE407 and THANE410 are retired) that catch patterns the compiler cannot process correctly. These rules run during `thane dev` and `thane build` — errors prevent the build from completing, warnings are displayed but don't block.
+Thane includes 12 compile-time lint rules (THANE400–THANE416; THANE401, THANE402, THANE406, THANE407 and THANE410 are retired) that catch patterns the compiler cannot process correctly. These rules run during `thane dev` and `thane build` — errors prevent the build from completing, warnings are displayed but don't block.
 
 The compiler reports a few more problems itself, while it compiles a template: see [Template Errors](#template-errors).
 
@@ -20,6 +20,9 @@ A project sets the severity of any rule, or turns it off, with `lint` in `thane.
 | THANE411 | [duplicate-mount-target](#thane411--duplicate-mount-target)                 | Warning  |
 | THANE412 | [single-return-object](#thane412--single-return-object)                     | Error    |
 | THANE413 | [no-aliased-thane-import](#thane413--no-aliased-thane-import)               | Error    |
+| THANE414 | [no-uncalled-signal](#thane414--no-uncalled-signal)                         | Error    |
+| THANE415 | [no-unknown-component-key](#thane415--no-unknown-component-key)             | Error    |
+| THANE416 | [no-signal-snapshot-prop](#thane416--no-signal-snapshot-prop)               | Warning  |
 
 ---
 
@@ -259,6 +262,76 @@ export const App = thane.defineComponent(() => ({ template: thane.html`<p>Hi</p>
 import { defineComponent, html } from 'thane';
 export const App = defineComponent(() => ({ template: html`<p>Hi</p>` }));
 ```
+
+---
+
+## THANE414 — no-uncalled-signal
+
+**Severity:** Error
+
+A signal in a template is read by calling it. Without the call the template gets the signal function itself: in
+content and attributes that shows the function's source code, in an event slot the signal is called with the
+event and set to it, and `when()` and `repeat()` would get a function, which is always truthy and lists nothing.
+
+```typescript
+// ❌ BAD
+template: html`<p class=${theme}>${count}</p>`;
+template: html`<input @input=${query} />`;
+template: html`<p ${when(open)}>…</p>`;
+
+// ✅ GOOD
+template: html`<p class=${theme()}>${count()}</p>`;
+template: html`<input @input=${(e) => query(e.currentTarget.value)} />`;
+template: html`<p ${when(open())}>…</p>`;
+```
+
+It reports a name the file declares as `signal(…)` or `computed(…)`, in the scope the template reads it from: a row's
+parameter or a local of the same name is not the signal. A signal imported from another module is not visible to
+it; the type check reports that one, since a function is not a value a template shows.
+
+---
+
+## THANE415 — no-unknown-component-key
+
+**Severity:** Error
+
+A setup function returns `template`, `styles`, `onMount` and `onDestroy`, and nothing reads any other key. TypeScript
+does not report one (an object literal returned from a callback gets no excess-property check), so a misspelled
+hook would never run. The message names the key it is close to.
+
+```typescript
+// ❌ BAD — 'onMoun' is not a key of a component, and nothing reads it: did you mean 'onMount'?
+return { template: html`<canvas></canvas>`, onMoun: () => start() };
+
+// ✅ GOOD
+return { template: html`<canvas></canvas>`, onMount: () => start() };
+```
+
+---
+
+## THANE416 — no-signal-snapshot-prop
+
+**Severity:** Warning
+
+A component reads its props once, when it mounts. A prop whose value reads a signal passes the value the signal
+has then, and the child never sees it change. Pass the signal itself, typed `ReadonlySignal` in the child's props,
+and read it in the child's template.
+
+```typescript
+// ⚠ the count when Badge mounts
+template: html`${Badge({ count: count() })}`;
+
+// ✅ Badge reads the signal: ${props.count()}
+template: html`${Badge({ count })}`;
+export const Badge = defineComponent<{ count: ReadonlySignal<number> }>(({ props }) => ({
+  template: html`<b>${props.count()}</b>`,
+}));
+```
+
+A read inside a function (`onPick: () => select(count())`) is not reported: the function reads the signal when it
+runs. A value read from a list row's item is not a snapshot either: when the row's item changes, a child whose props
+changed is mounted again with them (see [Child Components in Repeat](directives/repeat.md#child-components-in-repeat)).
+When a snapshot is what you want, turn the rule off with `lint` in `thane.config.json`.
 
 ---
 

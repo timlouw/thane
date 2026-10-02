@@ -14,7 +14,7 @@ thane dev --port 3000 --open
 thane dev --host 0.0.0.0
 ```
 
-Default port: `4200`. Always a development build (`--prod` is ignored). Source maps are enabled. All 13 lint rules are active. `console.*` calls are preserved.
+Default port: `4200`. Always a development build (`--prod` is ignored). Source maps are enabled. All 12 lint rules are active. `console.*` calls are preserved.
 
 The build reruns when a source file changes. When the files that changed are component files, the open pages swap
 those components in place: each instance of a changed component is mounted again with the new code and styles, in

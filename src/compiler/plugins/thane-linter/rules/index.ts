@@ -18,6 +18,9 @@ import { noAliasedComponentExport } from './no-aliased-component-export.js';
 import { duplicateMountTarget } from './duplicate-mount-target.js';
 import { singleReturnObject } from './single-return-object.js';
 import { noAliasedThaneImport } from './no-aliased-thane-import.js';
+import { noUncalledSignal } from './no-uncalled-signal.js';
+import { noUnknownComponentKey } from './no-unknown-component-key.js';
+import { noSignalSnapshotProp } from './no-signal-snapshot-prop.js';
 import type { LintRuleDefinition } from './types.js';
 
 export { noDefaultExportComponent } from './no-default-export-component.js';
@@ -29,6 +32,9 @@ export { noAliasedComponentExport } from './no-aliased-component-export.js';
 export { duplicateMountTarget } from './duplicate-mount-target.js';
 export { singleReturnObject } from './single-return-object.js';
 export { noAliasedThaneImport } from './no-aliased-thane-import.js';
+export { noUncalledSignal } from './no-uncalled-signal.js';
+export { noUnknownComponentKey } from './no-unknown-component-key.js';
+export { noSignalSnapshotProp } from './no-signal-snapshot-prop.js';
 
 /**
  * All built-in lint rules, in registration order.
@@ -44,4 +50,7 @@ export const allRules: readonly LintRuleDefinition[] = [
   duplicateMountTarget,
   singleReturnObject,
   noAliasedThaneImport,
+  noUncalledSignal,
+  noUnknownComponentKey,
+  noSignalSnapshotProp,
 ];

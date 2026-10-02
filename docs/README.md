@@ -2,7 +2,7 @@
 
 Thane is a **compile-time component framework** for TypeScript. Templates are compiled to optimized vanilla JavaScript at build time — static template cloning, direct DOM navigation, and fine-grained signal subscriptions — so the browser does the absolute minimum work at runtime.
 
-**~3 KB gzip** · Zero virtual DOM · TypeScript-first · 13 compile-time lint rules
+**~3 KB gzip** · Zero virtual DOM · TypeScript-first · 12 compile-time lint rules
 
 ---
 
@@ -169,7 +169,7 @@ How the build pipeline works — esbuild plugins, template compilation, binding 
 
 ## Lint Rules
 
-11 compile-time lint rules (THANE400–THANE413) and the compiler errors (THANE006–THANE013) that catch silent failures before they reach the browser.
+12 compile-time lint rules (THANE400–THANE416) and the compiler errors (THANE006–THANE014) that catch silent failures before they reach the browser.
 
 **→ [Lint Rules](lint-rules.md)**
 

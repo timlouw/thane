@@ -125,7 +125,7 @@ No Shadow DOM. Components render as regular DOM elements with auto-scoped CSS vi
 <td width="33%" valign="top">
 
 ### 🛡️ TypeScript-First
-Full IDE autocompletion, type-safe routing, and 13 compile-time lint rules that catch silent failures.
+Full IDE autocompletion, type-safe routing, and 12 compile-time lint rules that catch silent failures.
 
 </td>
 </tr>
