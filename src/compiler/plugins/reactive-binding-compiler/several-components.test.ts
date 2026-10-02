@@ -84,29 +84,62 @@ describe('several components in one file', () => {
   });
 });
 
-test('two components of a build with one selector are reported (THANE013)', async () => {
+describe('two components of a build with one selector fail it (THANE013)', () => {
+  /** The build's error when `files` are built, mounted from src/lists.ts's Lists */
+  const failure = async (files: Record<string, string>, lists: string[]): Promise<string> => {
+    const error = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await buildAndReadJs("import { mount } from 'thane';\nimport { Lists } from './lists.js';\nmount(Lists);\n", {
+        extraFiles: {
+          'src/lists.ts':
+            "import { defineComponent } from 'thane';\n" +
+            lists.map((name) => `import { ${name} } from './${name.toLowerCase()}.js';\n`).join('') +
+            `export const Lists = defineComponent(() => ({ template: html\`${lists.map((name) => `\${${name}()}`).join('')}\` }));\n`,
+          ...files,
+        },
+        config: DEV,
+      });
+      return 'built';
+    } catch (thrown) {
+      return thrown instanceof Error ? thrown.message : String(thrown);
+    } finally {
+      error.mockRestore();
+    }
+  };
   const privateRow = (name: string, text: string): string =>
     "import { defineComponent } from 'thane';\n" +
     `const Row = defineComponent(() => ({ template: html\`<i>${text}</i>\` }));\n` +
-    `export const ${name} = defineComponent(() => ({ template: html\`<p>\${Row({})}</p>\` }));\n`;
-  const warn = spyOn(console, 'warn').mockImplementation(() => {});
-  try {
-    await buildAndReadJs("import { mount } from 'thane';\nimport { Lists } from './lists.js';\nmount(Lists);\n", {
-      extraFiles: {
-        'src/lists.ts':
-          "import { defineComponent } from 'thane';\nimport { First } from './first.js';\nimport { Second } from './second.js';\n" +
-          'export const Lists = defineComponent(() => ({ template: html`${First({})}${Second({})}` }));\n',
-        'src/first.ts': privateRow('First', 'a'),
-        'src/second.ts': privateRow('Second', 'b'),
-      },
-      config: DEV,
-    });
-    const reports = warn.mock.calls.map((call) => String(call[0])).filter((text) => text.includes('THANE013'));
-    expect(reports).toHaveLength(1);
-    expect(reports[0]).toMatch(/Row has the selector 'row', and so does Row \(.*(first|second)\.ts\)/);
-  } finally {
-    warn.mockRestore();
-  }
+    `export const ${name} = defineComponent(() => ({ template: html\`<p>\${Row()}</p>\` }));\n`;
+
+  test('two private components of one name in two files, each with the selector derived from it', async () => {
+    const message = await failure(
+      { 'src/first.ts': privateRow('First', 'a'), 'src/second.ts': privateRow('Second', 'b') },
+      ['First', 'Second'],
+    );
+    expect(message).toMatch(/THANE013: Row has the selector 'row', and so does Row \(.*(first|second)\.ts\)/);
+    expect(message).toContain('Give one of them another name, or a selector of its own');
+  });
+
+  test('two explicit selectors', async () => {
+    const explicit = (name: string): string =>
+      `import { defineComponent } from 'thane';\nexport const ${name} = defineComponent('x-card', () => ({ template: html\`<b></b>\` }));\n`;
+    const message = await failure({ 'src/first.ts': explicit('First'), 'src/second.ts': explicit('Second') }, [
+      'First',
+      'Second',
+    ]);
+    expect(message).toMatch(/THANE013: (First|Second) has the selector 'x-card', and so does (First|Second)/);
+    expect(message).toContain('Give one of them another selector.');
+  });
+
+  test('one name in two files, with a selector of its own in one: builds', async () => {
+    const own =
+      "import { defineComponent } from 'thane';\n" +
+      "const Row = defineComponent('second-row', () => ({ template: html`<i>b</i>` }));\n" +
+      'export const Second = defineComponent(() => ({ template: html`<p>${Row()}</p>` }));\n';
+    expect(await failure({ 'src/first.ts': privateRow('First', 'a'), 'src/second.ts': own }, ['First', 'Second'])).toBe(
+      'built',
+    );
+  });
 });
 
 describe('several components compiled by transformDefineComponentSource', () => {

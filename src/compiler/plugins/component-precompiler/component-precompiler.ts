@@ -25,7 +25,7 @@ import {
   isCssTaggedTemplate,
   KEYFRAME_SCOPING,
 } from '../minification/css-transform.js';
-import { ErrorCode, createError, createWarning, withConfiguredSeverity } from '../../errors.js';
+import { ErrorCode, createError } from '../../errors.js';
 import {
   hotModuleKey,
   hotRegistration,
@@ -60,26 +60,21 @@ export const ComponentPrecompilerPlugin = (
     const compileOptions = (): CompileOptions => ({ minify: ctx?.minify, selectorMap: ctx?.selectorMap });
     let scanned = false;
 
-    // The component that declares each selector in this build. Two components with one selector share
-    // their host class, and the styles of the one registered first apply to both (THANE013).
+    // The component that declares each selector in this build. Two components with one selector would share
+    // their host class, its styles and its hot swaps: the build fails (THANE013).
     let selectorOwners = new Map<string, { name: string; file: string }>();
-    const reportSharedSelectors = (sourceFile: ts.SourceFile, file: string): void => {
-      for (const { name, selector, call } of findComponentDeclarations(sourceFile)) {
+    const checkSharedSelectors = (sourceFile: ts.SourceFile, file: string): void => {
+      for (const { name, selector, explicitSelector } of findComponentDeclarations(sourceFile)) {
         const owner = selectorOwners.get(selector);
         if (!owner) selectorOwners.set(selector, { name, file });
         if (!owner || (owner.name === name && owner.file === file)) continue;
-        const { line, character } = sourceFile.getLineAndCharacterOfPosition(call.getStart(sourceFile));
-        const diagnostic = withConfiguredSeverity(
-          createWarning(
-            `${name} has the selector '${selector}', and so does ${owner.name} (${owner.file}). The two share ` +
-              'their host class, and the styles of the one registered first apply to both. Give one of them ' +
-              'another name or an explicit selector.',
-            { file, line: line + 1, column: character + 1 },
-            ErrorCode.SHARED_SELECTOR,
-          ),
-          ctx?.lint,
+        throw new Error(
+          `${ErrorCode.SHARED_SELECTOR}: ${name} has the selector '${selector}', and so does ${owner.name} (${owner.file}). ` +
+            'Two components of an app with one selector would share their host class, its styles and its hot updates. ' +
+            (explicitSelector
+              ? 'Give one of them another selector.'
+              : 'Give one of them another name, or a selector of its own: the first argument of defineComponent.'),
         );
-        if (diagnostic) logger.diagnostic(diagnostic);
       }
     };
 
@@ -326,7 +321,7 @@ export const ComponentPrecompilerPlugin = (
         // The components this file declares or imports, and the fragments it imports: the binding compiler
         // mounts each where a template calls or uses it
         const sourceFile = parse();
-        reportSharedSelectors(sourceFile, args.path);
+        checkSharedSelectors(sourceFile, args.path);
         const components = resolver ? await resolver.componentsInScope(sourceFile) : new Map();
         const fragments = resolver ? await resolver.fragmentsInScope(sourceFile) : new Map();
         return buildTransformedResult(source, args.path, { components, fragments }, sourceFile);

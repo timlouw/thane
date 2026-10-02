@@ -12,7 +12,7 @@ be a plain value (THANE404). A ternary with a template on one side and text on t
 
 ### Unique Selectors
 
-A component's selector is the class of its host element, which scopes its styles. Two components of an app with one selector (two components declared under one name, each with a derived selector) share it: the styles of the one registered first apply to both. The build reports them (THANE013). Give one of them another name or an explicit selector. A child component call, `${Card({ … })}`, is resolved through the file's own declarations and imports, so two components with one name in different files are never confused for each other.
+A component's selector is the class of its host element, which scopes its styles and names it for hot updates, so the selectors of an app's components differ: two components with one selector (two explicit selectors alike, or two components declared under one name in different files, each with the selector derived from it) fail the build (THANE013). Give one of them another name or a selector of its own. A private component counts too: two files that each declare a `Row` of their own need one of them renamed. A child component call, `${Card({ … })}`, is resolved through the file's own declarations and imports, so two components with one name in different files are never confused for each other.
 
 
 ### One Return Object per Setup

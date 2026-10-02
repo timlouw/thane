@@ -311,9 +311,9 @@ export const Orders = defineComponent(() => {
 ```
 
 A private component's selector is derived from its name like an exported one's (`OrderRow` → `order-row`).
-Selectors must differ across the app: two components with one selector share their host class, and the styles
-of the one registered first apply to both. The build reports two such components (THANE013); give one of them
-another name or an explicit selector.
+Selectors must differ across the app: two components with one selector would share their host class, its styles
+and its hot updates, so the build fails for them (THANE013). Give one of them another name or a selector of its
+own.
 
 ## One Return Object
 

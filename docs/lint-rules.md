@@ -338,7 +338,7 @@ When a snapshot is what you want, turn the rule off with `lint` in `thane.config
 
 ## Template Errors
 
-These are reported by the compiler while it compiles a template, as build errors. THANE013 is a warning.
+These are reported by the compiler while it compiles a template, as build errors.
 
 | Code     | What it reports                                                                                                                                                                                                                               |
 | :------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -349,7 +349,7 @@ These are reported by the compiler while it compiles a template, as build errors
 | THANE010 | `repeat()` options that the compiler cannot read: a third argument that is not an object literal `{ key, empty }`, an option `repeat()` does not have, a key that is neither a property name nor a function, or a fourth argument |
 | THANE011 | A `repeat()` empty template that is not one static element: two roots, text outside an element, or a `${…}` in it. It is inserted as one element while the list is empty                                                                      |
 | THANE012 | A template reads a name that starts with `_`, the prefix of every variable the compiled bindings declare for themselves, so it could read the compiler's value. Rename the variable                                                            |
-| THANE013 | Two components of the build with one selector (declared under one name, each with a derived selector). They share their host class, and the styles of the one registered first apply to both. Rename one, or give it an explicit selector     |
+| THANE013 | Two components of the build with one selector: two explicit selectors alike, or two components of one name in different files, each with the selector derived from it. They would share their host class, its styles and its hot updates. Rename one, or give it a selector of its own |
 | THANE014 | A content `when()` that is not a conditional: a condition alone (`when(cond)` goes in an element's tag), more than three arguments, or a branch that is not a template |
 | THANE015 | An event modifier the compiler does not know (`@click.prevnet`), or `.passive` with `.prevent` |
 | THANE016 | A `${…}` alone in a tag that is not `when()` or an element ref, or a ref in a list row |
