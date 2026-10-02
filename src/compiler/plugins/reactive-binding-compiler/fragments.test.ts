@@ -1,6 +1,6 @@
 /**
  * Fragments: html`` consts of the component or the module, inlined wherever a template goes. A fragment
- * named as a whenElse() branch or a repeat() empty template is its markup (it was its name, as text), a
+ * named as a when() branch or a repeat() empty template is its markup (it was its name, as text), a
  * fragment can be used twice, and a child component in a fragment used twice is mounted twice.
  *
  * A fragment another module exports is written out where it is used when it has no `${}`, and is otherwise
@@ -19,7 +19,7 @@ const KID =
 const build = (declarations: string, template: string): Promise<string> =>
   buildAndReadJs(
     [
-      "import { defineComponent, signal, mount, html, whenElse, repeat } from 'thane';",
+      "import { defineComponent, signal, mount, html, when, repeat } from 'thane';",
       "import { FragKid } from './kid.js';",
       'const spinner = html`<span class="spin"></span>`;',
       "export const App = defineComponent('frag-app', () => {",
@@ -36,10 +36,10 @@ const build = (declarations: string, template: string): Promise<string> =>
 const componentTemplate = (js: string): string => js.match(/__tpl\d* = __T\(`([^`]*)`\)/)?.[1] ?? '';
 
 describe('fragments are inlined wherever a template goes', () => {
-  test('a whenElse() branch named by a fragment is its markup', async () => {
+  test('a when() branch named by a fragment is its markup', async () => {
     const js = await build(
       'const done = html`<p class="done">${loading()}</p>`;',
-      '<div>${whenElse(loading(), spinner, done)}</div>',
+      '<div>${when(loading(), spinner, done)}</div>',
     );
     expect(js).toContain('__bindIfExpr(_ws_b0, _wm_b0, [loading], () => loading(), `<span class="spin"></span>`');
     expect(js).toContain('`<p class="done"><!---->true<!----></p>`');
@@ -49,7 +49,7 @@ describe('fragments are inlined wherever a template goes', () => {
   test('a repeat() empty template named by a fragment is its markup', async () => {
     const js = await build(
       'const empty = html`<li class="none">none</li>`;',
-      '<ul>${repeat(rows(), (r) => html`<li>${r} ${spinner}</li>`, empty)}</ul>',
+      '<ul>${repeat(rows(), (r) => html`<li>${r} ${spinner}</li>`, { empty })}</ul>',
     );
     expect(js).toContain('__T(`<li class="none">none</li>`)');
     // The module's fragment, inside a row
@@ -103,7 +103,7 @@ const buildWithPieces = (
 ): Promise<string> =>
   buildAndReadJs(
     [
-      "import { defineComponent, signal, mount, html, whenElse, repeat } from 'thane';",
+      "import { defineComponent, signal, mount, html, when, repeat } from 'thane';",
       imports,
       "export const App = defineComponent('frag-app', () => {",
       '  const loading = signal(true);',
@@ -122,10 +122,10 @@ describe('fragments shared across files', () => {
   test('a fragment without ${} is written out where it is used', async () => {
     const js = await buildWithPieces(
       "import { Spinner } from './pieces.js';",
-      '<div>${Spinner}${whenElse(loading(), Spinner, html``)}</div>',
+      '<div>${Spinner}${when(loading(), Spinner)}</div>',
     );
     expect(componentTemplate(js.slice(js.indexOf('src/main.ts')))).toBe(
-      '<div><span class="spin"></span><!----><span class="spin"></span><!----><!----></div>',
+      '<div><span class="spin"></span><!----><span class="spin"></span><!----></div>',
     );
     expect(js).not.toContain('__mf(');
   });
@@ -133,7 +133,7 @@ describe('fragments shared across files', () => {
   test('a fragment with bindings is compiled into a value, and mounted where it is used', async () => {
     const js = await buildWithPieces(
       "import { Badge } from './pieces.js';",
-      '<div>${Badge}${whenElse(loading(), Badge, html``)}<ol>${repeat(rows(), (r) => html`<li>${r}${Badge}</li>`)}</ol></div>',
+      '<div>${Badge}${when(loading(), Badge)}<ol>${repeat(rows(), (r) => html`<li>${r}${Badge}</li>`)}</ol></div>',
     );
     // Its module: the static template, marked pure, and the binding function, which places the copy
     // after reaching its nodes and before binding them

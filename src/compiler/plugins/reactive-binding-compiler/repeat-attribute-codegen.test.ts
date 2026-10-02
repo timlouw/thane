@@ -12,7 +12,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(rows(), ${params} => html\`${row}\`, null, (item) => item.id)}
+        \${repeat(rows(), ${params} => html\`${row}\`, { key: "id" })}
       </ul>
     \`,
   };

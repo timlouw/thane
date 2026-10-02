@@ -105,7 +105,7 @@ export const Counter = defineComponent(() => {
 });
 ```
 
-`html` is imported like the rest: it and the other template markers (`css`, `when`, `whenElse`, `repeat`) exist only at build time, where the compiler turns them into DOM code, so they add nothing to the bundle.
+`html` is imported like the rest: it and the other template markers (`css`, `when`, `repeat`) exist only at build time, where the compiler turns them into DOM code, so they add nothing to the bundle.
 
 ## Running the Dev Server
 

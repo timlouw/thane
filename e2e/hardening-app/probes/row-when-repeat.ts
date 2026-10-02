@@ -18,8 +18,7 @@ export const RowWhenRepeat = defineComponent('hardening-row-when-repeat', () => 
               </ol>
             </div>
           </li>`,
-        null,
-        (r) => r.id,
+        { key: 'id' },
       )}
     </ul>`,
   };

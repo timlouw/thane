@@ -61,7 +61,7 @@ describe('when() content is processed as a sub-template', () => {
 
   test('whenElse inside a when() block is owned by the conditional and adjacent content stays intact', () => {
     const r = processTemplate(
-      '<div ${when(outerGate())}>${whenElse(innerGate(), html`<u>a</u>`, html`<u>b</u>`)}</div><p>AFTER-MARKER</p>',
+      '<div ${when(outerGate())}>${when(innerGate(), html`<u>a</u>`, html`<u>b</u>`)}</div><p>AFTER-MARKER</p>',
       inits([
         ['outerGate', true],
         ['innerGate', true],
@@ -136,7 +136,7 @@ describe('when() content is processed as a sub-template', () => {
 describe('generated initializer for when() content', () => {
   test('binds nested events, text and directives inside the conditional initializer', () => {
     const code = generate(
-      '<div ${when(show())}><button @click=${a}>A</button><span>${count()}</span>${whenElse(inner(), html`<u>a</u>`, html`<u>b</u>`)}</div>',
+      '<div ${when(show())}><button @click=${a}>A</button><span>${count()}</span>${when(inner(), html`<u>a</u>`, html`<u>b</u>`)}</div>',
       inits([
         ['show', true],
         ['inner', true],
@@ -149,7 +149,7 @@ describe('generated initializer for when() content', () => {
     expect(code).toMatch(
       /\(_c\) => \{\s+const (_b\d+) = _c\.firstElementChild;[\s\S]*\1\.addEventListener\('click', a\)/,
     );
-    // The nested whenElse() is bound over anchors the when() content's initializer reached from `_c`
+    // The nested when() is bound over anchors the when() content's initializer reached from `_c`
     expect(code).toContain('__bindIfExpr(_ws_b1, _wm_b1, [inner], () => inner()');
     expect(code).toContain('__bindIfExpr(_wm_b1, _we_b1, [inner], () => !(inner())');
     // The text binding writes its text node, reached by path from the button
@@ -169,7 +169,7 @@ export const NestedApp = defineComponent('nested-app', () => {
   const show = signal(true);
   return {
     template: html\`
-      \${whenElse(gate(), html\`<p \${when(show())}>then</p>\`, html\`<p>else</p>\`)}
+      \${when(gate(), html\`<p \${when(show())}>then</p>\`, html\`<p>else</p>\`)}
     \`,
   };
 });

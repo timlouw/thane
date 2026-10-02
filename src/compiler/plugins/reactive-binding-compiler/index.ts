@@ -204,11 +204,21 @@ const importOf = (sourceFile: ts.SourceFile, name: string): ImportInfo | null =>
 // defineComponent Support
 // ============================================================================
 
-/** Where a directive takes a template, by argument position: whenElse()'s branches, repeat()'s empty template */
-export const TEMPLATE_ARGUMENTS: ReadonlyMap<string, readonly number[]> = new Map([
-  [FN.WHEN_ELSE, [1, 2]],
-  [FN.REPEAT, [2]],
-]);
+/** Where a directive call takes a template: when()'s branches, and repeat()'s `empty` option */
+export const templateArguments = (call: ts.CallExpression): ts.Expression[] => {
+  if (!ts.isIdentifier(call.expression)) return [];
+  if (call.expression.text === FN.WHEN) return call.arguments.slice(1, 3);
+  const options = call.expression.text === FN.REPEAT ? call.arguments[2] : undefined;
+  if (!options || !ts.isObjectLiteralExpression(options)) return [];
+  // `empty: spinner`, or the shorthand `{ empty }` of a fragment named empty
+  return options.properties.flatMap((p) =>
+    ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === 'empty'
+      ? [p.initializer]
+      : ts.isShorthandPropertyAssignment(p) && p.name.text === 'empty'
+        ? [p.name]
+        : [],
+  );
+};
 
 /** A child component or imported fragment of a template, and its index in the file, which names its variables */
 interface OwnMount {
@@ -264,7 +274,7 @@ const placeholderOf = (node: ts.Expression, scope: InlineScope): string | null =
 /**
  * The text of an html template, with the fragments it uses inlined, at any depth: a `${name}` that names an
  * html`` const of the component or the module, an html template written as a whole `${}`, and, inside any
- * other `${}`, a fragment named where a directive takes a template (`whenElse(open(), details, summary)`)
+ * other `${}`, a fragment named where a directive takes a template (`when(open(), details, summary)`)
  * and the html templates written in it. A child component call and an imported fragment get their placeholder
  * (placeholderOf), as a whole `${}` and where a directive takes a template. The text is taken as written (raw),
  * like every directive template the parser cuts from it: the escape sequences stay in place until the template
@@ -336,15 +346,16 @@ const inlineInExpression = (
       }
       return;
     }
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-      for (const at of TEMPLATE_ARGUMENTS.get(node.expression.text) ?? []) {
-        const arg = node.arguments[at];
-        const text = !arg ? null : ((ts.isIdentifier(arg) ? fragment(arg) : null) ?? placeholderOf(arg, scope));
+    if (ts.isCallExpression(node)) {
+      for (const arg of templateArguments(node)) {
+        const text = (ts.isIdentifier(arg) ? fragment(arg) : null) ?? placeholderOf(arg, scope);
         if (arg && text !== null) {
+          // A shorthand property keeps its name: `{ empty }` → `{ empty: html\`…\` }`
+          const name = ts.isShorthandPropertyAssignment(arg.parent) ? `${arg.getText(sourceFile)}: ` : '';
           edits.push({
             start: arg.getStart(sourceFile) - start,
             end: arg.getEnd() - start,
-            replacement: `html\`${text}\``,
+            replacement: `${name}html\`${text}\``,
           });
         }
       }

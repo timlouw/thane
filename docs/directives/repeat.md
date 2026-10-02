@@ -1,21 +1,23 @@
 # repeat — List Rendering
 
-`repeat()` renders a list of items using a keyed reconciler. It tracks item identity via a key function and performs minimal DOM operations — adding, removing, reordering, and updating nodes directly without a virtual DOM diff.
+`repeat()` renders a list of items using a keyed reconciler. It tracks each row's item by its key and performs minimal DOM operations — adding, removing, reordering, and updating nodes directly without a virtual DOM diff.
 
 ## Syntax
 
 ```typescript
-${repeat(items, renderFn, emptyTemplate?, trackBy?)}
+${repeat(items, row, { key, empty })}
 ```
 
 | Parameter | Type | Description |
 |:----------|:-----|:------------|
-| `items` | `T[]` | The array to render (typically a signal read: `items()`) |
-| `renderFn` | `(item: T, index: number) => html` | Template function called for each item |
-| `emptyTemplate` | `html \| null` | *(Optional)* Template shown when the array is empty |
-| `trackBy` | `(item: T, index: number) => string \| number` | *(Optional)* Key function for stable identity |
+| `items` | `readonly T[]` | The array to render (typically a signal read: `items()`) |
+| `row` | `(item: T, index: number) => html` | The template of each row, or a child component call |
+| `key` | `keyof T \| (item: T, index: number) => string \| number` | *(Optional)* What identifies a row's item: the name of one of its properties (`'id'`), or a function of the item |
+| `empty` | `html` | *(Optional)* Shown while the array is empty |
 
-The key function is always the **fourth** argument. To give a list a key without an empty template, pass `null` third: `repeat(items(), renderFn, null, (item) => item.id)`. A function in the third place is a build error (THANE010), because it would be taken for the empty template.
+The options are written in the call, as an object literal: the compiler reads them there. Anything else as the
+third argument, an option `repeat()` does not have, or a fourth argument is a build error (THANE010). The key's
+type allows only the item's properties whose values are strings or numbers.
 
 The template returned by `renderFn` has exactly one root element; every row is cloned from a static copy of it and updated in place. A row with two root elements, or none, is reported at build time as THANE007, and so is a row that is only a directive. The row's root element cannot carry `when()` (THANE008): filter the array instead. The `index` argument is the row's current position: bindings that read it are refreshed when rows move or are removed.
 
@@ -42,15 +44,12 @@ export const TodoList = defineComponent(() => {
 
 ## Keyed Reconciliation
 
-The `trackBy` function tells the reconciler how to identify items. This enables DOM node reuse across updates:
+The key tells the reconciler how to identify items, so that a row is reused across updates. Name the property
+that holds it, or, when the item does not hold it directly, give a function of the item:
 
 ```typescript
-${repeat(
-  products(),
-  (product) => html`<div class="card">${product().title}</div>`,
-  null,
-  (product) => product().id,
-)}
+${repeat(users(), (user) => html`<li>${user.name}</li>`, { key: 'id' })}
+${repeat(products(), (product) => html`<div class="card">${product().title}</div>`, { key: (product) => product().id })}
 ```
 
 When the array changes:
@@ -60,19 +59,14 @@ When the array changes:
 - **New key:** New DOM node is created and inserted.
 - **Missing key:** DOM node is removed and its bindings are disposed.
 
-Without `trackBy`, rows are keyed by their index: the row at each position is reused and updated with the item now at that position, and rows are only added or removed at the end.
+Without a key, rows are keyed by their index: the row at each position is reused and updated with the item now at that position, and rows are only added or removed at the end.
 
 ## Empty State
 
 Provide a template to show when the list is empty:
 
 ```typescript
-${repeat(
-  items(),
-  (item) => html`<li>${item().name}</li>`,
-  html`<li class="empty">No items found.</li>`,
-  (item) => item().id,
-)}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { key: 'id', empty: html`<li class="empty">No items found.</li>` })}
 ```
 
 When the array transitions from empty to non-empty, the empty template is removed and list items are created. When the array becomes empty again, all items are removed and the empty template is shown.
@@ -103,8 +97,7 @@ template: html`
         <p>$${product().price}</p>
       </div>
     `,
-    html`<p>No products.</p>`,
-    (product) => product().id,
+    { key: (product) => product().id, empty: html`<p>No products.</p>` },
   )}
 `
 ```
@@ -128,8 +121,7 @@ template: html`
     ${repeat(
       products(),
       (product) => ProductCard({ product }),
-      html`<p>No products found.</p>`,
-      (product) => product().id,
+      { key: (product) => product().id, empty: html`<p>No products found.</p>` },
     )}
   </div>
 `
@@ -137,7 +129,7 @@ template: html`
 
 ## Nested Directives
 
-A row can hold anything a component template can: bindings, event handlers, child components, `when()`, `whenElse()` and further lists, nested to any depth. Use `when()` or `whenElse()` inside repeat items:
+A row can hold anything a component template can: bindings, event handlers, child components, `when()` and further lists, nested to any depth:
 
 ```typescript
 ${repeat(
@@ -148,8 +140,7 @@ ${repeat(
       <span class="badge" ${when(product().cartCount > 0)}>${product().cartCount}</span>
     </div>
   `,
-  null,
-  (product) => product().id,
+  { key: (product) => product().id },
 )}
 ```
 
@@ -165,14 +156,12 @@ ${repeat(
         ${repeat(
           category.products,
           (product) => html`<li @click=${() => open(category.id, product.id)}>${product.title}</li>`,
-          html`<li>No products yet.</li>`,
-          (product) => product.id,
+          { key: 'id', empty: html`<li>No products yet.</li>` },
         )}
       </ul>
     </section>
   `,
-  null,
-  (category) => category.id,
+  { key: 'id' },
 )}
 ```
 
@@ -210,8 +199,7 @@ export const ProductGrid = defineComponent<ProductGridProps>('product-grid', ({ 
         ${repeat(
           props.products(),
           (product) => ProductCard({ product }),
-          html`<p>No products found.</p>`,
-          (product) => product().id,
+      { key: (product) => product().id, empty: html`<p>No products found.</p>` },
         )}
       </div>
     `,

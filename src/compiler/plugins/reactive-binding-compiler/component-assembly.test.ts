@@ -85,12 +85,12 @@ describe("child placeholders come from the file's one parse", () => {
     ]),
   };
   const source = [
-    "import { defineComponent, html, signal, whenElse } from 'thane';",
+    "import { defineComponent, html, signal, when } from 'thane';",
     'export const App = defineComponent(() => {',
     '  const open = signal(false);',
     '  const unused = html`<p>${Card({ n: 2 })}</p>`;',
     '  return {',
-    '    template: html`<div>${Card({ n: 1 })}${Spinner}${Badge}${whenElse(open(), Card({ n: 3 }), Spinner)}</div>`,',
+    '    template: html`<div>${Card({ n: 1 })}${Spinner}${Badge}${when(open(), Card({ n: 3 }), Spinner)}</div>`,',
     '  };',
     '});',
     '',
@@ -117,13 +117,13 @@ describe("child placeholders come from the file's one parse", () => {
   test('a child call and an imported fragment are mounted as a whole ${} and where a directive takes a template', () => {
     const out = transformDefineComponentSource(source, '/virtual/placeholders.ts', NAMES)!;
     // The children's hosts are in the template; the static fragment is written out; Badge is mounted
-    // (the whenElse() starts on its else-branch, pre-rendered between its anchors)
+    // (the when() starts on its else-branch, pre-rendered between its anchors)
     expect(out).toContain(
       '<div><x-card></x-card><i class="spin"></i><!----><!----><!----><i class="spin"></i><!----></div>',
     );
     expect(out).toMatch(/__dc\(Card\.__f\([\w$\[\]]+, \{ n: 1 \}\)\)/);
     expect(out).toMatch(/__mf\([\w$]+, Badge\)/);
-    // The whenElse() then-branch is a template of Card's host, the else-branch Spinner's markup
+    // The when() then-branch is a template of Card's host, the else-branch Spinner's markup
     expect(out).toMatch(/__bindIfExpr\([^)]*\[open\], \(\) => open\(\), `<x-card><\/x-card>`/);
     expect(out).toContain('() => !(open()), `<i class="spin"></i>`');
     expect(out).toMatch(/__dc\(Card\.__f\([\w$]+, \{ n: 3 \}\)\)/);

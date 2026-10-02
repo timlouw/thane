@@ -147,7 +147,7 @@ describe('walkDirectives', () => {
     // (the row's when() is on an inner element: on the row's root it is a build error, THANE008)
     const result = processHtmlTemplateWithConditionals(
       '<div ${when(a())}>${repeat(items(), (it) => html`<li><b ${when(it.on)}>${it.name}</b></li>`)}</div>' +
-        '${whenElse(b(), html`<p ${when(c())}>t</p>`, html`<p>e</p>`)}',
+        '${when(b(), html`<p ${when(c())}>t</p>`, html`<p>e</p>`)}',
       new Map<string, string | number | boolean>([
         ['a', true],
         ['b', true],

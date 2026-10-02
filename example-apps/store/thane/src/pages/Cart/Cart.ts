@@ -1,4 +1,4 @@
-import { computed, defineComponent, html, when, whenElse, repeat } from 'thane';
+import { computed, defineComponent, html, when, repeat } from 'thane';
 import styles from './Cart.module.css';
 import { cartCount, products, removeFromCart } from '../../state/global-state.js';
 
@@ -26,7 +26,7 @@ export const CartPage = defineComponent('cart-page', () => {
   return {
     template: html`
       <div class="cartContainer">
-        ${whenElse(
+        ${when(
           cartCount() === 0,
           html`<p>
             Your cart is empty.
@@ -52,8 +52,7 @@ export const CartPage = defineComponent('cart-page', () => {
                     </div>
                   </li>
                 `,
-                null,
-                (productSignal) => productSignal().id,
+                { key: (productSignal) => productSignal().id },
               )}
             </ul>
             <h2>Total Price: R${totalPrice()}</h2>

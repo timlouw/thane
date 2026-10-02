@@ -16,8 +16,7 @@ export const NestedRowWhen = defineComponent('hardening-nested-row-when', () => 
               ${repeat(g.tags, (t) => html`<li><em class="nested-when-w" ${when(show())}>${t}-shown</em></li>`)}
             </ol>
           </li>`,
-        null,
-        (g) => g.id,
+        { key: 'id' },
       )}
     </ul>`,
   };

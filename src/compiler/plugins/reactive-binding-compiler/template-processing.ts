@@ -202,7 +202,9 @@ const processTemplate = (
       (b) => b.type !== 'whenElse' || !isOwnedByNestedProcessing(b.expressionStart, b.expressionEnd),
     ),
   };
-  const whenElseBlocks = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, processSubTemplate);
+  const branches = collectWhenElseBlocks(filteredForWhenElse, signalInitializers, state, processSubTemplate);
+  const whenElseBlocks = branches.whenElseBlocks;
+  conditionals.push(...branches.conditionals);
 
   // ── Repeats ──
   for (const binding of parsed.bindings) {

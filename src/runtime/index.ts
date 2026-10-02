@@ -32,7 +32,7 @@ declare global {
 // are in ./internal.ts ('thane/runtime'), the router values in ./router-exports.ts ('thane/router').
 export type { Signal, ReadonlySignal } from './types.js';
 export { signal, batch, computed, effect, untrack } from './signal.js';
-export { html, css, when, whenElse, repeat, type Fragment } from './markers.js';
+export { html, css, when, repeat, type Fragment } from './markers.js';
 export {
   defineComponent,
   registerGlobalStyles,

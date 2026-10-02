@@ -107,10 +107,10 @@ The compiler detects and generates different binding types from the contracts:
 | Style       | `style=${expr}`     | `signal.subscribe(v => el.style.cssText = v)`                    |
 | Event       | `@click=${handler}` | `el.addEventListener('click', handler)`                          |
 | Conditional | `${when(cond())}`   | `__bindIf(start, end, signal, template, initNested)`             |
-| IfElse      | `${whenElse(...)}`  | `__bindIfExpr(start, end, signals, evalExpr, …)`, once per branch |
+| IfElse      | `${when(...)}`  | `__bindIfExpr(start, end, signals, evalExpr, …)`, once per branch |
 | Repeat      | `${repeat(...)}`    | `createKeyedReconciler(container, anchor, ...)`                  |
 
-A `when()` or `whenElse()` branch sits between two empty comments, `start` and `end`; the two branches of a `whenElse()` share the comment between them. A list's rows go before its anchor comment.
+A `when()` or `when()` branch sits between two empty comments, `start` and `end`; the two branches of a `when()` share the comment between them. A list's rows go before its anchor comment.
 
 ## Component Registration
 

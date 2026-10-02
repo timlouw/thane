@@ -42,9 +42,9 @@ describe('runtime helper imports follow the emitted code', () => {
     expect(r.imported).toEqual(r.called);
   });
 
-  test('child-component rows inside a whenElse() branch import __dc', () => {
+  test('child-component rows inside a when() branch import __dc', () => {
     const r = compile(
-      'return { template: html`<div>${whenElse(show(), html`<ul>${repeat(items(), (i) => Card({ label: i.n }))}</ul>`, html`<p>none</p>`)}</div>` };',
+      'return { template: html`<div>${when(show(), html`<ul>${repeat(items(), (i) => Card({ label: i.n }))}</ul>`, html`<p>none</p>`)}</div>` };',
     );
     expect(r.called).toContain(RUNTIME_HELPER.DESTROY_CHILD);
     expect(r.imported).toEqual(r.called);
@@ -58,7 +58,7 @@ describe('runtime helper imports follow the emitted code', () => {
       'a list whose rows are created in batches',
       'return { template: html`<ul>${repeat(items(), (it) => html`<li>${it.n}</li>`)}</ul>` };',
     ],
-    ['a whenElse()', 'return { template: html`<div>${whenElse(show(), html`<b>y</b>`, html`<i>n</i>`)}</div>` };'],
+    ['a when()', 'return { template: html`<div>${when(show(), html`<b>y</b>`, html`<i>n</i>`)}</div>` };'],
     [
       'a list with a row directive (row signals)',
       'return { template: html`<ul>${repeat(items(), (it) => html`<li><b ${when(it.id > n())}>${it.n}</b></li>`)}</ul>` };',

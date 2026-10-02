@@ -25,7 +25,7 @@ src/
   runtime/                     # Browser runtime (~3 KB gzip)
     signal.ts                  # signal(), computed(), effect(), batch(), untrack()
     component.ts               # defineComponent(), mount(), unmount(), registration factories, style scoping
-    dom-binding.ts             # when/whenElse conditionals, keyed repeat reconciler
+    dom-binding.ts             # when() conditionals, keyed repeat reconciler
     router.ts                  # defineRoutes(), navigate(), route matching, scroll restoration
     types.ts                   # Signal<T>, ReadonlySignal<T>, ComponentRoot
     index.ts                   # 'thane': the public API barrel, global type declarations
@@ -81,7 +81,7 @@ Inside the precompiler's `onLoad`, `transformDefineComponentSource` (`reactive-b
 
 1. Find the component's selector (explicit, or derived from the name it is declared under), and the initial values of the `const x = signal(literal)` declarations of its setup and of the module.
 2. Collect the templates of the setup's return objects, read from the parse: local `html` fragments are inlined, and each child component call and imported fragment gets its placeholder comment (`<!--b0.-->`) as the text is read, from the components and fragments the precompiler resolved for the file. A setup has one return object; THANE412 reports more.
-3. Process each template (`template-processing.ts`, `repeat-analysis.ts`): parse it, find text, attribute, style and event bindings, and compile `when()`, `whenElse()` and `repeat()` content as sub-templates, at any depth, including directives inside list rows.
+3. Process each template (`template-processing.ts`, `repeat-analysis.ts`): parse it, find text, attribute, style and event bindings, and compile `when()`, `when()` and `repeat()` content as sub-templates, at any depth, including directives inside list rows.
 4. Build the DOM model of each template as emitted (`dom-model.ts`, the browser's tree construction) and compute, for every bound node, the shortest path of DOM properties from its scope's starting nodes: the component template's elements, a branch's first node, a row element.
 5. Generate the code (`codegen.ts`): the `__b` binding function, branch initializers and row factories. Lists at every level are emitted by one generator, `emitRepeat`.
 6. Apply every change to the source as one list of edits: each component's registration call, static templates (`__tpl`, `__tpl1`…) and `__b`, and one import of exactly the runtime helpers the file's code uses, from `thane/runtime`.
@@ -92,7 +92,7 @@ The runtime is intentionally minimal:
 
 - **Signals** — reactive primitives with push-based notification, deferred cascades and batching
 - **Components** — `defineComponent` wrapper, registration factories, scoped styles via `adoptedStyleSheets`
-- **DOM Binding** — conditional rendering (`when`/`whenElse`) between comment anchors and keyed list reconciliation (`repeat`)
+- **DOM Binding** — conditional rendering (`when`) between comment anchors and keyed list reconciliation (`repeat`)
 - **Router** — single-instance client-side router with History API, lazy loading, scroll restoration
 
 The compiler generates a `__b(ctx, elements)` function inside each component's return object that initializes all reactive bindings when the component mounts. The registration factory clones the template, lists the clone's elements before inserting it, and passes that list: compiled code reaches every node it binds by a compile-time path from one of those elements, never by id or by searching the DOM. The compiled-output contract is described in [Contracts](contracts.md).

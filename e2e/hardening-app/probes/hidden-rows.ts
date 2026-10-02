@@ -23,8 +23,7 @@ export const HiddenRows = defineComponent('hardening-hidden-rows', () => {
               html`<li class="hidden-row"
                 ><span class="hidden-m">${it.n}-${hiddenRowsTick()}</span>${Kid({ label: it.n })}</li
               >`,
-            null,
-            (it) => it.id,
+            { key: 'id' },
           )}
         </ul>
       </div>

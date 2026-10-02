@@ -4,7 +4,7 @@
  * A component's setup function returns one object:
  *
  *   export const Card = defineComponent(() => {                // ✅
- *     return { template: html`${whenElse(ready(), html`<p>…</p>`, html`<p>…</p>`)}` };
+ *     return { template: html`${when(ready(), html`<p>…</p>`, html`<p>…</p>`)}` };
  *   });
  *
  *   export const Card = defineComponent(() => {
@@ -27,7 +27,7 @@ import { createReporter, isDefineComponentExpr } from './lint-utils.js';
 
 const MESSAGE =
   'A setup function with more than one return object is not supported. ' +
-  "The compiler builds one template per component, from the last return, so this one is never used. Use 'when()' or 'whenElse()' in the template instead.";
+  "The compiler builds one template per component, from the last return, so this one is never used. Use 'when()' in the template instead.";
 
 const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   const { diagnostics, report } = createReporter(sourceFile, filePath, ErrorCode.SINGLE_RETURN_OBJECT, 'error');

@@ -10,9 +10,7 @@ export const RowWhenChild = defineComponent('hardening-row-when-child', () => {
     template: html`<ul>
       ${repeat(
         rows(),
-        (r) => html`<li class="when-child-row" data-row=${r.id}><div ${when(show())}>${ProbeCard({ label: 'row-card' })}</div></li>`,
-        null,
-        (r) => r.id,
+        (r) => html`<li class="when-child-row" data-row=${r.id}><div ${when(show())}>${ProbeCard({ label: 'row-card' })}</div></li>`, { key: "id" },
       )}
     </ul>`,
   };

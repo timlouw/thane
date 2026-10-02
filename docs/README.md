@@ -88,16 +88,16 @@ template: html`<button @click=${(e: MouseEvent) => console.log(e)}>Click</button
 
 ## Directives
 
-Conditional rendering and list rendering — `when()`, `whenElse()`, `repeat()`.
+Conditional rendering and list rendering — `when()`, `when()`, `repeat()`.
 
 ```typescript
 template: html`
   <div ${when(isVisible())}>Shown conditionally</div>
-  ${repeat(items(), (item) => html`<li>${item()}</li>`, html`<li>No items</li>`, (item) => item().id)}
+  ${repeat(items(), (item) => html`<li>${item()}</li>`, { key: (item) => item().id, empty: html`<li>No items</li>` })}
 `
 ```
 
-**→ [Directives Overview](directives/README.md)** · [when](directives/when.md) · [whenElse](directives/when-else.md) · [repeat](directives/repeat.md)
+**→ [Directives Overview](directives/README.md)** · [when](directives/when.md) · [repeat](directives/repeat.md)
 
 ---
 

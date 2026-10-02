@@ -16,7 +16,7 @@ export const QuotesInAttrs = defineComponent('hardening-quotes-in-attrs', () => 
     // prettier-ignore
     template: html`<div>
       <p class="quotes-top" title=${flag() ? "one" : "two"}>top</p>
-      <ul>${repeat(items(), (it) => html`<li class=${sel() === it.id ? "on" : ""} title=${it.on ? "yes" : "no"} data-x="${it.label + "!"}">${it.label}</li>`, null, (it) => it.id)}</ul>
+      <ul>${repeat(items(), (it) => html`<li class=${sel() === it.id ? "on" : ""} title=${it.on ? "yes" : "no"} data-x="${it.label + "!"}">${it.label}</li>`, { key: "id" })}</ul>
     </div>`,
   };
 });

@@ -18,8 +18,7 @@ export const NestedListRowRoot = defineComponent('hardening-nested-list-row-root
               (x) => html`<li class="row-root-list-inner">${x}</li>`,
             )}
           </ul>`,
-        null,
-        (o) => o.id,
+        { key: 'id' },
       )}
     </div>`,
   };

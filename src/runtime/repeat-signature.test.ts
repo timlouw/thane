@@ -1,7 +1,7 @@
 /**
- * The `repeat()` marker's signature (markers.ts) type-checks every empty
- * template the compiler takes, and rejects a function in the third argument, where a key function is
- * easily written by mistake: `repeat(items, row, (it) => it.id)` (the key function goes fourth).
+ * The `repeat()` marker's signature (markers.ts): its options, `{ key, empty }`, type-check every form the
+ * compiler takes, and reject what it does not: a key that is not a property whose value is a string or a
+ * number, an option it does not have, and anything but an options object in the third argument.
  *
  * One program holds the markers and a usage file with one call per case, each in its
  * own function; a case's diagnostics are the ones on its lines.
@@ -11,24 +11,33 @@ import { join } from 'node:path';
 import ts from 'typescript';
 
 const VALID: Record<string, string> = {
-  'no empty template': 'repeat(items, row)',
-  'null, then a key function': 'repeat(items, row, null, (it) => it.id)',
-  'undefined, then a key function': 'repeat(items, row, undefined, (it) => it.id)',
-  'an html template': 'repeat(items, row, html`<li>none</li>`)',
-  'an html template and a key function': 'repeat(items, row, html`<li>none</li>`, (it) => it.id)',
-  'a plain template literal': 'repeat(items, row, `<li>none</li>`)',
-  'a signal read as the items': 'repeat(() => items, row, null, (it, i) => `${it.id}-${i}`)',
+  'no options': 'repeat(items, row)',
+  'a key property': "repeat(items, row, { key: 'id' })",
+  'a key property of strings': "repeat(items, row, { key: 'label' })",
+  'a key function': 'repeat(items, row, { key: (it, i) => `${it.id}-${i}` })',
+  'an html template': 'repeat(items, row, { empty: html`<li>none</li>` })',
+  'a key and an html template': "repeat(items, row, { key: 'id', empty: html`<li>none</li>` })",
+  'a plain template literal': 'repeat(items, row, { empty: `<li>none</li>` })',
+  'a readonly array': 'repeat(frozen, row)',
+  'a key function over strings': 'repeat(words, (w) => html`<li>${w}</li>`, { key: (w) => w })',
 };
 const INVALID: Record<string, string> = {
-  'an arrow function': 'repeat(items, row, (it) => it.id)',
-  'a function expression': 'repeat(items, row, function (it: { id: number }) { return it.id; })',
+  'a key function as the third argument': 'repeat(items, row, (it) => it.id)',
+  'null as the third argument': 'repeat(items, row, null)',
+  'a key that is not a property': "repeat(items, row, { key: 'nope' })",
+  'a key whose values are not strings or numbers': "repeat(items, row, { key: 'on' })",
+  'an option repeat() does not have': 'repeat(items, row, { trackBy: (it: { id: number }) => it.id })',
+  'a function as the empty template': 'repeat(items, row, { empty: (it: { id: number }) => it.id })',
+  'a signal as the items': 'repeat(() => items, row)',
 };
 
-const USAGE = '/h54/usage.ts';
+const USAGE = '/repeat-signature/usage.ts';
 const cases = Object.entries({ ...VALID, ...INVALID });
 const usage = [
   `import { html, repeat } from '${join(import.meta.dir, 'markers.js').replaceAll('\\', '/')}';`,
-  'const items = [{ id: 1 }];',
+  "const items = [{ id: 1, label: 'a', on: true }];",
+  'const frozen: readonly { id: number; label: string; on: boolean }[] = items;',
+  "const words = ['a', 'b'];",
   'const row = (it: { id: number }) => html`<li>${it.id}</li>`;',
   ...cases.map(([, call], i) => `export function case${i}() {\n  return ${call};\n}`),
 ].join('\n');
@@ -70,14 +79,16 @@ let computed: Map<string, string[]> | undefined;
 const diagnostics = (): Map<string, string[]> => (computed ??= diagnosticsByCase());
 
 describe('the repeat() marker', () => {
-  test('every empty template the compiler takes type-checks', () => {
+  test('every form of the options the compiler takes type-checks', () => {
     expect(diagnostics().get('setup')).toBeUndefined();
     for (const name of Object.keys(VALID)) expect({ [name]: diagnostics().get(name) }).toEqual({ [name]: [] });
   }, 60_000);
 
   for (const name of Object.keys(INVALID)) {
-    test(`${name} in the third argument is a type error`, () => {
-      expect(diagnostics().get(name)?.join('\n')).toMatch(/not assignable/);
+    test(`${name} is a type error`, () => {
+      expect(diagnostics().get(name)?.join('\n')).toMatch(
+        /not assignable|does not exist|Object literal may only|has no properties in common/,
+      );
     }, 60_000);
   }
 });

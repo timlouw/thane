@@ -178,8 +178,7 @@ export const Benchmark = defineComponent('bench-mark', () => {
                   <td class="col-md-6"></td>
                 </tr>
               `,
-              null,
-              (row) => row.id,
+              { key: 'id' },
             )}
           </tbody>
         </table>

@@ -1,4 +1,4 @@
-import { defineComponent, signal, html, when, whenElse, repeat } from 'thane';
+import { defineComponent, signal, html, when, repeat } from 'thane';
 import { expose } from '../shared/expose.js';
 import { CountingKid } from '../shared/counting-kid.js';
 import { ProbeCard } from '../shared/probe-card.js';
@@ -35,7 +35,7 @@ export const INITIAL_TOPS: Top[] = [
 // - idx: index bindings in inner rows, then a reorder;
 // - kids: child components in inner rows, their props reading the outer row;
 // - empty: an inner list's empty template;
-// - branch: a when() and a whenElse() in inner rows (the nestedRowWhen probe's shape);
+// - branch: a when() and a when() in inner rows (the nestedRowWhen probe's shape);
 // - mixed: repeat › whenElse › repeat › when / whenElse;
 // - shadow: an inner list whose item has the outer item's name;
 // - after: a handler of the outer row on a static element after an inner list, in the list's container;
@@ -56,15 +56,15 @@ export const NestedLists = defineComponent('hardening-nested-lists', () => {
   return {
     // prettier-ignore
     template: html`<div class="lists">
-      <ul class="lists-three">${repeat(tops(), (t) => html`<li class="lists-top" @click=${() => bump('top' + t.id)}><b class="lists-top-title">${t.title}</b><ol>${repeat(t.mids, (m) => html`<li class="lists-mid" @click=${() => bump('mid' + m.id)}><i class="lists-mid-name">${t.title}/${m.name}</i><ul>${repeat(m.leaves, (l) => html`<li class="lists-leaf"><button class="lists-leaf-btn" @click=${() => bump('leaf' + l.id)}>${t.title}/${m.name}/${l.n}</button><button class="lists-leaf-stop" @click.stop=${() => bump('stop' + l.id)}>s</button></li>`, null, (l) => l.id)}</ul></li>`, null, (m) => m.id)}</ol></li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-idx">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m, j) => html`<li class="lists-idx-row">${j}:${m.name}</li>`, null, (m) => m.id)}</ol></li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-kids">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-kid-row">${CountingKid({ label: t.title + '/' + m.name })}</li>`, null, (m) => m.id)}</ol></li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-empty">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-e-row">${m.name}</li>`, html`<li class="lists-e-none">none</li>`, (m) => m.id)}</ol></li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-branch">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-branch-row"><b class="lists-branch-on" ${when(m.on)}>${m.name}</b>${whenElse(m.on, html`<i class="lists-branch-t">${t.title}</i>`, html`<i class="lists-branch-f">off</i>`)}</li>`, null, (m) => m.id)}</ol></li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-mixed">${repeat(tops(), (t) => html`<li>${whenElse(show(), html`<ol>${repeat(t.mids, (m) => html`<li class="lists-mx-row"><span class="lists-mx-on" ${when(m.on)}>${t.title}:${m.name}</span>${whenElse(m.on, html`<i class="lists-mx-t">on</i>`, html`<i class="lists-mx-f">off</i>`)}</li>`, null, (m) => m.id)}</ol>`, html`<p class="lists-mx-hidden">hidden</p>`)}</li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-shadow">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (t) => html`<li class="lists-sh-row">${t.name}</li>`, null, (t) => t.id)}</ol></li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-after">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-af-row">${m.name}</li>`, null, (m) => m.id)}<li class="lists-af-btn" @click=${() => bump('after' + t.id)}>after</li></ol></li>`, null, (t) => t.id)}</ul>
-      <ul class="lists-oitem">${repeat(tops(), (item) => html`<li><ol>${repeat(item.mids, (m) => html`<li class="lists-oi-row">${ProbeCard({ label: item.title + ':' + m.name })}</li>`, null, (m) => m.id)}</ol></li>`, null, (item) => item.id)}</ul>
+      <ul class="lists-three">${repeat(tops(), (t) => html`<li class="lists-top" @click=${() => bump('top' + t.id)}><b class="lists-top-title">${t.title}</b><ol>${repeat(t.mids, (m) => html`<li class="lists-mid" @click=${() => bump('mid' + m.id)}><i class="lists-mid-name">${t.title}/${m.name}</i><ul>${repeat(m.leaves, (l) => html`<li class="lists-leaf"><button class="lists-leaf-btn" @click=${() => bump('leaf' + l.id)}>${t.title}/${m.name}/${l.n}</button><button class="lists-leaf-stop" @click.stop=${() => bump('stop' + l.id)}>s</button></li>`, { key: "id" })}</ul></li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
+      <ul class="lists-idx">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m, j) => html`<li class="lists-idx-row">${j}:${m.name}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
+      <ul class="lists-kids">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-kid-row">${CountingKid({ label: t.title + '/' + m.name })}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
+      <ul class="lists-empty">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-e-row">${m.name}</li>`, { key: "id", empty: html`<li class="lists-e-none">none</li>` })}</ol></li>`, { key: "id" })}</ul>
+      <ul class="lists-branch">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-branch-row"><b class="lists-branch-on" ${when(m.on)}>${m.name}</b>${when(m.on, html`<i class="lists-branch-t">${t.title}</i>`, html`<i class="lists-branch-f">off</i>`)}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
+      <ul class="lists-mixed">${repeat(tops(), (t) => html`<li>${when(show(), html`<ol>${repeat(t.mids, (m) => html`<li class="lists-mx-row"><span class="lists-mx-on" ${when(m.on)}>${t.title}:${m.name}</span>${when(m.on, html`<i class="lists-mx-t">on</i>`, html`<i class="lists-mx-f">off</i>`)}</li>`, { key: "id" })}</ol>`, html`<p class="lists-mx-hidden">hidden</p>`)}</li>`, { key: "id" })}</ul>
+      <ul class="lists-shadow">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (t) => html`<li class="lists-sh-row">${t.name}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
+      <ul class="lists-after">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-af-row">${m.name}</li>`, { key: "id" })}<li class="lists-af-btn" @click=${() => bump('after' + t.id)}>after</li></ol></li>`, { key: "id" })}</ul>
+      <ul class="lists-oitem">${repeat(tops(), (item) => html`<li><ol>${repeat(item.mids, (m) => html`<li class="lists-oi-row">${ProbeCard({ label: item.title + ':' + m.name })}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
       <ul class="lists-sigitem">${repeat(sigRows(), (item) => html`<li><ol>${repeat(item().tags, (tag) => html`<li class="lists-si-row">${item().name}/${tag}</li>`)}</ol></li>`)}</ul>
     </div>`,
   };

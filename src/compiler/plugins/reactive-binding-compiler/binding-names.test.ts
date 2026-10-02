@@ -36,7 +36,7 @@ describe('names in templates and the compiled bindings', () => {
   test("a row whose item is named e keeps the name for the developer's handlers", async () => {
     const js = await build(
       '  const rows = signal([{ id: 1 }]); const pick = (id: number) => id;',
-      '<ul>${repeat(rows(), (e) => html`<li @click=${() => pick(e.id)}>${e.id}</li>`, null, (e) => e.id)}</ul>',
+      '<ul>${repeat(rows(), (e) => html`<li @click=${() => pick(e.id)}>${e.id}</li>`, { key: "id" })}</ul>',
     );
     expect(js).toContain('pick(');
   });
@@ -50,7 +50,7 @@ describe('names in templates and the compiled bindings', () => {
   test("setup variables named e and item, read in row handlers, are the setup's", async () => {
     const js = await build(
       '  const rows = signal([{ id: 1 }]); const e = signal(0); const item = signal(5); const pick = (id: number) => id;',
-      '<ul>${repeat(rows(), (row) => html`<li @click=${() => pick(e() + item() + row.id)}>${row.id}</li>`, null, (row) => row.id)}</ul>',
+      '<ul>${repeat(rows(), (row) => html`<li @click=${() => pick(e() + item() + row.id)}>${row.id}</li>`, { key: "id" })}</ul>',
     );
     expect(js).toMatch(/pick\(e\(\) \+ item\(\) \+ row\.id\)/);
     expect(js).toMatch(/addEventListener\("click", \(_e\) =>/);

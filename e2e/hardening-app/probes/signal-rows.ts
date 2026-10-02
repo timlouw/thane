@@ -18,6 +18,6 @@ export const SignalRows = defineComponent('hardening-signal-rows', () => {
   expose('signalRows', { set });
   return {
     // prettier-ignore
-    template: html`<ul class="signal-rows">${repeat(rows(), (row) => html`<li class="signal-row"><b ${when(row().on)}>${row().name}</b></li>`, null, (row) => row().id)}</ul>`,
+    template: html`<ul class="signal-rows">${repeat(rows(), (row) => html`<li class="signal-row"><b ${when(row().on)}>${row().name}</b></li>`, { key: (row) => row().id })}</ul>`,
   };
 });

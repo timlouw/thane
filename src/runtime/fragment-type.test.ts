@@ -16,9 +16,9 @@ const VALID: Record<string, string> = {
   'an html template is a Fragment': 'const f: Fragment = html`<p></p>`; return f;',
   "a component's template": 'return defineComponent(() => ({ template: html`<p></p>` }));',
   'a child component call is a Fragment': 'const f: Fragment = Card({ n: 1 }); return f;',
-  'fragments and plain markup as whenElse() branches': 'return whenElse(true, spinner, `<b></b>`);',
-  'a component call as a row': 'return repeat(items, (it) => Card({ n: it.id }), spinner);',
-  'a directive in a template': 'return html`<div>${whenElse(true, spinner, html``)}</div>`;',
+  'fragments and plain markup as when() branches': 'return when(true, spinner, `<b></b>`);',
+  'a component call as a row': 'return repeat(items, (it) => Card({ n: it.id }), { empty: spinner });',
+  'a directive in a template': 'return html`<div>${when(true, spinner)}</div>`;',
   "a callback prop's parameters are typed at a child call site":
     'return html`<ul>${Picker({ onPick: (id) => id.toFixed(0), label: spinner })}</ul>`;',
 };
@@ -27,7 +27,7 @@ const INVALID: Record<string, [call: string, message: RegExp]> = {
     "return defineComponent(() => ({ template: '<p></p>' }));",
     /not assignable to type 'Fragment'/,
   ],
-  'a number as a whenElse() branch': ['return whenElse(true, 1, spinner);', /not assignable/],
+  'a number as a when() branch': ['return when(true, 1, spinner);', /not assignable/],
   'a row that is not a template': ['return repeat(items, (it) => it.id);', /not assignable/],
   "a fragment's members": ['return spinner.length;', /does not exist on type 'Fragment'/],
   'a callback prop used with the wrong type': [
@@ -47,7 +47,7 @@ const cases: [string, string][] = [
 ];
 const runtime = (file: string): string => join(import.meta.dir, file).replaceAll('\\', '/');
 const usage = [
-  `import { html, whenElse, repeat, type Fragment } from '${runtime('markers.js')}';`,
+  `import { html, when, repeat, type Fragment } from '${runtime('markers.js')}';`,
   `import { defineComponent } from '${runtime('component.js')}';`,
   'const items = [{ id: 1 }];',
   'const spinner = html`<span></span>`;',

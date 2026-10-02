@@ -15,7 +15,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(rows(), ${params} => html\`${row}\`, null, (row) => row.id)}
+        \${repeat(rows(), ${params} => html\`${row}\`, { key: "id" })}
       </ul>
     \`,
   };
@@ -46,9 +46,9 @@ describe('Nested directives inside rows read the row through row-scoped signals'
     expect(js.match(/.*\brow\.name\b.*/g)?.map((line) => line.trim())).toEqual(['_c0.data = (_p0 = row.name) ?? "";']);
   });
 
-  test('whenElse() branches inside a row may read the item', async () => {
+  test('when() branches inside a row may read the item', async () => {
     const js = await buildAndReadJs(
-      app('<li>${whenElse(row.on, html`<b>${row.name}</b>`, html`<i>${row.name}!</i>`)}</li>'),
+      app('<li>${when(row.on, html`<b>${row.name}</b>`, html`<i>${row.name}!</i>`)}</li>'),
     );
     expect(js).toMatch(/const row\$ = (?:__sig|signal)\(row\);/);
     expect(js).toMatch(/__bindIfExpr\(_w[se]_b\d+, _w[me]_b\d+, \[row\$\], \(\) => row\$\(\)\.on,/);

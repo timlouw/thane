@@ -1,7 +1,7 @@
 /**
  * Characterisation of `bindConditional` through `__bindIf` / `__bindIfExpr`.
  *
- * A `when()` / `whenElse()` branch sits between two comment anchors, with any number of root nodes.
+ * A `when()` / `when()` branch sits between two comment anchors, with any number of root nodes.
  * The fake DOM below has just what the binding touches: nodes with siblings, fragments, `insertBefore`
  * and `remove`, and a `<template>` whose `innerHTML` is a space-separated list of node names (each
  * set creates fresh nodes, as parsing does). An operation log records the order of insertion,
@@ -429,7 +429,7 @@ describe('__bindIfExpr', () => {
     expect(ops).toEqual([]);
   });
 
-  test('two branches share the middle anchor of a whenElse(): each changes only its own range', () => {
+  test('two branches share the middle anchor of a when(): each changes only its own range', () => {
     const root = new FakeNode('section');
     const start = root.appendChild(new FakeNode('start'));
     const middle = root.appendChild(new FakeNode('middle'));

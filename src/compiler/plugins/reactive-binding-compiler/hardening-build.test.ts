@@ -32,13 +32,13 @@ describe('template text reads back as the source means it', () => {
   // Written out, the component is:
   //   const v = signal('v\\1 `2` ${3}');
   //   template: html`<div><p>C:\\dir \${notExpr} \`q\`</p><b ${when(on())}>w\\x</b><i>${v()}</i>
-  //     <ul>${repeat(items(), (it) => html`<li>r\\s ${it}</li>`, html`<li>e\\q</li>`)}</ul></div>`
+  //     <ul>${repeat(items(), (it) => html`<li>r\\s ${it}</li>`, { empty: html`<li>e\\q</li>` })}</ul></div>`
   const body = [
     '  const on = signal(true);',
     "  const items = signal(['a']);",
     "  const v = signal('v\\\\1 `2` ${3}');",
     '  return { template: html`<div><p>C:\\\\dir \\${notExpr} \\`q\\`</p><b ${when(on())}>w\\\\x</b><i>${v()}</i>' +
-      '<ul>${repeat(items(), (it) => html`<li>r\\\\s ${it}</li>`, html`<li>e\\\\q</li>`)}</ul></div>` };',
+      '<ul>${repeat(items(), (it) => html`<li>r\\\\s ${it}</li>`, { empty: html`<li>e\\\\q</li>` })}</ul></div>` };',
   ].join('\n');
 
   test('main, when(), row and empty templates, and an initial value', async () => {
@@ -77,12 +77,12 @@ describe('whitespace inside verbatim elements', () => {
     '  const on = signal(true);',
     "  const items = signal(['a']);",
     '  return { template: html`<div>\n  <pre>p 1\n    p 2</pre>\n  <p ${when(on())}><textarea>t 1\n  t 2</textarea></p>\n' +
-      '  ${whenElse(on(), html`<pre>w 1\n  w 2</pre>`, html`<i>e</i>`)}\n' +
-      '  <ul>${repeat(items(), (it) => html`<li><pre>r 1\n  ${it}</pre></li>`, html`<li><pre>x 1\n  x 2</pre></li>`)}</ul>\n</div>` };',
+      '  ${when(on(), html`<pre>w 1\n  w 2</pre>`, html`<i>e</i>`)}\n' +
+      '  <ul>${repeat(items(), (it) => html`<li><pre>r 1\n  ${it}</pre></li>`, { empty: html`<li><pre>x 1\n  x 2</pre></li>` })}</ul>\n</div>` };',
   ].join('\n');
 
   for (const mode of ['dev', 'prod'] as const) {
-    test(`main, when(), whenElse(), row and empty templates (${mode})`, async () => {
+    test(`main, when(), when(), row and empty templates (${mode})`, async () => {
       const js = await buildAndReadJs(app(body), { ...DEV, config: { ...DEV.config, isProd: mode === 'prod' } });
       const literals = [...js.matchAll(new RegExp(LITERAL, 'g'))].map((m) => cooked(m[1]));
       const all = literals.join('\n');
@@ -106,7 +106,7 @@ describe('quote-aware expression scanning', () => {
       '  const fmt = (o: unknown) => JSON.stringify(o);',
       "  return { template: html`<div><ul>${repeat(items(), (it) => html`<li>${it.on ? '}' : '{'}</li>`)}</ul>" +
         '<ol>${repeat(items(), (it) => html`<li>${fmt({ a: { b: it.a } })}</li>`)}</ol>' +
-        '${whenElse(on(), html`<i>\\`</i>`, html`<b>{</b>`)}</div>` };',
+        '${when(on(), html`<i>\\`</i>`, html`<b>{</b>`)}</div>` };',
     ].join('\n');
     const js = await buildAndReadJs(app(body), DEV);
     const rows = [...js.matchAll(new RegExp(`__tpl_b\\d+ = __T\\(${LITERAL}\\)`, 'g'))].map((m) => cooked(m[1]));
@@ -136,8 +136,8 @@ describe('child components in the rows of a list inside a directive', () => {
       '<div ${when(on())}><ul>${repeat(items(), (it) => html`<li>${H40Kid({ label: it.n })}</li>`)}</ul></div>',
     ],
     [
-      'a whenElse() branch nested in a when()',
-      '<div ${when(on())}>${whenElse(on(), html`<ul>${repeat(items(), (it) => html`<li>${H40Kid({ label: it.n })}</li>`)}</ul>`, html`<p>no</p>`)}</div>',
+      'a when() branch nested in a when()',
+      '<div ${when(on())}>${when(on(), html`<ul>${repeat(items(), (it) => html`<li>${H40Kid({ label: it.n })}</li>`)}</ul>`, html`<p>no</p>`)}</div>',
     ],
   ] as const) {
     test(`inside ${shape}: the row factory mounts the child with the row's item`, async () => {
@@ -173,7 +173,7 @@ describe("when() on a repeat() row's root element", () => {
   const rows = (row: string): string =>
     app(
       "  const on = signal(true);\n  const items = signal([{ id: 1, on: true, n: 'a' }]);\n" +
-        `  return { template: html\`<ul>\${repeat(items(), (it) => html\`${row}\`, null, (it) => it.id)}</ul>\` };`,
+        `  return { template: html\`<ul>\${repeat(items(), (it) => html\`${row}\`, { key: "id" })}</ul>\` };`,
     );
   const message =
     "THANE008: a repeat() row's root element cannot carry when(); filter the list, or put when() on an inner element.";
@@ -208,7 +208,7 @@ describe('duplicate attributes', () => {
     expect(main).toMatch(/^<div><input class="k" checked><button disabled disabled=\$\{d\(\)\}>b<\/button><\/div>$/);
   });
 
-  test('the duplicate is reported once for every template it is in: component, whenElse() branch and row', async () => {
+  test('the duplicate is reported once for every template it is in: component, when() branch and row', async () => {
     const logged: string[] = [];
     const capture = (...args: unknown[]) => void logged.push(args.map(String).join(' '));
     const { info, log, warn } = console;
@@ -221,7 +221,7 @@ describe('duplicate attributes', () => {
           '  const on = signal(true);\n  const rows = signal([1]);\n' +
             '  return { template: html`<div><p title="a" title="b">c</p>' +
             '<section ${when(on())}><i lang="a" lang="b">w</i></section>' +
-            '${whenElse(on(), html`<b dir="a" dir="b">t</b>`, html`<u>e</u>`)}' +
+            '${when(on(), html`<b dir="a" dir="b">t</b>`, html`<u>e</u>`)}' +
             '<ul>${repeat(rows(), (r) => html`<li id="a" id="b">${r}</li>`)}</ul></div>` };',
         ),
         DEV,
@@ -258,9 +258,9 @@ describe('whitespace between a tag and an anchor comment', () => {
   const body =
     "  const on = signal(true);\n  const t = signal('t');\n  const items = signal(['a']);\n" +
     '  return { template: html`<div>\n  <table><tbody>\n    ${repeat(items(), (it) => html`<tr><td>${it}</td></tr>`)}\n  </tbody></table>\n' +
-    '  <span>a</span> <i ${when(on())}>w</i> <b>b</b> ${whenElse(on(), html`<u>y</u>`, html`<s>n</s>`)} text ${t()}\n</div>` };';
+    '  <span>a</span> <i ${when(on())}>w</i> <b>b</b> ${when(on(), html`<u>y</u>`, html`<s>n</s>`)} text ${t()}\n</div>` };';
   for (const mode of ['dev', 'prod'] as const) {
-    test(`a list, a when() and a whenElse() after tags; a text binding after text (${mode})`, async () => {
+    test(`a list, a when() and a when() after tags; a text binding after text (${mode})`, async () => {
       const js = await buildAndReadJs(app(body), { ...DEV, config: { ...DEV.config, isProd: mode === 'prod' } });
       // the component template, as emitted (no quote or backslash in it, so the same in both modes)
       expect(js).toContain(

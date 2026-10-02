@@ -393,10 +393,9 @@ export const ProductGrid = defineComponent<ProductGridProps>('product-grid', ({ 
       <div class="productGrid">
         ${repeat(
           props.products(),            // signal array to iterate
-          (product) => ProductCard({ product }),  // render each item
-          html`<p>No products found.</p>`,        // empty-state fallback
-          (product) => product().id,              // key function
-        )}
+          (product) => ProductCard({ product }), { key: // empty-state fallback
+          (product) => product().id, empty: // render each item
+          html`<p>No products found.</p>` })}
       </div>
     `,
     styles,
@@ -520,7 +519,7 @@ export const ProductsPage = defineComponent('products-page', () => {
 
 **`pages/Cart/Cart.ts`**
 
-Uses `whenElse()` to show either the empty-cart message or the cart contents:
+Uses `when()` to show either the empty-cart message or the cart contents:
 
 ```ts
 export const CartPage = defineComponent('cart-page', () => {
@@ -534,7 +533,7 @@ export const CartPage = defineComponent('cart-page', () => {
   return {
     template: html`
       <div class="cartContainer">
-        ${whenElse(
+        ${when(
           cartCount() === 0,
           html`<p>Your cart is empty. <a href="/" @click=${goHome}>Select some items first.</a></p>`,
           html`
@@ -556,9 +555,7 @@ export const CartPage = defineComponent('cart-page', () => {
                       </span>
                     </div>
                   </li>
-                `,
-                null,
-                (productSignal) => productSignal().id,
+                `, { key: (productSignal) => productSignal().id },
               )}
             </ul>
             <h2>Total Price: R${totalPrice()}</h2>
@@ -576,8 +573,8 @@ Patterns demonstrated:
 
 | Pattern | Detail |
 |---------|--------|
-| **`whenElse()`** | Two-branch conditional — empty cart vs. full cart |
-| **`repeat()` inside `whenElse()`** | Nested directive: `repeat()` runs inside the "else" branch |
+| **`when()`** | Two-branch conditional — empty cart vs. full cart |
+| **`repeat()` inside `when()`** | Nested directive: `repeat()` runs inside the "else" branch |
 | **`when()` inside `repeat()`** | "Unit Price" row only shows when `cartCount > 1` |
 | **`computed()`** | `cartProducts` and `totalPrice` are computed from the products signal |
 | **Ternary in template** | Button text toggles: `'Remove from Cart'` / `'Remove One Item'` |
@@ -690,7 +687,7 @@ A quick reference of every Thane pattern exercised in this example app:
 | `@click` event binding | `Navbar`, `ProductCard`, `Cart`, `NotFound` |
 | `event.stopPropagation()` | `ProductCard` — prevents card navigate when clicking "Add to Cart" |
 | `when()` | `Navbar` (cart badge), `Products` (loading/error/success), `ProductCard` (badge), `Cart` (unit price, badge), `ProductDetails` (badge, not-found) |
-| `whenElse()` | `Cart` — empty vs. full cart |
+| `when()` | `Cart` — empty vs. full cart |
 | `repeat()` with key function | `ProductGrid`, `Cart` |
 | `repeat()` with empty fallback | `ProductGrid` — `html\`<p>No products found.</p>\`` |
 | `navigate()` | `Navbar`, `ProductCard`, `ProductDetails`, `NotFound` |

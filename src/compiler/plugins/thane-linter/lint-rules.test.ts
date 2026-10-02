@@ -102,7 +102,7 @@ describe('THANE404 — no-nested-html-tags', () => {
 
   test('passes with html inside whenElse (directive exemption)', () => {
     const src = `export const A = defineComponent(() => ({
-      template: html\`<div>\${whenElse(show(), html\`<p>Yes</p>\`, html\`<p>No</p>\`)}</div>\`,
+      template: html\`<div>\${when(show(), html\`<p>Yes</p>\`, html\`<p>No</p>\`)}</div>\`,
     }));`;
     expect(noNestedHtmlTags.check(parse(src), 'test.ts')).toEqual([]);
   });

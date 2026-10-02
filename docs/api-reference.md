@@ -39,17 +39,17 @@ Complete API surface for the Thane framework, covering all public exports, the t
 
 #### Template Markers
 
-`import { html, css, when, whenElse, repeat } from 'thane'`. The compiler turns each use into DOM code at build time, so none of them reaches the bundle. It finds them by name: import them under their own names (THANE413). Called at run time, outside a compiled template, each one throws.
+`import { html, css, when, repeat } from 'thane'`. The compiler turns each use into DOM code at build time, so none of them reaches the bundle. It finds them by name: import them under their own names (THANE413). Called at run time, outside a compiled template, each one throws.
 
 | Export     | Signature                                                                                                                                                                         | Description                                  |
 | :--------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------- |
 | `html`     | `(strings: TemplateStringsArray, ...values: any[]) => Fragment`                                                                                                                   | Tagged template for HTML content             |
 | `css`      | `(strings: TemplateStringsArray, ...values: any[]) => any`                                                                                                                        | Tagged template for CSS content              |
-| `when`     | `(condition: boolean \| (() => boolean)) => string`                                                                                                                               | Conditional rendering — show/hide an element |
-| `whenElse` | `(condition: boolean \| (() => boolean), thenTemplate: Fragment \| string, elseTemplate: Fragment \| string) => Fragment`                                                        | If/else conditional rendering                |
-| `repeat`   | `<T>(items: T[] \| (() => T[]), templateFn: (item: T, index: number) => Fragment \| string, emptyTemplate?: Fragment \| string \| null, trackBy?: (item: T, index: number) => string \| number) => Fragment` | List rendering with keyed reconciliation     |
+| `when`     | `<T>(condition: T) => string`: in an element's tag, `<p ${when(open())}>`                                                                                                        | Show the element while the condition is truthy |
+| `when`     | `<T>(value: T, then: Fragment \| ((value: Truthy<T>) => Fragment), otherwise?: Fragment) => Fragment`: in content                                                                 | Show `then` while the value is truthy, `otherwise` (or nothing) while it is not |
+| `repeat`   | `<T>(items: readonly T[], row: (item: T, index: number) => Fragment, options?: { key?: keyof T \| ((item: T, index: number) => string \| number); empty?: Fragment }) => Fragment` | List rendering with keyed reconciliation     |
 
-`repeat()`'s third argument is the empty template (an `html` template, or `null`); the key function goes fourth: `repeat(items(), row, null, (item) => item.id)`. A function in third place is a build error (THANE010). A directive's templates may also be plain template literals of markup; a component's `template` is an `html` template.
+A condition is not a function: pass a signal's value, `when(open())`, not the signal. `repeat()`'s options are written in the call (THANE010); its key is the name of a property whose values are strings or numbers, or a function of the item. A directive's templates may also be plain template literals of markup; a component's `template` is an `html` template.
 
 ### `thane/router` (subpath export)
 

@@ -1,7 +1,7 @@
 /**
  * THANE413 — no-aliased-thane-import
  *
- * The compiler finds the template markers (`html`, `css`, `when`, `whenElse`, `repeat`) and
+ * The compiler finds the template markers (`html`, `css`, `when`, `repeat`) and
  * `defineComponent` by their names, so they are imported under those names:
  *
  *   import { defineComponent, html, repeat } from 'thane';  // ✅
@@ -20,14 +20,7 @@ import { FN } from '../../../utils/constants.js';
 import { createReporter } from './lint-utils.js';
 
 /** The names the compiler reads a construct by. */
-const COMPILED_BY_NAME: ReadonlySet<string> = new Set([
-  FN.HTML,
-  FN.CSS,
-  FN.WHEN,
-  FN.WHEN_ELSE,
-  FN.REPEAT,
-  FN.DEFINE_COMPONENT,
-]);
+const COMPILED_BY_NAME: ReadonlySet<string> = new Set([FN.HTML, FN.CSS, FN.WHEN, FN.REPEAT, FN.DEFINE_COMPONENT]);
 
 const importLine = (name: string): string => `import { ${name} } from 'thane'`;
 

@@ -6,7 +6,7 @@ This page documents current constraints, browser requirements, and by-design dec
 
 ### `html` Templates Inside Others
 
-An `html` template inside another is compiled where it is the whole `${…}` or a directive argument. In a ternary or a `map()` it would be a plain value (THANE404): use `whenElse()` and `repeat()`.
+An `html` template inside another is compiled where it is the whole `${…}` or a directive argument. In a ternary or a `map()` it would be a plain value (THANE404): use `when()` and `repeat()`.
 
 ### Unique Selectors
 
@@ -15,7 +15,7 @@ A component's selector is the class of its host element, which scopes its styles
 
 ### One Return Object per Setup
 
-A setup function returns one object (THANE412). The compiler builds one static template per component, so an early `return { template: … }` in a branch cannot work. Use `when()` or `whenElse()` in the template instead.
+A setup function returns one object (THANE412). The compiler builds one static template per component, so an early `return { template: … }` in a branch cannot work. Use `when()` or `when()` in the template instead.
 
 ### Hot Updates Swap Whole Components
 
@@ -31,7 +31,7 @@ reloads the page.
 
 ### No Conditional Template Initialization
 
-Template variables cannot use ternary or logical operators (THANE405). Use `whenElse()` for conditional rendering instead.
+Template variables cannot use ternary or logical operators (THANE405). Use `when()` for conditional rendering instead.
 
 ### User IDs
 
@@ -41,11 +41,11 @@ A comment written like one of the compiler's own markers (`<!--b0-->`) is report
 
 ### One Root Element per Repeat Row
 
-Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is only a directive (a `when()`, `whenElse()` or nested `repeat()`) is THANE007 as well. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
+Every `repeat()` row is cloned from one element and moved, updated and removed by that element, so a row template must have exactly one root element. A row such as `(item) => html\`<dt>${item.term}</dt><dd>${item.def}</dd>\`` is reported at build time as THANE007; wrap the pair in a single element instead. A row that is only a directive (a `when()`, `when()` or nested `repeat()`) is THANE007 as well. A row that is a child component call, `(item) => Card({ item })`, has no markup of its own and is not affected.
 
 For the same reason a row's root element cannot carry `when()` (THANE008): filter the list, or put the `when()` on an element inside the row.
 
-Inside the row, anything a component template can hold works, at any depth: bindings, event handlers, child components, `when()`, `whenElse()` and further lists.
+Inside the row, anything a component template can hold works, at any depth: bindings, event handlers, child components, `when()`, `when()` and further lists.
 
 ### Empty Templates Are Static
 

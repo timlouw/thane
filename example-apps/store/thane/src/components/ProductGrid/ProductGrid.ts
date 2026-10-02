@@ -12,12 +12,10 @@ export const ProductGrid = defineComponent<ProductGridProps>('product-grid', ({ 
   return {
     template: html`
       <div class="productGrid">
-        ${repeat(
-          props.products(),
-          (product) => ProductCard({ product }),
-          html`<p>No products found.</p>`,
-          (product) => product().id,
-        )}
+        ${repeat(props.products(), (product) => ProductCard({ product }), {
+          key: (product) => product().id,
+          empty: html`<p>No products found.</p>`,
+        })}
       </div>
     `,
     styles,

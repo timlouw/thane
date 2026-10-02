@@ -19,8 +19,7 @@ export const NestedRowEvent = defineComponent('hardening-nested-row-event', () =
                 )}
               </ol>
             </li>`,
-          null,
-          (g) => g.id,
+          { key: 'id' },
         )}
       </ul>
     </div>`,

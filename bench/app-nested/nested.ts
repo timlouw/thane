@@ -177,18 +177,12 @@ export const Nested = defineComponent('bench-nested', () => {
                   <td class="col-md-4"><span ${when(row.show)}>${row.label}</span></td>
                   <td class="col-md-7">
                     <div class="inner">
-                      ${repeat(
-                        row.children,
-                        (child) => html`<span>${child.label}</span>`,
-                        null,
-                        (child) => child.id,
-                      )}
+                      ${repeat(row.children, (child) => html`<span>${child.label}</span>`, { key: 'id' })}
                     </div>
                   </td>
                 </tr>
               `,
-              null,
-              (row) => row.id,
+              { key: 'id' },
             )}
           </tbody>
         </table>

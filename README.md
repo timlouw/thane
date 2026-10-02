@@ -119,7 +119,7 @@ No Shadow DOM. Components render as regular DOM elements with auto-scoped CSS vi
 <td width="33%" valign="top">
 
 ### 📦 Built-in Directives
-`when()`, `whenElse()`, `repeat()` with keyed reconciliation, empty-state fallbacks, and nesting at any depth.
+`when()`, `when()`, `repeat()` with keyed reconciliation, empty-state fallbacks, and nesting at any depth.
 
 </td>
 <td width="33%" valign="top">

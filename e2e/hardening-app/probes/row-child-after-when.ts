@@ -15,6 +15,6 @@ export const RowChildAfterWhen = defineComponent('hardening-row-child-after-when
   expose('rowChildAfterWhen', { rows, on, lbl });
   return {
     // prettier-ignore
-    template: html`<div><ul class="after-when">${repeat(rows(), (r) => html`<li class="after-when-row"><b class="after-when-b" ${when(on())}>${lbl()}</b>${ProbeCard({ label: r.g })}</li>`, null, (r) => r.id)}</ul><ul class="after-list">${repeat(rows(), (r) => html`<li class="after-list-row">${repeat(r.tags, (t) => html`<i>${t}</i>`)}${ProbeCard({ label: r.g })}</li>`, null, (r) => r.id)}</ul></div>`,
+    template: html`<div><ul class="after-when">${repeat(rows(), (r) => html`<li class="after-when-row"><b class="after-when-b" ${when(on())}>${lbl()}</b>${ProbeCard({ label: r.g })}</li>`, { key: "id" })}</ul><ul class="after-list">${repeat(rows(), (r) => html`<li class="after-list-row">${repeat(r.tags, (t) => html`<i>${t}</i>`)}${ProbeCard({ label: r.g })}</li>`, { key: "id" })}</ul></div>`,
   };
 });

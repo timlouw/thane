@@ -5,7 +5,7 @@ Thane uses tagged template literals for HTML. At build time, the compiler transf
 `html`, `css` and the [directives](directives/README.md) are imported from `thane`:
 
 ```typescript
-import { html, css, when, whenElse, repeat } from 'thane';
+import { html, css, when, repeat } from 'thane';
 ```
 
 They exist only at build time: the compiler turns each use into DOM code, so none of them adds to the bundle. The compiler finds them by name, so import them under their own names ([THANE413](lint-rules.md#thane413--no-aliased-thane-import)). The examples below leave the imports out.
@@ -177,7 +177,7 @@ The compiler manages the child's lifecycle and binding initialization.
 ### Fragments
 
 An `html` template can be a fragment of another: a `const` of the component or the module, used as `${name}`
-wherever markup goes, as a `whenElse()` branch, or as a `repeat()` empty template. An `html` template can also
+wherever markup goes, as a `when()` branch, or as a `repeat()` empty template. An `html` template can also
 be written as a whole `${…}`. The compiler inlines each fragment where it is used, so a fragment costs nothing
 at run time, and it can be used any number of times:
 
@@ -189,15 +189,15 @@ export const Orders = defineComponent(() => {
   const empty = html`<li>No orders</li>`;
   return {
     template: html`
-      ${whenElse(loading(), spinner, html`<p>Ready</p>`)}
-      <ul>${repeat(orders(), (o) => html`<li>${o.name}</li>`, empty)}</ul>
+      ${when(loading(), spinner, html`<p>Ready</p>`)}
+      <ul>${repeat(orders(), (o) => html`<li>${o.name}</li>`, { empty })}</ul>
     `,
   };
 });
 ```
 
 Anywhere else in a `${…}`, such as a ternary or a `map()`, an `html` template would be a plain value, and the
-build reports it (lint rule THANE404): use `whenElse()` to choose between templates, and `repeat()` for a list.
+build reports it (lint rule THANE404): use `when()` to choose between templates, and `repeat()` for a list.
 
 #### Fragments Shared Across Files
 
@@ -216,7 +216,7 @@ export const Badge = html`<b class=${theme()}>New</b>`;
 // orders.ts
 import { Spinner, Badge } from './pieces.js';
 
-template: html`<h2>Orders ${Badge}</h2>${whenElse(loading(), Spinner, html`<ul>…</ul>`)}`;
+template: html`<h2>Orders ${Badge}</h2>${when(loading(), Spinner, html`<ul>…</ul>`)}`;
 ```
 
 A fragment without `${…}` (`Spinner`) is written out where it is used, like a fragment of the same file. One

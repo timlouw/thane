@@ -1,5 +1,5 @@
 import { defineComponent, signal, registerGlobalStyles } from 'thane';
-import { batch, computed, effect, html, css, when, whenElse, repeat } from 'thane';
+import { batch, computed, effect, html, css, when, repeat } from 'thane';
 import { mountComponent } from 'thane/runtime';
 import type { MountHandle } from 'thane';
 import { ChildCounter } from './child-counter.js';
@@ -469,7 +469,7 @@ export const ContractApp = defineComponent('contract-app', () => {
 
         <section data-testid="when-else-section">
           <button data-testid="toggle-when-else" @click=${toggleWhenElse}>toggle whenElse</button>
-          ${whenElse(
+          ${when(
             whenElseFlag(),
             html`<p data-testid="when-else-then">THEN</p>`,
             html`<p data-testid="when-else-else">ELSE</p>`,
@@ -485,7 +485,7 @@ export const ContractApp = defineComponent('contract-app', () => {
           <button data-testid="inc-complex-else" @click=${incComplexElse}>inc complex else</button>
           <div data-testid="complex-wrapper">
             <span data-testid="complex-prefix">prefix</span>
-            ${whenElse(
+            ${when(
               complexWhenElseFlag(),
               html`
                 <article data-testid="complex-then" class=${complexSharedValue()}>
@@ -512,7 +512,7 @@ export const ContractApp = defineComponent('contract-app', () => {
           <button data-testid="add-matrix-row" @click=${addMatrixRow}>add matrix row</button>
           <button data-testid="reset-matrix-rows" @click=${resetMatrixRows}>reset matrix rows</button>
 
-          ${whenElse(
+          ${when(
             ((matrixMeta()?.label ?? '').length > 0 && matrixGateA()) || (matrixGateB() && matrixRows().length > 2),
             html`
               <ul data-testid="matrix-then">
@@ -524,8 +524,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                       <i data-testid="matrix-stock">${matrixGateA() ? 'in-' + row.qty : 'out'}</i>
                     </li>
                   `,
-                  html`<li data-testid="matrix-empty">matrix-empty</li>`,
-                  (row) => row.id,
+                  { key: 'id', empty: html`<li data-testid="matrix-empty">matrix-empty</li>` },
                 )}
               </ul>
             `,
@@ -544,15 +543,14 @@ export const ContractApp = defineComponent('contract-app', () => {
           <button data-testid="reset-order-items" @click=${resetOrderItems}>reset order items</button>
 
           <div data-testid="order-a">
-            ${whenElse(
+            ${when(
               orderFlag(),
               html`
                 <ul data-testid="order-a-then">
                   ${repeat(
                     orderItems(),
                     (item, index) => html` <li data-testid="order-a-row">${item.name}-${index}</li> `,
-                    html`<li data-testid="order-a-empty">order-a-empty</li>`,
-                    (item) => item.id,
+                    { key: 'id', empty: html`<li data-testid="order-a-empty">order-a-empty</li>` },
                   )}
                 </ul>
               `,
@@ -567,29 +565,27 @@ export const ContractApp = defineComponent('contract-app', () => {
                 (item, index) => html`
                   <li data-testid="order-b-row">
                     <span data-testid="order-b-label">${item.name}-${index}</span>
-                    ${whenElse(
+                    ${when(
                       orderFlag(),
                       html`<em data-testid="order-b-branch">then</em>`,
                       html`<em data-testid="order-b-branch">else</em>`,
                     )}
                   </li>
                 `,
-                html`<li data-testid="order-b-empty">order-b-empty</li>`,
-                (item) => item.id,
+                { key: 'id', empty: html`<li data-testid="order-b-empty">order-b-empty</li>` },
               )}
             </ul>
           </div>
 
           <div data-testid="order-c-wrap">
-            ${whenElse(
+            ${when(
               depthFlag() && orderFlag(),
               html`
                 <ol data-testid="order-c-then">
                   ${repeat(
                     orderItems(),
                     (item, index) => html` <li data-testid="order-c-row">${item.name}-${index}</li> `,
-                    html`<li data-testid="order-c-empty">order-c-empty</li>`,
-                    (item) => item.id,
+                    { key: 'id', empty: html`<li data-testid="order-c-empty">order-c-empty</li>` },
                   )}
                 </ol>
               `,
@@ -610,8 +606,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <button data-testid="batch-pick" @click=${() => pickBatchRow(item.id)}>${item.name} #${index}</button>
                 </li>
               `,
-              html`<li data-testid="batch-empty">batch-empty</li>`,
-              (item) => item.id,
+              { key: 'id', empty: html`<li data-testid="batch-empty">batch-empty</li>` },
             )}
           </ul>
         </section>
@@ -647,8 +642,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   >
                 </li>
               `,
-              null,
-              (row) => row.id,
+              { key: 'id' },
             )}
           </ul>
         </section>
@@ -670,7 +664,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <b data-testid="scope-when" ${when(row.on)} title=${row.name}>
                     <a data-testid="scope-when-click" @click=${() => pickScopeRow(row.id)}>${row.name}/${index}</a>
                   </b>
-                  ${whenElse(
+                  ${when(
                     row.on,
                     html`<em data-testid="scope-then">${row.name}-then</em>`,
                     html`<em data-testid="scope-else">${row.name}-else</em>`,
@@ -687,8 +681,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   </ol>
                 </li>
               `,
-              html`<li data-testid="scope-empty">empty</li>`,
-              (row) => row.id,
+              { key: 'id', empty: html`<li data-testid="scope-empty">empty</li>` },
             )}
           </ul>
         </section>
@@ -703,8 +696,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <a data-testid="link-anchor" href=${item.url} title=${item.name}>${item.name}</a>
                 </li>
               `,
-              html`<li data-testid="link-empty">link-empty</li>`,
-              (item) => item.id,
+              { key: 'id', empty: html`<li data-testid="link-empty">link-empty</li>` },
             )}
           </ul>
         </section>
@@ -772,7 +764,7 @@ export const ContractApp = defineComponent('contract-app', () => {
             >${'local-when-' + exprA() + '-' + exprSum()}</div
           >
 
-          ${whenElse(
+          ${when(
             localExpressionMeta.branch === 'then',
             html`
               <section data-testid="expr-local-then-shell">
@@ -800,12 +792,12 @@ export const ContractApp = defineComponent('contract-app', () => {
           <button data-testid="toggle-outer-gate" @click=${toggleOuterGate}>toggle outer</button>
           <button data-testid="toggle-inner-gate" @click=${toggleInnerGate}>toggle inner</button>
 
-          ${whenElse(
+          ${when(
             outerGate(),
             html`
               <div data-testid="gate-then">
                 <span data-testid="gate-then-label">outer-then</span>
-                ${whenElse(
+                ${when(
                   innerGate(),
                   html`<em data-testid="gate-then-inner">inner-then-${exprA()}</em>`,
                   html`<em data-testid="gate-then-inner">inner-else-${exprA()}</em>`,
@@ -816,7 +808,7 @@ export const ContractApp = defineComponent('contract-app', () => {
               <div data-testid="gate-else">
                 <span data-testid="gate-else-label">outer-else</span>
                 <i data-testid="gate-else-when" ${when(innerGate())}>else-when-visible</i>
-                ${whenElse(
+                ${when(
                   innerGate(),
                   html`<u data-testid="gate-else-inner">else-inner-then</u>`,
                   html`<u data-testid="gate-else-inner">else-inner-else</u>`,
@@ -834,7 +826,7 @@ export const ContractApp = defineComponent('contract-app', () => {
             <button data-testid="when-btn-a" @click=${incWhenA}>A</button>
             <button data-testid="when-btn-b" @click=${incWhenB}>B</button>
             <span data-testid="when-clicks">${whenClicksA()}-${whenClicksB()}</span>
-            ${whenElse(
+            ${when(
               whenContentInner(),
               html`<em data-testid="when-inner">inner-then-${whenClicksA()}</em>`,
               html`<em data-testid="when-inner">inner-else</em>`,
@@ -848,8 +840,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                     <button data-testid="when-item-btn" @click=${() => pickWhenItem(item.name)}>pick</button>
                   </li>
                 `,
-                html`<li data-testid="when-empty">empty</li>`,
-                (item) => item.id,
+                { key: 'id', empty: html`<li data-testid="when-empty">empty</li>` },
               )}
             </ul>
             <span data-testid="when-picked">${pickedWhenItem()}</span>
@@ -878,8 +869,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <span data-testid="item-derived">${item.name}-${index}</span>
                 </li>
               `,
-              null,
-              (item) => item.id,
+              { key: 'id' },
             )}
           </ul>
         </section>
@@ -900,7 +890,7 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <span data-testid="nested-label">${item.label}-${index}</span>
                   <span data-testid="nested-parent-a">${exprA()}</span>
                   <div data-testid="nested-when" ${when(showWhen())}>visible</div>
-                  ${whenElse(
+                  ${when(
                     showWhen(),
                     html`<b data-testid="nested-branch">then</b>`,
                     html`<b data-testid="nested-branch">else</b>`,
@@ -909,13 +899,12 @@ export const ContractApp = defineComponent('contract-app', () => {
                     ${repeat(
                       item.children,
                       (child, childIndex) => html`<li data-testid="nested-child">${child}-${childIndex}</li>`,
-                      html`<li data-testid="nested-child-empty">empty</li>`,
+                      { empty: html`<li data-testid="nested-child-empty">empty</li>` },
                     )}
                   </ol>
                 </li>
               `,
-              html`<li data-testid="nested-empty">nested-empty</li>`,
-              (item) => item.id,
+              { key: 'id', empty: html`<li data-testid="nested-empty">nested-empty</li>` },
             )}
           </ul>
         </section>
@@ -966,17 +955,14 @@ export const ContractApp = defineComponent('contract-app', () => {
                   <span data-testid="mixed-row-expr">${row.label}-${exprA()}</span>
                 </li>
               `,
-              html`<li data-testid="mixed-empty">mixed-empty</li>`,
-              (row) => row.id,
+              { key: 'id', empty: html`<li data-testid="mixed-empty">mixed-empty</li>` },
             )}
           </ul>
           <ul data-testid="static-list">
-            ${repeat(
-              mixedRows(),
-              (_row) => html`<li data-testid="static-row">static</li>`,
-              html`<li data-testid="static-empty">static-empty</li>`,
-              (row) => row.id,
-            )}
+            ${repeat(mixedRows(), (_row) => html`<li data-testid="static-row">static</li>`, {
+              key: 'id',
+              empty: html`<li data-testid="static-empty">static-empty</li>`,
+            })}
           </ul>
         </section>
 
@@ -987,7 +973,7 @@ export const ContractApp = defineComponent('contract-app', () => {
           <p id="dev-style" style="color: ${devKind() === 'one' ? 'rgb(1, 1, 1)' : 'rgb(2, 2, 2)'}">style</p>
           <label for="dev-input">Dev input</label>
           <input id="dev-input" value=${devKind()} />
-          ${whenElse(
+          ${when(
             devFlag(),
             html`<div id="dev-then" data-testid="dev-branch">then-${devKind()}</div>`,
             html`<div id="dev-else" data-testid="dev-branch">else</div>`,
@@ -997,11 +983,10 @@ export const ContractApp = defineComponent('contract-app', () => {
               mixedRows(),
               (row) => html`
                 <li data-testid="dev-row">
-                  ${whenElse(devFlag(), html`<b id="dev-row-then">${row.label}</b>`, html`<i id="dev-row-else">off</i>`)}
+                  ${when(devFlag(), html`<b id="dev-row-then">${row.label}</b>`, html`<i id="dev-row-else">off</i>`)}
                 </li>
               `,
-              null,
-              (row) => row.id,
+              { key: 'id' },
             )}
           </ul>
         </section>
@@ -1085,16 +1070,14 @@ export const ContractApp = defineComponent('contract-app', () => {
             ${repeat(
               primaryReentrantList(),
               (item) => html`<li data-testid="reentrant-reconcile-primary-item">${item.label}</li>`,
-              null,
-              (item) => item.id,
+              { key: 'id' },
             )}
           </ul>
           <ul data-testid="reentrant-reconcile-secondary-list">
             ${repeat(
               secondaryReentrantList(),
               (item) => html`<li data-testid="reentrant-reconcile-secondary-item">${item.label}</li>`,
-              null,
-              (item) => item.id,
+              { key: 'id' },
             )}
           </ul>
         </section>

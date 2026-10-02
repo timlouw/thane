@@ -22,7 +22,7 @@ export const App = defineComponent('test-app', () => {
             <td><a @click=\${() => select(row.id)}>\${row.label}</a></td>
             <td><a @click=\${() => remove(row.id)}><span>x</span></a></td>
           </tr>
-        \`, null, (row) => row.id)}
+        \`, { key: "id" })}
       </tbody></table>
     \`,
   };

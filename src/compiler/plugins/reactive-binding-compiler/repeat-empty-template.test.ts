@@ -1,9 +1,8 @@
 /**
- * repeat()'s third argument is the empty template.
- * Every form the compiler takes there builds, pinned by what it emits: none, `null` or `undefined`
- * with a key function fourth, an html template and a plain template literal. A function there is a
- * key function written third by mistake; it was taken as the empty template's markup (the list keyed
- * by index, and emptying it threw), and is a build error (THANE010).
+ * repeat()'s third argument is its options, `{ key, empty }`, written in the call. Every form the compiler
+ * takes builds, pinned by what it emits: no options, a key as a property name or a function, an empty template
+ * as an html template or a plain template literal. Anything else in the third argument, an option repeat() does
+ * not have, and a fourth argument are build errors (THANE010).
  */
 import { describe, expect, test } from 'bun:test';
 import { buildAndReadJs } from '../../testing/build-project.js';
@@ -32,19 +31,20 @@ const keyOf = (js: string): string | undefined =>
 
 const TIMEOUT = 60_000;
 
-describe('the empty template argument of repeat()', () => {
+describe("repeat()'s options", () => {
   for (const [what, list, empty, key] of [
-    ['no empty template', `repeat(items(), ${ROW})`, undefined, 'index'],
-    ['null, then a key function', `repeat(items(), ${ROW}, null, (it) => it.id)`, undefined, 'id'],
-    ['undefined, then a key function', `repeat(items(), ${ROW}, undefined, (it) => it.id)`, undefined, 'id'],
-    ['an html template', `repeat(items(), ${ROW}, html\`<li>none</li>\`)`, '<li>none</li>', 'index'],
+    ['no options', `repeat(items(), ${ROW})`, undefined, 'index'],
+    ['empty options', `repeat(items(), ${ROW}, {})`, undefined, 'index'],
+    ['a key property', `repeat(items(), ${ROW}, { key: "id" })`, undefined, 'id'],
+    ['a key function', `repeat(items(), ${ROW}, { key: (it) => it.id })`, undefined, 'id'],
+    ['an html template', `repeat(items(), ${ROW}, { empty: html\`<li>none</li>\` })`, '<li>none</li>', 'index'],
     [
       'an html template and a key function',
-      `repeat(items(), ${ROW}, html\`<li>none</li>\`, (it) => it.id)`,
+      `repeat(items(), ${ROW}, { key: "id", empty: html\`<li>none</li>\` })`,
       '<li>none</li>',
       'id',
     ],
-    ['a plain template literal', `repeat(items(), ${ROW}, \`<li>none</li>\`)`, '<li>none</li>', 'index'],
+    ['a plain template literal', `repeat(items(), ${ROW}, { empty: \`<li>none</li>\` })`, '<li>none</li>', 'index'],
   ] as const) {
     test(
       `${what} builds`,
@@ -57,30 +57,56 @@ describe('the empty template argument of repeat()', () => {
     );
   }
 
-  const rejected = (list: string, key: string) =>
-    expect(build(list)).rejects.toThrow(
-      new RegExp(
-        `THANE010: the third argument of repeat\\(\\) is the empty template[\\s\\S]*repeat\\(items, row, null, ${key.replace(/[()$.{}]/g, '\\$&')}\\)`,
-      ),
-    );
+  for (const [what, list, message] of [
+    [
+      'a key function as the third argument',
+      `repeat(items(), ${ROW}, (it) => it.id)`,
+      /THANE010: the third argument, \(it\) => it\.id, is not an object of options[\s\S]*repeat\(items, row, \{ key: 'id', empty: html`<li>None<\/li>` \}\)/,
+    ],
+    [
+      'null as the third argument',
+      `repeat(items(), ${ROW}, null)`,
+      /THANE010: the third argument, null, is not an object/,
+    ],
+    [
+      'an empty template as the third argument',
+      `repeat(items(), ${ROW}, html\`<li>none</li>\`)`,
+      /THANE010: the third argument, html`<li>none<\/li>`, is not an object/,
+    ],
+    ['options in a variable', `repeat(items(), ${ROW}, opts)`, /THANE010: the third argument, opts, is not an object/],
+    [
+      'an option repeat() does not have',
+      `repeat(items(), ${ROW}, { trackBy: (it) => it.id })`,
+      /THANE010: 'trackBy' is not an option of repeat\(\): its options are key and empty/,
+    ],
+    ['a spread of options', `repeat(items(), ${ROW}, { ...opts })`, /THANE010: '\.\.\.opts' is not an option/],
+    [
+      'a function as the empty template',
+      `repeat(items(), ${ROW}, { empty: (it) => it.id })`,
+      /THANE010: the empty template, \(it\) => it\.id, is not a template/,
+    ],
+    [
+      'a key that is neither a name nor a function',
+      `repeat(items(), ${ROW}, { key: 1 })`,
+      /THANE010: the key, 1, is neither/,
+    ],
+    [
+      'a fourth argument',
+      `repeat(items(), ${ROW}, null, (it) => it.id)`,
+      /THANE010: repeat\(\) takes the items, the row and its options/,
+    ],
+    [
+      "the old form in a row's nested repeat()",
+      'repeat(items(), (it) => html`<li><ol>${repeat(it.kids, (k) => html`<li>${k.n}</li>`, (k) => k.id)}</ol></li>`)',
+      /THANE010: the third argument, \(k\) => k\.id, is not an object/,
+    ],
+  ] as const) {
+    test(`${what} is a build error`, () => expect(build(list)).rejects.toThrow(message), TIMEOUT);
+  }
 
   test(
-    'an arrow function in the third argument is a build error that shows the null, key form',
-    () => rejected(`repeat(items(), ${ROW}, (it) => it.id)`, '(it) => it.id'),
-    TIMEOUT,
-  );
-  test(
-    'a function expression in the third argument is a build error',
-    () => rejected(`repeat(items(), ${ROW}, function (it) { return it.id; })`, 'function (it) { return it.id; }'),
-    TIMEOUT,
-  );
-  test(
-    "a function in the third argument of a row's nested repeat() is a build error",
-    () =>
-      rejected(
-        'repeat(items(), (it) => html`<li><ol>${repeat(it.kids, (k) => html`<li>${k.n}</li>`, (k) => k.id)}</ol></li>`)',
-        '(k) => k.id',
-      ),
+    'a key that is not an identifier is read as a property',
+    async () => expect(await build(`repeat(items(), ${ROW}, { key: 'data-id' })`)).toContain('(_k) => _k["data-id"]'),
     TIMEOUT,
   );
 });
@@ -94,7 +120,7 @@ describe('THANE011 the empty template is one static element', () => {
   ] as const) {
     test(
       `${what} builds`,
-      async () => expect(emptyTemplateOf(await build(`repeat(items(), ${ROW}, ${empty})`))).toBe(markup),
+      async () => expect(emptyTemplateOf(await build(`repeat(items(), ${ROW}, { empty: ${empty} })`))).toBe(markup),
       TIMEOUT,
     );
   }
@@ -107,7 +133,7 @@ describe('THANE011 the empty template is one static element', () => {
   ] as const) {
     test(
       `${what} is a build error`,
-      () => expect(build(`repeat(items(), ${ROW}, ${empty})`)).rejects.toThrow(message),
+      () => expect(build(`repeat(items(), ${ROW}, { empty: ${empty} })`)).rejects.toThrow(message),
       TIMEOUT,
     );
   }

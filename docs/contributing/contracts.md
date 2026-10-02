@@ -36,7 +36,7 @@ components must be rebuilt with the matching version.
   appends the clone to `target` and calls the setup result's `__b(ctx, elements)`.
 - `__b(ctx, elements) → cleanup?`: the component's binding function. `elements[i]` is the template's
   i-th element in document order; compiled code reaches every node it binds by that position or by a
-  path from it, never by id. Inside a `when()` / `whenElse()` branch, the branch initializer reaches
+  path from it, never by id. Inside a `when()` / `when()` branch, the branch initializer reaches
   its nodes by path from the branch's first node, and a row factory from the row's element.
 - Compiled templates carry no generated id. A text binding writes the text node that follows an empty
   comment (`<!---->`); a list's rows go before its anchor, an empty comment; a child component's host
@@ -44,8 +44,8 @@ components must be rebuilt with the matching version.
   an element there (directly in a table row, inside svg), an empty comment that the compiled code
   replaces with a host it creates.
 - `__bindIf(start, end, signal, template, initNested)` and
-  `__bindIfExpr(start, end, signals, evalExpr, template, initNested)`: a `when()` / `whenElse()` branch
-  is everything between the comment anchors `start` and `end` (a `whenElse()` has three anchors, its
+  `__bindIfExpr(start, end, signals, evalExpr, template, initNested)`: a `when()` / `when()` branch
+  is everything between the comment anchors `start` and `end` (a `when()` has three anchors, its
   branches share the middle one), with any number of root nodes. Whatever is between them when the
   binding starts is the pre-rendered branch. Show inserts `template` before `end`; hide removes every
   node between the anchors, then runs the branch's cleanups. `initNested(first)` receives the branch's

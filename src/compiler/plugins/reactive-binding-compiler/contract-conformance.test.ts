@@ -42,9 +42,9 @@ export const App = defineComponent('conformance-app', () => {
       <section class="root">
         <button @click=\${() => show(!show())}>toggle</button>
         \${when(show(), html\`<p>shown</p>\`)}
-        \${whenElse(show(), html\`<p>A</p>\`, html\`<p>B</p>\`)}
+        \${when(show(), html\`<p>A</p>\`, html\`<p>B</p>\`)}
         <ul>
-          \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, null, (item) => item.id)}
+          \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, { key: "id" })}
         </ul>
       </section>
     \`,
@@ -79,7 +79,7 @@ export const App = defineComponent('nesting-matrix-app', () => {
   return {
     template: html\`
       <section>
-        \${whenElse(
+        \${when(
           ready(),
           html\`
             <ul data-testid="primary-list">
@@ -89,11 +89,9 @@ export const App = defineComponent('nesting-matrix-app', () => {
                   <li data-testid="row-\${item.id}">
                     <span>\${item.label}-\${idx}</span>
                     <em \${when(item.qty > 0)}>qty-\${item.qty}</em>
-                    \${whenElse(item.qty > 0, html\`<b>in-stock</b>\`, html\`<b>out</b>\`)}
+                    \${when(item.qty > 0, html\`<b>in-stock</b>\`, html\`<b>out</b>\`)}
                   </li>
-                \`,
-                html\`<li data-testid="primary-empty">empty-primary</li>\`,
-                (item) => item.id,
+                \`, { key: "id", empty: html\`<li data-testid="primary-empty">empty-primary</li>\` },
               )}
             </ul>
           \`,
@@ -101,15 +99,13 @@ export const App = defineComponent('nesting-matrix-app', () => {
             <ul data-testid="alt-list">
               \${repeat(
                 alt(),
-                (item) => html\`<li data-testid="alt-row">\${item.label}</li>\`,
-                html\`<li data-testid="alt-empty">empty-alt</li>\`,
-                (item) => item.id,
+                (item) => html\`<li data-testid="alt-row">\${item.label}</li>\`, { key: "id", empty: html\`<li data-testid="alt-empty">empty-alt</li>\` },
               )}
             </ul>
           \`,
         )}
 
-        \${whenElse(
+        \${when(
           ready() && (enabled() || items().length > 0),
           html\`<p data-testid="complex-then">complex-then</p>\`,
           html\`<p data-testid="complex-else">complex-else</p>\`,
@@ -140,7 +136,7 @@ export const App = defineComponent('sub-nesting-app', () => {
   return {
     template: html\`
       <div>
-        \${whenElse(
+        \${when(
           show(),
           html\`
             <section>
@@ -148,10 +144,8 @@ export const App = defineComponent('sub-nesting-app', () => {
                 \${repeat(
                   groupA().filter((x) => x.id > 0),
                   (item, i) => html\`
-                    <li>\${whenElse(item.id > 1, html\`<b>large-\${item.v}-\${i}</b>\`, html\`<i>small-\${item.v}-\${i}</i>\`)}</li>
-                  \`,
-                  html\`<li>none-a</li>\`,
-                  (item) => item.id,
+                    <li>\${when(item.id > 1, html\`<b>large-\${item.v}-\${i}</b>\`, html\`<i>small-\${item.v}-\${i}</i>\`)}</li>
+                  \`, { key: "id", empty: html\`<li>none-a</li>\` },
                 )}
               </ul>
             </section>
@@ -159,7 +153,7 @@ export const App = defineComponent('sub-nesting-app', () => {
           html\`
             <section>
               <ul>
-                \${repeat(groupB().map((x) => x), (item) => html\`<li>\${item.v}</li>\`, html\`<li>none-b</li>\`, (item) => item.id)}
+                \${repeat(groupB().map((x) => x), (item) => html\`<li>\${item.v}</li>\`, { key: "id", empty: html\`<li>none-b</li>\` })}
               </ul>
             </section>
           \`,
@@ -194,7 +188,7 @@ export const App = defineComponent('cart-shaped-when-else', () => {
   return {
     template: html\`
       <div class="cartContainer">
-        \${whenElse(
+        \${when(
           cartCount() === 0,
           html\`<p>Your cart is empty. Select some items first.</p>\`,
           html\`
@@ -214,9 +208,7 @@ export const App = defineComponent('cart-shaped-when-else', () => {
                       <span class="cartCounter">\${product.cartCount}</span>
                     </div>
                   </li>
-                \`,
-                null,
-                (product) => product.id,
+                \`, { key: "id" },
               )}
             </ul>
           \`,
@@ -233,7 +225,7 @@ mount({ component: App });
     const js = await buildAndReadJs(source);
 
     expect(js).toContain(RUNTIME_HELPER.IF_EXPR);
-    expect(js).not.toContain('whenElse(');
+    expect(js).not.toContain('when(');
   });
 
   test('concise-arrow components with styles use full registration helper', async () => {
@@ -288,7 +280,7 @@ export const App = defineComponent('branch-root-attrs-app', () => {
   return {
     template: html\`
       <section>
-        \${whenElse(
+        \${when(
           show(),
           html\`<article class=\${count()} data-testid="branch-then">then-\${count()}</article>\`,
           html\`<article data-shared=\${count()} data-testid="branch-else">else-\${count()}</article>\`,
@@ -428,7 +420,7 @@ export const App = defineComponent('computed-repeat-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(activeItems(), (item) => html\`<li>\${item.name}</li>\`, html\`<li>none</li>\`, (item) => item.id)}
+        \${repeat(activeItems(), (item) => html\`<li>\${item.name}</li>\`, { key: "id", empty: html\`<li>none</li>\` })}
       </ul>
     \`,
   };
@@ -463,15 +455,13 @@ export const App = defineComponent('nested-when-repeat-app', () => {
             groups(),
             (group) => html\`
               <li>
-                \${whenElse(
+                \${when(
                   group.important,
                   html\`<strong>\${group.label}</strong>\`,
                   html\`<em>\${group.label}</em>\`,
                 )}
               </li>
-            \`,
-            html\`<li>empty</li>\`,
-            (group) => group.id,
+            \`, { key: "id", empty: html\`<li>empty</li>\` },
           )}
         </ul>
       </section>
@@ -545,7 +535,7 @@ export const App = defineComponent('when-in-repeat-app', () => {
   return {
     template: html\`
       <div>
-        \${whenElse(
+        \${when(
           cartCount() === 0,
           html\`<p>Empty cart</p>\`,
           html\`
@@ -558,9 +548,7 @@ export const App = defineComponent('when-in-repeat-app', () => {
                     <span \${when(product.cartCount > 1)}>\${product.cartCount}</span>
                     <button @click=\${() => removeItem(product.id)}>Remove</button>
                   </li>
-                \`,
-                null,
-                (product) => product.id,
+                \`, { key: "id" },
               )}
             </ul>
           \`,
@@ -639,7 +627,7 @@ export const App = defineComponent('no-route-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, { key: "id" })}
       </ul>
     \`,
   };

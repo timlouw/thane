@@ -6,10 +6,10 @@
  * plain value, and it is reported:
  *
  *   html`<div>${html`<span>${count()}</span>`}</div>`             // ✅ inlined
- *   html`<div>${whenElse(show(), html`<p>Yes</p>`, html``)}</div>` // ✅ directive arguments
+ *   html`<div>${when(show(), html`<p>Yes</p>`)}</div>`            // ✅ directive arguments
  *   html`<div>${repeat(items(), (i) => html`…`)}</div>`            // ✅
  *
- *   html`<div>${show() ? html`<p>Yes</p>` : ''}</div>`            // ❌ THANE404: use whenElse()
+ *   html`<div>${show() ? html`<p>Yes</p>` : ''}</div>`            // ❌ THANE404: use when()
  *   html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`     // ❌ THANE404: use repeat()
  */
 
@@ -21,7 +21,7 @@ import { FN } from '../../../utils/constants.js';
 import { createReporter, isTaggedWith } from './lint-utils.js';
 
 /** Directive calls whose arguments may legitimately contain html`` */
-const DIRECTIVE_CALLS: ReadonlySet<string> = new Set([FN.REPEAT, FN.WHEN, FN.WHEN_ELSE]);
+const DIRECTIVE_CALLS: ReadonlySet<string> = new Set([FN.REPEAT, FN.WHEN]);
 
 const isDirectiveCall = (node: ts.Node): boolean => {
   if (!ts.isCallExpression(node)) return false;
@@ -38,7 +38,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
         report(
           node,
           "An 'html' template here is not compiled: inside another template, one is compiled where it is the whole " +
-            '${…} or a directive argument. Use whenElse() to choose between templates, and repeat() for a list.',
+            '${…} or a directive argument. Use when() to choose between templates, and repeat() for a list.',
         );
         // Still visit children to catch deeper nesting
       }
@@ -50,7 +50,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
       return;
     }
 
-    // Directive calls (repeat, when, whenElse) inside html`` reset the nesting —
+    // Directive calls (repeat, when) inside html`` reset the nesting —
     // their template arguments are processed independently by the compiler.
     if (insideHtmlTag && isDirectiveCall(node)) {
       ts.forEachChild(node, (child) => visit(child, false));

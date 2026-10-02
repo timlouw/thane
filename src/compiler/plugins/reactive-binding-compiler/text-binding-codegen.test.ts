@@ -41,7 +41,7 @@ type Product = { id: number; title: string };
 export const ProductGrid = defineComponent<{ products: { (): Product[]; subscribe: (fn: (items: Product[]) => void, immediate?: boolean) => () => void } }>('product-grid', ({ props }) => ({
   template: html\`
     <section>
-      \${repeat(props.products(), (product) => ProductCard({ product }), html\`<p>None</p>\`, (product) => product.id)}
+      \${repeat(props.products(), (product) => ProductCard({ product }), { key: "id", empty: html\`<p>None</p>\` })}
     </section>
   \`,
 }));
@@ -66,7 +66,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
@@ -90,7 +90,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.label}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
@@ -117,7 +117,7 @@ export const App = defineComponent('test-app', () => {
               <td>\${item.id}</td>
               <td>\${item.label}</td>
             </tr>
-          \`, null, (item) => item.id)}
+          \`, { key: "id" })}
         </tbody>
       </table>
     \`,
@@ -148,7 +148,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>Name: \${item.name}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>Name: \${item.name}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
@@ -173,7 +173,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.first} \${item.last}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.first} \${item.last}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
@@ -200,7 +200,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li>\${item.a}\${item.b}</li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li>\${item.a}\${item.b}</li>\`, { key: "id" })}
       </ul>
     \`,
   };
@@ -232,7 +232,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <table><tbody>
-        \${repeat(items(), (item) => html\`<tr class=\${selected() === item.id ? 'danger' : ''}><td>\${item.label}</td></tr>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<tr class=\${selected() === item.id ? 'danger' : ''}><td>\${item.label}</td></tr>\`, { key: "id" })}
       </tbody></table>
     \`,
   };
@@ -299,7 +299,7 @@ export const App = defineComponent('test-app', () => {
               <td>\${item.id}</td>
               <td>\${item.label}</td>
             </tr>
-          \`, null, (item) => item.id)}
+          \`, { key: "id" })}
         </tbody>
       </table>
     \`,
@@ -322,7 +322,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <ul>
-        \${repeat(items(), (item) => html\`<li><a @click=\${() => click(item)}>\${item.label}</a></li>\`, null, (item) => item.id)}
+        \${repeat(items(), (item) => html\`<li><a @click=\${() => click(item)}>\${item.label}</a></li>\`, { key: "id" })}
       </ul>
     \`,
   };
@@ -357,7 +357,7 @@ export const App = defineComponent('test-app', () => {
               <td>\${item.id}</td>
               <td>\${item.label}</td>
             </tr>
-          \`, null, (item) => item.id)}
+          \`, { key: "id" })}
         </tbody>
       </table>
     \`,
@@ -419,7 +419,7 @@ export const App = defineComponent('test-app', () => {
           <li>
             Item: <strong>\${item.label}</strong> (#\${item.id})
           </li>
-        \`, null, (item) => item.id)}
+        \`, { key: "id" })}
       </ul>
     \`,
   };

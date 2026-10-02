@@ -8,12 +8,7 @@ export const ReorderBeforeAnchor = defineComponent('hardening-reorder-before-anc
   expose('reorderBeforeAnchor', { items });
   return {
     template: html`<ul class="reorder">
-      ${repeat(
-        items(),
-        (item) => html`<li class="reorder-item">${item.id}</li>`,
-        null,
-        (item) => item.id,
-      )}
+      ${repeat(items(), (item) => html`<li class="reorder-item">${item.id}</li>`, { key: 'id' })}
       <li class="reorder-tail">T</li>
     </ul>`,
   };

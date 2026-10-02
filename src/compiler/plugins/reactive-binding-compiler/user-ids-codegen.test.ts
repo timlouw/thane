@@ -57,9 +57,9 @@ describe('Developer ids are kept on bound elements and not used to find them', (
     expect(js).not.toMatch(/querySelector\("#/);
   });
 
-  test('whenElse() branch roots keep their ids; the directive does not use them', async () => {
+  test('when() branch roots keep their ids; the directive does not use them', async () => {
     const js = await buildAndReadJs(
-      app('${whenElse(show(), html`<div id="on-panel">${kind()}</div>`, html`<div id="off-panel">off</div>`)}'),
+      app('${when(show(), html`<div id="on-panel">${kind()}</div>`, html`<div id="off-panel">off</div>`)}'),
     );
     // `show` is statically true: the then-branch is pre-rendered between the first two anchors, and
     // the else-branch leaves nothing between the last two
@@ -85,10 +85,10 @@ describe('Developer ids are kept on bound elements and not used to find them', (
     );
   });
 
-  test('a whenElse() inside a row keeps branch-root ids in its branch templates', async () => {
+  test('a when() inside a row keeps branch-root ids in its branch templates', async () => {
     const js = await buildAndReadJs(
       app(
-        '<ul>${repeat(rows(), (item) => html`<li>${whenElse(show(), html`<b id="row-on">${item.label}</b>`, html`<i id="row-off">off</i>`)}</li>`, null, (item) => item.id)}</ul>',
+        '<ul>${repeat(rows(), (item) => html`<li>${when(show(), html`<b id="row-on">${item.label}</b>`, html`<i id="row-off">off</i>`)}</li>`, { key: "id" })}</ul>',
       ),
     );
     expect(js).toMatch(/`<b id="row-on">/);

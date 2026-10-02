@@ -716,7 +716,7 @@ export const processItemTemplate = (
     isNestedInsideAny(start, end, ranges.conditional);
 
   // ── WhenElse ──
-  const whenElseBlocks = collectWhenElseBlocks(
+  const branches = collectWhenElseBlocks(
     {
       ...parsed,
       bindings: parsed.bindings.filter(
@@ -728,6 +728,8 @@ export const processItemTemplate = (
     processRowSubTemplate,
     rowRefs.expression,
   );
+  const whenElseBlocks = branches.whenElseBlocks;
+  conditionals.push(...branches.conditionals);
 
   // ── Nested repeats ──
   for (const binding of parsed.bindings) {

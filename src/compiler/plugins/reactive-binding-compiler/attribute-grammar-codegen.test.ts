@@ -24,7 +24,7 @@ import { defineComponent, signal, mount } from 'thane';
 export const App = defineComponent('test-app', () => {
   const rows = signal([{ id: 1, kind: 'a', color: 'red', label: 'A' }]);
   return {
-    template: html\`<ul>\${repeat(rows(), (item) => html\`${row}\`, null, (item) => item.id)}</ul>\`,
+    template: html\`<ul>\${repeat(rows(), (item) => html\`${row}\`, { key: "id" })}</ul>\`,
   };
 });
 mount({ component: App });

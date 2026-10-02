@@ -17,8 +17,7 @@ export const DestroyRows = defineComponent('hardening-destroy-rows', () => {
           html`<li class="destroy-row"
             ><span class="destroy-m">${it.n}-${destroyRowsTick()}</span>${Kid({ label: it.n })}</li
           >`,
-        null,
-        (it) => it.id,
+        { key: 'id' },
       )}
     </ul>`,
   };

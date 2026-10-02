@@ -80,7 +80,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('click handlers in a whenElse() branch inside a row fire', async ({ page }) => {
+  test('click handlers in a when() branch inside a row fire', async ({ page }) => {
     const probe = await mountProbe(page, 'rowWhenElseEvent');
     await expect(page.locator('.branch-event-clicks')).toHaveText('0');
 
@@ -91,7 +91,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a child component in a whenElse() nested in a when() is mounted', async ({ page }) => {
+  test('a child component in a when() nested in a when() is mounted', async ({ page }) => {
     const probe = await mountProbe(page, 'nestedWhenElseChild');
     await expect(page.locator('.nested-branch-then .card')).toHaveText(['branch-card']);
 
@@ -147,7 +147,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('hyphenated tags keep their name as a whenElse() root and with when()', async ({ page }) => {
+  test('hyphenated tags keep their name as a when() root and with when()', async ({ page }) => {
     const probe = await mountProbe(page, 'hyphenatedTag');
     await expect(page.locator('.hyphenated-we-else')).toHaveText('B');
     await expect(page.locator('section.hyphenated my-tag')).toHaveCount(0);
@@ -307,7 +307,7 @@ test.describe('hardening probes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('multi-root and text-only whenElse() branches show and hide completely', async ({ page }) => {
+  test('multi-root and text-only when() branches show and hide completely', async ({ page }) => {
     const probe = await mountProbe(page, 'multiRootBranch');
     const two = page.locator('section.multi-root-two');
     const text = page.locator('section.multi-root-text');
@@ -344,7 +344,7 @@ test.describe('hardening probes', () => {
   test("attribute bindings in a row's when() land on that row's elements", async ({ page }) => {
     // A shape that never failed, kept as a regression test. Four shapes: the
     // attribute on the when() element (A), on an element inside its content (B), bound to a component
-    // signal (C), and inside a whenElse() branch (D). Row 2 starts hidden.
+    // signal (C), and inside a when() branch (D). Row 2 starts hidden.
     const probe = await mountProbe(page, 'rowWhenAttribute');
     const toggle = (id: number) => page.evaluate((rowId) => (window as any).__probe.rowWhenAttribute.toggle(rowId), id);
     const titles = (shape: 'a' | 'b' | 'd') =>
@@ -605,7 +605,7 @@ test.describe('lookups and branches', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('when() / whenElse() alone in an element, next to text and three deep, toggled five times', async ({ page }) => {
+  test('when() / when() alone in an element, next to text and three deep, toggled five times', async ({ page }) => {
     const probe = await mountProbe(page, 'branchPositions');
     const set = (key: string, value: unknown) => setProbe(page, 'branchPositions', key, value);
     const clicks = page.locator('.branches-clicks');
@@ -634,7 +634,7 @@ test.describe('lookups and branches', () => {
       await expect(page.locator('.branches-only-w')).toHaveText(`o${round}+only`);
       await click('.branches-only-btn');
 
-      // whenElse() between text
+      // when() between text
       await set('text', false);
       await expect(page.locator('.branches-text')).toHaveText(`before o${round} after`);
       await expect(page.locator('.branches-else')).toHaveAttribute('title', `o${round}`);
@@ -683,7 +683,7 @@ test.describe('lookups and branches', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('when() and whenElse() at the top level of the template, between static nodes', async ({ page }) => {
+  test('when() and when() at the top level of the template, between static nodes', async ({ page }) => {
     const probe = await mountProbe(page, 'topLevelBranches');
     const set = (key: string, value: unknown) => setProbe(page, 'topLevelBranches', key, value);
     const children = () =>
@@ -740,7 +740,7 @@ test.describe('lookups and branches', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a text-only whenElse() branch that starts hidden shows its text and toggles', async ({ page }) => {
+  test('a text-only when() branch that starts hidden shows its text and toggles', async ({ page }) => {
     const probe = await mountProbe(page, 'hiddenTextBranch');
     const section = page.locator('section.hidden-text');
     await expect(section).toHaveText('else');
@@ -1038,9 +1038,7 @@ test.describe('nested directives in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('handlers in both whenElse() branches of a row fire; .stop keeps a click from the row handler', async ({
-    page,
-  }) => {
+  test('handlers in both when() branches of a row fire; .stop keeps a click from the row handler', async ({ page }) => {
     const probe = await mountProbe(page, 'rowDirectives');
     await page.locator('.row-dirs-then').click();
     await page.locator('.row-dirs-else').click();
@@ -1057,7 +1055,7 @@ test.describe('nested directives in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('child components in a row when() and whenElse() mount, and go and come back with their branch', async ({
+  test('child components in a row when() and when() mount, and go and come back with their branch', async ({
     page,
   }) => {
     const probe = await mountProbe(page, 'rowDirectives');
@@ -1092,7 +1090,7 @@ test.describe('nested directives in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a whenElse() and a list inside a row when(), and a list inside a row whenElse() branch', async ({ page }) => {
+  test('a when() and a list inside a row when(), and a list inside a row when() branch', async ({ page }) => {
     const probe = await mountProbe(page, 'rowDirectives');
     await expect.poll(() => texts(page, '.row-dirs-in-then')).toEqual(['John']);
     await expect.poll(() => texts(page, '.row-dirs-in-else')).toEqual(['off']);
@@ -1275,7 +1273,7 @@ test.describe('nested lists in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('a when() and a whenElse() in inner rows', async ({ page }) => {
+  test('a when() and a when() in inner rows', async ({ page }) => {
     const probe = await mountProbe(page, 'nestedLists');
     await expect.poll(() => texts(page, '.lists-branch-on')).toEqual(['a1', 'b1']);
     await expect.poll(() => texts(page, '.lists-branch-t')).toEqual(['A', 'B']);
@@ -1295,7 +1293,7 @@ test.describe('nested lists in rows', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 
-  test('repeat › whenElse › repeat › when() and whenElse()', async ({ page }) => {
+  test('repeat › whenElse › repeat › when() and when()', async ({ page }) => {
     const probe = await mountProbe(page, 'nestedLists');
     await expect.poll(() => texts(page, '.lists-mx-row')).toEqual(['A:a1on', 'off', 'B:b1on']);
     await setProbe(page, 'nestedLists', 'show', false);

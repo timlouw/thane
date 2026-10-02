@@ -1,4 +1,4 @@
-import { defineComponent, signal, html, when, whenElse, repeat } from 'thane';
+import { defineComponent, signal, html, when, repeat } from 'thane';
 import { expose } from '../shared/expose.js';
 
 type Row = { id: number; on: boolean; label: string };
@@ -20,25 +20,19 @@ export const RowWhenAttribute = defineComponent('hardening-row-when-attribute', 
       <ul class="when-attr-a-list">
         ${repeat(
           rows(),
-          (r) => html`<li class="when-attr-a-row"><b class="when-attr-a" ${when(r.on)} title=${r.label}>A</b></li>`,
-          null,
-          (r) => r.id,
+          (r) => html`<li class="when-attr-a-row"><b class="when-attr-a" ${when(r.on)} title=${r.label}>A</b></li>`, { key: "id" },
         )}
       </ul>
       <ul class="when-attr-b-list">
         ${repeat(
           rows(),
-          (r) => html`<li class="when-attr-b-row"><div ${when(r.on)}><b class="when-attr-b" title=${r.label}>B</b></div></li>`,
-          null,
-          (r) => r.id,
+          (r) => html`<li class="when-attr-b-row"><div ${when(r.on)}><b class="when-attr-b" title=${r.label}>B</b></div></li>`, { key: "id" },
         )}
       </ul>
       <ul class="when-attr-c-list">
         ${repeat(
           rows(),
-          (r) => html`<li class="when-attr-c-row"><div ${when(r.on)}><b class="when-attr-c" data-tag=${tag()}>C</b></div></li>`,
-          null,
-          (r) => r.id,
+          (r) => html`<li class="when-attr-c-row"><div ${when(r.on)}><b class="when-attr-c" data-tag=${tag()}>C</b></div></li>`, { key: "id" },
         )}
       </ul>
       <ul class="when-attr-d-list">
@@ -46,10 +40,8 @@ export const RowWhenAttribute = defineComponent('hardening-row-when-attribute', 
           rows(),
           (r) =>
             html`<li class="when-attr-d-row">
-              ${whenElse(r.on, html`<b class="when-attr-d" title=${r.label}>D</b>`, html`<i class="when-attr-d-off">off</i>`)}
-            </li>`,
-          null,
-          (r) => r.id,
+              ${when(r.on, html`<b class="when-attr-d" title=${r.label}>D</b>`, html`<i class="when-attr-d-off">off</i>`)}
+            </li>`, { key: "id" },
         )}
       </ul>
     </div>`,

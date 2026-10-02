@@ -12,7 +12,7 @@ export const App = defineComponent('test-app', () => {
   return {
     template: html\`
       <table><tbody>
-        \${repeat(rows(), (row) => html\`<tr class=\${${rowClass}}><td>\${row.label}</td></tr>\`, null, ${trackBy})}
+        \${repeat(rows(), (row) => html\`<tr class=\${${rowClass}}><td>\${row.label}</td></tr>\`, { key: ${trackBy} })}
       </tbody></table>
     \`,
   };

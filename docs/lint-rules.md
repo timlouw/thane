@@ -88,7 +88,7 @@ const styles = css`
 
 **Severity:** Error
 
-An `html` template inside another is compiled where it is the whole `${…}` (it is inlined) or an argument of a directive (a `whenElse()` branch, a `repeat()` row or empty template). Anywhere else, such as in a ternary or a `map()`, it would be a plain value, and it is reported.
+An `html` template inside another is compiled where it is the whole `${…}` (it is inlined) or an argument of a directive (a `when()` branch, a `repeat()` row or empty template). Anywhere else, such as in a ternary or a `map()`, it would be a plain value, and it is reported.
 
 ```typescript
 // ❌ BAD — an html template in a ternary, and in map()
@@ -98,7 +98,7 @@ template: html`<ul
 >`;
 
 // ✅ GOOD — a directive chooses, or repeats
-template: html`<div>${whenElse(open(), html`<p>Open</p>`, html``)}</div>`;
+template: html`<div>${when(open(), html`<p>Open</p>`)}</div>`;
 template: html`<ul
   >${repeat(items(), (i) => html`<li>${i}</li>`)}</ul
 >`;
@@ -122,8 +122,8 @@ const tpl = isAdmin ? html`<div>Admin</div>` : html`<div>User</div>`;
 // ❌ BAD — logical AND
 const tpl = show && html`<div>Content</div>`;
 
-// ✅ GOOD — use whenElse for conditional rendering
-template: html`<div>${whenElse(isAdmin(), html`<p>Admin</p>`, html`<p>User</p>`)}</div>`;
+// ✅ GOOD — when() in the template chooses
+template: html`<div>${when(isAdmin(), html`<p>Admin</p>`, html`<p>User</p>`)}</div>`;
 ```
 
 ---
@@ -232,7 +232,7 @@ export const Card = defineComponent(() => {
 export const Card = defineComponent(() => {
   const ready = signal(false);
   return {
-    template: html`${whenElse(ready(), html`<p>Ready</p>`, html`<p>Loading…</p>`)}`,
+    template: html`${when(ready(), html`<p>Ready</p>`, html`<p>Loading…</p>`)}`,
   };
 });
 ```
@@ -243,7 +243,7 @@ export const Card = defineComponent(() => {
 
 **Severity:** Error
 
-The compiler finds the template markers (`html`, `css`, `when`, `whenElse`, `repeat`) and `defineComponent` by their names. Import them from `thane` under those names: a renamed import, or one read through a namespace import, is never compiled.
+The compiler finds the template markers (`html`, `css`, `when`, `repeat`) and `defineComponent` by their names. Import them from `thane` under those names: a renamed import, or one read through a namespace import, is never compiled.
 
 ```typescript
 // ❌ BAD — renamed: h`…` is not compiled
@@ -270,10 +270,11 @@ These are reported by the compiler while it compiles a template, as build errors
 | THANE007 | A `repeat()` row template without exactly one root element, including a row that is only a directive                                                                                                                                          |
 | THANE008 | A `when()` on the root element of a `repeat()` row. Filter the list, or put `when()` on an inner element                                                                                                                                      |
 | THANE009 | A template the compiler cannot bind reliably: markup the browser rebuilds (text directly in a table, an `<a>` inside an `<a>`, non-option content in a `<select>`), or a comment written like one of the compiler's own markers (`<!--b0-->`) |
-| THANE010 | A function as `repeat()`'s third argument, which is the empty template. Pass the key function fourth: `repeat(items, row, null, (it) => it.id)`                                                                                               |
+| THANE010 | `repeat()` options that the compiler cannot read: a third argument that is not an object literal `{ key, empty }`, an option `repeat()` does not have, a key that is neither a property name nor a function, or a fourth argument |
 | THANE011 | A `repeat()` empty template that is not one static element: two roots, text outside an element, or a `${…}` in it. It is inserted as one element while the list is empty                                                                      |
 | THANE012 | A template reads a name that starts with `_`, the prefix of every variable the compiled bindings declare for themselves, so it could read the compiler's value. Rename the variable                                                            |
 | THANE013 | Two components of the build with one selector (declared under one name, each with a derived selector). They share their host class, and the styles of the one registered first apply to both. Rename one, or give it an explicit selector     |
+| THANE014 | A content `when()` that is not a conditional: a condition alone (`when(cond)` goes in an element's tag), more than three arguments, or a branch that is not a template |
 
 ### THANE007 — one root element per row
 
@@ -295,14 +296,29 @@ ${repeat(items(), (item) => html`<li ${when(item.visible)}>${item.name}</li>`)}
 ${repeat(items().filter((item) => item.visible), (item) => html`<li>${item.name}</li>`)}
 ```
 
-### THANE010 — the key function goes fourth
+### THANE010 — repeat()'s options are an object
 
 ```typescript
-// ❌ BAD — the key function in the empty template's place
-${repeat(items(), (item) => html`<li>${item.name}</li>`, (item) => item.id)}
+// ❌ BAD — a key function as the third argument, and options in a variable
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: (item) => item.id })}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: options })}
+
+// ✅ GOOD — the options, written in the call
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { key: 'id' })}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { key: (item) => item.id, empty: html`<li>None</li>` })}
+```
+
+### THANE014 — a conditional in content has a template
+
+```typescript
+// ❌ BAD — a condition alone in content, and a branch that is not a template
+${when(open())}
+${when(open(), props.label)}
 
 // ✅ GOOD
-${repeat(items(), (item) => html`<li>${item.name}</li>`, null, (item) => item.id)}
+<p ${when(open())}>Open</p>
+${when(open(), html`<p>Open</p>`)}
+${when(open(), html`<p>${props.label}</p>`)}
 ```
 
 ### THANE012 — names the compiled bindings keep for themselves
@@ -323,12 +339,12 @@ return { template: html`<p>${subscribers()}</p>` };
 
 ```typescript
 // ❌ BAD — text alone, two roots, a binding
-${repeat(items(), (item) => html`<li>${item.name}</li>`, html`No items`)}
-${repeat(items(), (item) => html`<li>${item.name}</li>`, html`<li>No</li><li>items</li>`)}
-${repeat(items(), (item) => html`<li>${item.name}</li>`, html`<li>No ${noun()}</li>`)}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`No items` })}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li>No</li><li>items</li>` })}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li>No ${noun()}</li>` })}
 
 // ✅ GOOD
-${repeat(items(), (item) => html`<li>${item.name}</li>`, html`<li class="empty">No items</li>`)}
+${repeat(items(), (item) => html`<li>${item.name}</li>`, { empty: html`<li class="empty">No items</li>` })}
 ```
 
 ← [Back to Docs](README.md)

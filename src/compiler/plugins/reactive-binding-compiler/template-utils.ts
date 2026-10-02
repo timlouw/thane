@@ -5,10 +5,8 @@
  * eliminate ~300 lines of near-identical conditional/whenElse/edit logic.
  */
 
-import ts from 'typescript';
 import type { Range } from '../../types.js';
 import { ErrorCode } from '../../errors.js';
-import { createSourceFile } from '../../utils/ast-utils.js';
 import type { ConditionalBlock, WhenElseBlock, RepeatBlock, BindingInfo, EventBinding } from './types.js';
 import {
   findElementsWithWhenDirective,
@@ -222,8 +220,9 @@ export const collectConditionalBlocks = (
 // ============================================================================
 
 /**
- * Shared whenElse processing: find all whenElse() directives in parsed HTML,
- * process sub-templates, and build WhenElseBlock entries.
+ * Shared processing of the conditionals in content, `when(condition, then, otherwise?)`: each one's templates are
+ * processed as sub-templates. One with an else-branch is a WhenElseBlock, bound over three anchors; one without
+ * (or with an empty one) is a ConditionalBlock, bound like a when() element: over two anchors, by one binding.
  */
 export const collectWhenElseBlocks = (
   parsed: ParsedTemplate,
@@ -231,8 +230,9 @@ export const collectWhenElseBlocks = (
   state: IdState,
   processSubTemplate: SubTemplateProcessor,
   rewriteExpression?: (expr: string) => { expression: string; extraSignals: string[] },
-): WhenElseBlock[] => {
+): { whenElseBlocks: WhenElseBlock[]; conditionals: ConditionalBlock[] } => {
   const whenElseBlocks: WhenElseBlock[] = [];
+  const conditionals: ConditionalBlock[] = [];
 
   for (const binding of parsed.bindings) {
     if (binding.type !== 'whenElse') continue;
@@ -244,6 +244,28 @@ export const collectWhenElseBlocks = (
     const signalNames = [
       ...new Set([...(binding.signalNames || [binding.signalName]), ...(rewritten?.extraSignals ?? [])]),
     ].filter((s) => s !== '');
+    // Without an else-branch: a conditional of the then-branch alone
+    if (binding.elseTemplate.trim() === '') {
+      const id = `b${state.idCounter++}`;
+      const processed = processSubTemplate(binding.thenTemplate, id, true);
+      state.idCounter = processed.nextId;
+      conditionals.push({
+        id,
+        signalName: signalNames[0] ?? '',
+        signalNames,
+        jsExpression,
+        initialValue: safeEvaluateCondition(jsExpression, signalNames, signalInitializers),
+        templateContent: processed.processedContent,
+        startIndex: binding.expressionStart,
+        endIndex: binding.expressionEnd,
+        nestedBindings: processed.bindings,
+        nestedConditionals: processed.conditionals,
+        nestedWhenElse: processed.whenElseBlocks,
+        nestedRepeats: processed.repeatBlocks,
+        nestedEventBindings: processed.eventBindings,
+      });
+      continue;
+    }
     // The branches' ids are the compiler's; a branch's root keeps any id of its own
     const thenId = `b${state.idCounter++}`;
     const elseId = `b${state.idCounter++}`;
@@ -278,7 +300,7 @@ export const collectWhenElseBlocks = (
     });
   }
 
-  return whenElseBlocks;
+  return { whenElseBlocks, conditionals };
 };
 
 // ============================================================================
@@ -302,23 +324,13 @@ const componentRowOf = (rowTemplate: string): RepeatBlock['componentRow'] => {
 };
 
 /**
- * A repeat()'s empty template, its third argument, collapsed. It is inserted as one static element
- * while the list is empty, so anything else is a build error:
- * - a function: a key function written third, which would become the markup and leave the list keyed
- *   by index (THANE010);
- * - more than one root, or text outside an element: only the first element was shown, and text alone
- *   threw when the list emptied; a `${…}`, which was shown as written (THANE011).
+ * A repeat()'s empty template, its `empty` option, collapsed. It is inserted as one static element while the
+ * list is empty, so anything else is a build error (THANE011): more than one root, or text outside an element
+ * (only the first element was shown, and text alone threw when the list emptied), or a `${…}`, which would be
+ * shown as written.
  */
 const emptyTemplateOf = (binding: ParsedBindingInfo): string | undefined => {
   if (!binding.emptyTemplate) return undefined;
-  const [statement] = createSourceFile('__repeat.ts', binding.fullExpression.replace(/^\$\{|\}$/g, '')).statements;
-  const call = statement && ts.isExpressionStatement(statement) ? statement.expression : undefined;
-  const third = call && ts.isCallExpression(call) ? call.arguments[2] : undefined;
-  if (third && (ts.isArrowFunction(third) || ts.isFunctionExpression(third))) {
-    throw new Error(
-      `${ErrorCode.REPEAT_EMPTY_TEMPLATE_FUNCTION}: the third argument of repeat() is the empty template, shown while the list is empty, not a key function. Pass the key function fourth: repeat(items, row, null, ${third.getText()}).`,
-    );
-  }
   const template = collapseEmptyTemplate(binding.emptyTemplate);
   if (/(^|[^\\])\$\{/.test(template)) {
     throw new Error(

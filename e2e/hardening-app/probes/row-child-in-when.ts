@@ -15,12 +15,7 @@ export const RowChildInWhen = defineComponent('hardening-row-child-in-when', () 
     template: html`<section>
       <div class="when-rows-when" ${when(show())}>
         <ul>
-          ${repeat(
-            items(),
-            (it) => html`<li class="when-rows-row">${Kid({ label: it.n })}</li>`,
-            null,
-            (it) => it.id,
-          )}
+          ${repeat(items(), (it) => html`<li class="when-rows-row">${Kid({ label: it.n })}</li>`, { key: 'id' })}
         </ul>
       </div>
     </section>`,

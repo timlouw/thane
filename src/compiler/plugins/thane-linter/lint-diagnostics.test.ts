@@ -116,12 +116,12 @@ describe('THANE404 diagnostics', () => {
   const error = diag('error', ErrorCode.NO_NESTED_HTML_TAGS);
   const MESSAGE =
     "An 'html' template here is not compiled: inside another template, one is compiled where it is the whole " +
-    '${…} or a directive argument. Use whenElse() to choose between templates, and repeat() for a list.';
+    '${…} or a directive argument. Use when() to choose between templates, and repeat() for a list.';
 
   test('reports a nested html template at its tag unless it is the whole ${} or in a directive call', () => {
     const src = [
       'const t = html`<div>${html`<p>${html`<i/>`}</p>`}</div>`;',
-      'const u = html`${when(x(), html`<b/>`)}${whenElse(x(), html`<c/>`, html`<d/>`)}`;',
+      'const u = html`${when(x(), html`<b/>`)}${when(x(), html`<c/>`, html`<d/>`)}`;',
       'const v = html`${fmt(html`<e/>`)}`;',
       'const w = html`${repeat(xs, (i) => html`${html`<s/>`}`)}`;',
       'const m = html`${lib.html`<q/>`}${lib.when(x(), html`<r/>`)}`;',
@@ -146,10 +146,10 @@ describe('THANE405 diagnostics', () => {
   const warning = diag('warning', ErrorCode.NO_CONDITIONAL_TEMPLATE_INIT);
   const TERNARY =
     'Conditional assignment of tagged templates is not supported. ' +
-    "The compiler cannot determine which template to use at compile time. Use 'whenElse()' instead.";
+    "The compiler cannot determine which template to use at compile time. Use 'when()' in the template instead.";
   const LOGICAL =
     'Logical expression assignment of tagged templates is not supported. ' +
-    "The compiler cannot resolve the template value at compile time. Use 'whenElse()' instead.";
+    "The compiler cannot resolve the template value at compile time. Use 'when()' in the template instead.";
 
   test('reports ternaries and logical expressions whose operands contain html or css', () => {
     const src = [
@@ -310,7 +310,7 @@ describe('THANE412 diagnostics', () => {
   const error = diag('error', ErrorCode.SINGLE_RETURN_OBJECT);
   const MESSAGE =
     'A setup function with more than one return object is not supported. ' +
-    "The compiler builds one template per component, from the last return, so this one is never used. Use 'when()' or 'whenElse()' in the template instead.";
+    "The compiler builds one template per component, from the last return, so this one is never used. Use 'when()' in the template instead.";
 
   test('reports every return object but the last, at any depth, at its return', () => {
     const src = [
@@ -409,7 +409,7 @@ describe('THANE413 diagnostics', () => {
 
   test('accepts the markers under their own names, other aliases, type imports and other modules', () => {
     const src = [
-      "import { defineComponent, html, css, when, whenElse, repeat, signal as s } from 'thane';",
+      "import { defineComponent, html, css, when, repeat, signal as s } from 'thane';",
       "import { type Signal as S } from 'thane';",
       "import type { MountHandle as H } from 'thane';",
       "import { html as litHtml } from 'lit';",

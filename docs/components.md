@@ -142,7 +142,7 @@ export const Timer = defineComponent(() => {
 **Important:** `onDestroy` fires when:
 
 - `mount().destroy()` is called
-- A `when()` or `whenElse()` directive hides the component
+- A `when()` or `when()` directive hides the component
 - The `repeat()` row that holds it is removed, or the list itself goes away with its branch or component
 - The router navigates away from the route containing the component
 - A parent component is destroyed (destruction propagates to children)
@@ -231,7 +231,7 @@ const OrderRow = defineComponent<{ order: Order }>(({ props }) => ({
 export const Orders = defineComponent(() => {
   const orders = signal<Order[]>([]);
   return {
-    template: html`<ul>${repeat(orders(), (o) => OrderRow({ order: o }), null, (o) => o.id)}</ul>`,
+    template: html`<ul>${repeat(orders(), (o) => OrderRow({ order: o }), { key: 'id' })}</ul>`,
   };
 });
 ```
@@ -253,11 +253,11 @@ export const Profile = defineComponent(() => {
   return { template: html`<p>${user()!.name}</p>` };
 });
 
-// ✅ GOOD — one return object; whenElse() picks the branch
+// ✅ GOOD — one return object; when() picks the branch
 export const Profile = defineComponent(() => {
   const user = signal<User | null>(null);
   return {
-    template: html`${whenElse(user() === null, html`<p>Loading…</p>`, html`<p>${user()?.name}</p>`)}`,
+    template: html`${when(user() === null, html`<p>Loading…</p>`, html`<p>${user()?.name}</p>`)}`,
   };
 });
 ```

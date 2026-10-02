@@ -19,9 +19,7 @@ export const RowWhenSignal = defineComponent('hardening-row-when-signal', () => 
     template: html`<ul>
       ${repeat(
         rows(),
-        (r) => html`<li class="when-signal-row"><div ${when(show())}><b class="when-signal-b" title=${r.label}>shown</b></div></li>`,
-        null,
-        (r) => r.id,
+        (r) => html`<li class="when-signal-row"><div ${when(show())}><b class="when-signal-b" title=${r.label}>shown</b></div></li>`, { key: "id" },
       )}
     </ul>`,
   };

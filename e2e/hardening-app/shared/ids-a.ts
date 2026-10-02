@@ -1,4 +1,4 @@
-import { defineComponent, signal, html, when, whenElse, repeat } from 'thane';
+import { defineComponent, signal, html, when, repeat } from 'thane';
 import { expose } from './expose.js';
 
 /**
@@ -17,7 +17,7 @@ export const IdsA = defineComponent<{ n: number }>('hardening-ids-a', ({ props }
     template: html`<div class="ids">
       <p id="dev-attr" class="ids-attr" title=${t()}>P</p>
       <div id="dev-when" class="ids-when" ${when(show())}><b class="ids-when-b" title=${t()}>W</b></div>
-      ${whenElse(
+      ${when(
         show(),
         html`<i id="dev-then" class="ids-then" title=${t()}>T</i>`,
         html`<i id="dev-else" class="ids-else" title=${t()}>E</i>`,

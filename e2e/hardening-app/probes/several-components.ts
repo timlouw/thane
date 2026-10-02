@@ -35,12 +35,7 @@ export const SeveralComponents = defineComponent('hardening-several-components',
       <span class="several-plain">plain</span>
       ${LocalPill({ label: 'top' })} ${ExportedCount({})}
       <ul class="several-rows">
-        ${repeat(
-          items(),
-          (item) => html`<li>${LocalPill({ label: item.label })}</li>`,
-          null,
-          (item) => item.id,
-        )}
+        ${repeat(items(), (item) => html`<li>${LocalPill({ label: item.label })}</li>`, { key: 'id' })}
       </ul>
     </div>`,
   };

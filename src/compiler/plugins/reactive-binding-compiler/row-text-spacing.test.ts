@@ -1,6 +1,6 @@
 /**
  * The static text next to text bindings,
- * pinned for rows, component templates, when() content, whenElse() branches and a row's when() content,
+ * pinned for rows, component templates, when() content, when() branches and a row's when() content,
  * in development and production builds. One component holds every shape; each shape's emitted template
  * is found by the class on its element.
  *
@@ -163,7 +163,7 @@ const ROW_SHAPES: Record<string, Shape> = {
     lostSpace: 'next to an element',
   },
   whenElse: {
-    source: '${it.a} ${whenElse(it.on, html`<i>y</i>`, html`<i>n</i>`)} ${it.b}',
+    source: '${it.a} ${when(it.on, html`<i>y</i>`, html`<i>n</i>`)} ${it.b}',
     template: '<!----> <!----> <!----><!----><!----> <!----> <!---->',
     lostSpace: 'next to an element',
   },
@@ -218,7 +218,7 @@ const DIRECTIVE_SHAPES: Record<string, Shape> = {
     lostSpace: 'next to an element',
   },
   whenElse: {
-    source: '${a()} ${whenElse(on(), html`<i>y</i>`, html`<i>n</i>`)} ${b()}',
+    source: '${a()} ${when(on(), html`<i>y</i>`, html`<i>n</i>`)} ${b()}',
     template: '<!---->A<!----> <!----><i>y</i><!----><!----> <!---->B<!---->',
     lostSpace: 'next to an element',
   },
@@ -282,7 +282,7 @@ const fixture = (): string => {
     ...Object.entries(COMPONENT_SHAPES).map(([name, s]) => `<p class="c-${name}">${s.source}</p>`),
     ...Object.entries(COMPONENT_SHAPES).map(([name, s]) => `<p class="w-${name}" \${when(on())}>${s.source}</p>`),
     ...Object.entries(COMPONENT_SHAPES).map(
-      ([name, s]) => `\${whenElse(on(), html\`<p class="e-${name}">${s.source}</p>\`, html\`<p>-</p>\`)}`,
+      ([name, s]) => `\${when(on(), html\`<p class="e-${name}">${s.source}</p>\`, html\`<p>-</p>\`)}`,
     ),
     ...Object.entries(DIRECTIVE_SHAPES).map(([name, s]) => `<p class="d-${name}">${s.source}</p>`),
     ...Object.entries(ROW_WHEN_SHAPES).map(([name, s]) =>
@@ -359,7 +359,7 @@ const GROUPS: [string, Record<string, Shape>, [string, string, boolean]][] = [
   ['row', ROW_SHAPES, ['li', 'r', true]],
   ['component', COMPONENT_SHAPES, ['p', 'c', false]],
   ['when() content', COMPONENT_SHAPES, ['p', 'w', true]],
-  ['whenElse() branch', COMPONENT_SHAPES, ['p', 'e', true]],
+  ['when() branch', COMPONENT_SHAPES, ['p', 'e', true]],
   ['component with directives', DIRECTIVE_SHAPES, ['p', 'd', false]],
   ["a row's when() content", ROW_WHEN_SHAPES, ['span', 'rw', true]],
 ];

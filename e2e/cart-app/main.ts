@@ -1,4 +1,4 @@
-import { defineComponent, signal, mount, html, whenElse, repeat } from 'thane';
+import { defineComponent, signal, mount, html, when, repeat } from 'thane';
 
 type CartItem = {
   id: number;
@@ -67,7 +67,7 @@ const CartApp = defineComponent('cart-e2e-app', () => {
         <button data-testid="cart-clear" @click=${clearCart}>clear-cart</button>
         <button data-testid="cart-reset" @click=${resetCart}>reset-cart</button>
 
-        ${whenElse(
+        ${when(
           cartCount() === 0,
           html`<p data-testid="cart-empty">Your cart is empty.</p>`,
           html`
@@ -83,8 +83,7 @@ const CartApp = defineComponent('cart-e2e-app', () => {
                     </button>
                   </li>
                 `,
-                null,
-                (product) => product.id,
+                { key: 'id' },
               )}
             </ul>
           `,

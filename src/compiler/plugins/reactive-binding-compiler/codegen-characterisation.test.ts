@@ -73,37 +73,37 @@ const cases: Case[] = [
   {
     name: 'top: whenElse with bindings and events in both branches',
     template:
-      '${whenElse(on(), html`<b @click=${x}>${t()}</b>`, html`<i title="${u()}" @click=${y}>no</i>`)}<p>${other()}</p>',
+      '${when(on(), html`<b @click=${x}>${t()}</b>`, html`<i title="${u()}" @click=${y}>no</i>`)}<p>${other()}</p>',
   },
   {
     name: 'top: whenElse with a simple signal condition',
-    template: '<section>${whenElse(flag(), html`<b>yes</b>`, html`<i>no</i>`)}</section>',
+    template: '<section>${when(flag(), html`<b>yes</b>`, html`<i>no</i>`)}</section>',
   },
   // ── Nested initializer: directives inside when() content ──
   {
     name: 'nested: when simple and expression, whenElse and a list inside a when',
     template:
-      '<section ${when(outer())}><div ${when(inner())}>${x()}</div><div ${when(p() || q())}><b>${y()}</b></div>${whenElse(z(), html`<u>${t()}</u>`, html`<s>none</s>`)}<ul>${repeat(list(), (it) => html`<li>${it.name}</li>`)}</ul></section>',
+      '<section ${when(outer())}><div ${when(inner())}>${x()}</div><div ${when(p() || q())}><b>${y()}</b></div>${when(z(), html`<u>${t()}</u>`, html`<s>none</s>`)}<ul>${repeat(list(), (it) => html`<li>${it.name}</li>`)}</ul></section>',
   },
   {
     name: 'nested: expression bindings inside a when and a whenElse branch',
     template:
-      '<div ${when(a())}><b title="${x()}-${y()}">${x() + y()}</b></div>${whenElse(c(), html`<i style="width: ${w() * 2}px">${w() + 1}</i>`, html`<s>n</s>`)}',
+      '<div ${when(a())}><b title="${x()}-${y()}">${x() + y()}</b></div>${when(c(), html`<i style="width: ${w() * 2}px">${w() + 1}</i>`, html`<s>n</s>`)}',
   },
   {
     name: 'nested: directives inside whenElse branches, events in a branch list',
     template:
-      '${whenElse(mode(), html`<div><p ${when(deep())}>${d()}</p><p ${when(d() > 1)}>many</p>${whenElse(k(), html`<em>${e1()}</em>`, html`<em>b</em>`)}<ul>${repeat(rows(), (r) => html`<li @click=${() => pick(r)}>${r.id}</li>`)}</ul></div>`, html`<div><ol>${repeat(others(), (o) => html`<li>${o}</li>`, html`<li>empty</li>`)}</ol></div>`)}',
+      '${when(mode(), html`<div><p ${when(deep())}>${d()}</p><p ${when(d() > 1)}>many</p>${when(k(), html`<em>${e1()}</em>`, html`<em>b</em>`)}<ul>${repeat(rows(), (r) => html`<li @click=${() => pick(r)}>${r.id}</li>`)}</ul></div>`, html`<div><ol>${repeat(others(), (o) => html`<li>${o}</li>`, { empty: html`<li>empty</li>` })}</ol></div>`)}',
   },
   {
     name: 'nested: whenElse inside a whenElse branch inside a when',
     template:
-      '<div ${when(a())}>${whenElse(b(), html`<div>${whenElse(c(), html`<b>${t()}</b>`, html`<i @click=${go}>x</i>`)}</div>`, html`<p>n</p>`)}</div>',
+      '<div ${when(a())}>${when(b(), html`<div>${when(c(), html`<b>${t()}</b>`, html`<i @click=${go}>x</i>`)}</div>`, html`<p>n</p>`)}</div>',
   },
   // ── Directive walkers: what counts as conditional text, conditional events and "any repeat" ──
   {
     name: 'walkers: text only in a whenElse nested in a when (comment factory without _cm)',
-    template: '<div ${when(a())}>${whenElse(b(), html`<b>${t()}</b>`, html`<i>x</i>`)}</div>',
+    template: '<div ${when(a())}>${when(b(), html`<b>${t()}</b>`, html`<i>x</i>`)}</div>',
   },
   {
     name: 'walkers: text only in a row-level when inside a when (no comment factory)',
@@ -112,36 +112,36 @@ const cases: Case[] = [
   },
   {
     name: 'walkers: text only inside a whenElse branch list (no comment factory)',
-    template:
-      '${whenElse(a(), html`<ul>${repeat(xs(), (x) => html`<li>${x} ${sig()}</li>`)}</ul>`, html`<p>none</p>`)}',
+    template: '${when(a(), html`<ul>${repeat(xs(), (x) => html`<li>${x} ${sig()}</li>`)}</ul>`, html`<p>none</p>`)}',
   },
   {
     name: 'walkers: events in a when, in a whenElse inside a when, and in rows',
     template:
-      '<div ${when(a())}><button @click=${one}>1</button>${whenElse(b(), html`<b @click=${two}>2</b>`, html`<i @click=${three}>3</i>`)}<ul>${repeat(xs(), (x) => html`<li><button ${when(on())} @click=${go}>b</button></li>`)}</ul></div><ul>${repeat(ys(), (y) => html`<li><p ${when(on())}><button @click=${four}>4</button></p></li>`)}</ul>${whenElse(c(), html`<u @click=${five}>5</u>`, html`<s>6</s>`)}',
+      '<div ${when(a())}><button @click=${one}>1</button>${when(b(), html`<b @click=${two}>2</b>`, html`<i @click=${three}>3</i>`)}<ul>${repeat(xs(), (x) => html`<li><button ${when(on())} @click=${go}>b</button></li>`)}</ul></div><ul>${repeat(ys(), (y) => html`<li><p ${when(on())}><button @click=${four}>4</button></p></li>`)}</ul>${when(c(), html`<u @click=${five}>5</u>`, html`<s>6</s>`)}',
   },
   {
     name: 'walkers: a list only inside a whenElse inside a when (prototype caches)',
     template:
-      '<div ${when(a())}>${whenElse(b(), html`<ul>${repeat(xs(), (x) => html`<li>${x}</li>`)}</ul>`, html`<p>n</p>`)}</div>',
+      '<div ${when(a())}>${when(b(), html`<ul>${repeat(xs(), (x) => html`<li>${x}</li>`)}</ul>`, html`<p>n</p>`)}</div>',
   },
   {
     name: 'walkers: a list only inside a when inside a whenElse (prototype caches)',
     template:
-      '${whenElse(b(), html`<div><div ${when(a())}><ul>${repeat(xs(), (x) => html`<li>${x}</li>`)}</ul></div></div>`, html`<p>n</p>`)}',
+      '${when(b(), html`<div><div ${when(a())}><ul>${repeat(xs(), (x) => html`<li>${x}</li>`)}</ul></div></div>`, html`<p>n</p>`)}',
   },
   {
     name: 'walkers: no list anywhere (no prototype caches)',
-    template: '<div ${when(a())}>${whenElse(b(), html`<b>${t()}</b>`, html`<i>x</i>`)}</div>',
+    template: '<div ${when(a())}>${when(b(), html`<b>${t()}</b>`, html`<i>x</i>`)}</div>',
   },
   // ── Lists: the three row generators and their list sources ──
   {
     name: 'rows: direct child component, no empty template, key property',
-    template: '<ul>${repeat(items(), (it) => Card({ item: it }), null, (it) => it.id)}</ul>',
+    template: '<ul>${repeat(items(), (it) => Card({ item: it }), { key: "id" })}</ul>',
   },
   {
     name: 'rows: direct child component with index, empty template and key function',
-    template: '<ul>${repeat(items(), (it, n) => Card({ item: it, n }), html`<li>none</li>`, (it) => it.a + it.b)}</ul>',
+    template:
+      '<ul>${repeat(items(), (it, n) => Card({ item: it, n }), { key: (it) => it.a + it.b, empty: html`<li>none</li>` })}</ul>',
   },
   {
     name: 'rows: direct child component over a derived source',
@@ -149,12 +149,13 @@ const cases: Case[] = [
   },
   {
     name: 'rows: template rows, no key, empty template',
-    template: '<ul>${repeat(items(), (it) => html`<li>${it.label}</li>`, html`<li class="e">none</li>`)}</ul>',
+    template:
+      '<ul>${repeat(items(), (it) => html`<li>${it.label}</li>`, { empty: html`<li class="e">none</li>` })}</ul>',
   },
   {
     name: 'rows: template rows over a derived source with an empty template and key property',
     template:
-      '<ul>${repeat(items().filter((x) => x.on === flag()), (it) => html`<li>${it.label}</li>`, html`<li>none</li>`, (it) => it.id)}</ul>',
+      '<ul>${repeat(items().filter((x) => x.on === flag()), (it) => html`<li>${it.label}</li>`, { key: "id", empty: html`<li>none</li>` })}</ul>',
   },
   {
     name: 'rows: template rows over a member source',
@@ -166,11 +167,11 @@ const cases: Case[] = [
   },
   {
     name: 'rows: no bindings, empty template and key property',
-    template: '<ul>${repeat(items(), (it) => html`<li>static</li>`, html`<li>none</li>`, (it) => it.id)}</ul>',
+    template: '<ul>${repeat(items(), (it) => html`<li>static</li>`, { key: "id", empty: html`<li>none</li>` })}</ul>',
   },
   {
     name: 'rows: no bindings over a derived source, key function',
-    template: '<ul>${repeat(items().slice(n()), (it) => html`<li>static</li>`, null, (it) => it.k + 1)}</ul>',
+    template: '<ul>${repeat(items().slice(n()), (it) => html`<li>static</li>`, { key: (it) => it.k + 1 })}</ul>',
   },
   {
     name: 'rows: no bindings with a child mount and a named index',
@@ -179,7 +180,7 @@ const cases: Case[] = [
   },
   {
     name: 'rows: no bindings with a child mount, empty template',
-    template: '<ul>${repeat(items(), (it) => html`<li><!--b900.--></li>`, html`<li>none</li>`)}</ul>',
+    template: '<ul>${repeat(items(), (it) => html`<li><!--b900.--></li>`, { empty: html`<li>none</li>` })}</ul>',
     mounts: [{ anchorId: 'b900', componentName: 'Kid', propsExpression: '{ it }', owner: firstRepeat }],
   },
   {
@@ -209,7 +210,7 @@ const cases: Case[] = [
   },
   {
     name: 'mounts: child mount inside a whenElse branch',
-    template: '${whenElse(a(), html`<div><!--b900.--></div>`, html`<p>n</p>`)}',
+    template: '${when(a(), html`<div><!--b900.--></div>`, html`<p>n</p>`)}',
     mounts: [
       {
         anchorId: 'b900',
@@ -223,7 +224,7 @@ const cases: Case[] = [
   {
     name: 'rows: lean batch rows with sole-content text, attrs and a key property',
     template:
-      '<ul>${repeat(items(), (it) => html`<li class="${it.cls}" data-id="${it.id}"><a>${it.label}</a><span>${it.n}</span></li>`, null, (it) => it.id)}</ul>',
+      '<ul>${repeat(items(), (it) => html`<li class="${it.cls}" data-id="${it.id}"><a>${it.label}</a><span>${it.n}</span></li>`, { key: "id" })}</ul>',
   },
   {
     name: 'rows: comment-marker item bindings',
@@ -246,7 +247,7 @@ const cases: Case[] = [
   {
     name: 'rows: selection binding and mixed signal-item bindings',
     template:
-      '<ul>${repeat(items(), (it) => html`<li class="${sel() === it.id ? \'on\' : \'\'}"><span>${it.label + suffix()}</span><b title="${it.t + sep()}" style="width: ${it.w + unit()}">${it.x}</b></li>`, null, (it) => it.id)}</ul>',
+      '<ul>${repeat(items(), (it) => html`<li class="${sel() === it.id ? \'on\' : \'\'}"><span>${it.label + suffix()}</span><b title="${it.t + sep()}" style="width: ${it.w + unit()}">${it.x}</b></li>`, { key: "id" })}</ul>',
   },
   // ── Rows: component-signal bindings (outer rows) ──
   {
@@ -271,14 +272,14 @@ const cases: Case[] = [
   {
     name: 'rows: when simple and expression, whenElse, with row signals',
     template:
-      '<ul>${repeat(items(), (it, i) => html`<li><b ${when(show())}>${lbl()}</b><i ${when(it.on && flag())} title="${it.t}" @click=${go}>${it.name}</i>${whenElse(it.done, html`<s>${it.name}</s>`, html`<u style="color: ${col()}">${i}</u>`)}</li>`)}</ul>',
+      '<ul>${repeat(items(), (it, i) => html`<li><b ${when(show())}>${lbl()}</b><i ${when(it.on && flag())} title="${it.t}" @click=${go}>${it.name}</i>${when(it.done, html`<s>${it.name}</s>`, html`<u style="color: ${col()}">${i}</u>`)}</li>`)}</ul>',
   },
   {
-    // A row whose when()/whenElse() content comes and goes keeps its delegated elements on the
+    // A row whose when()/when() content comes and goes keeps its delegated elements on the
     // row (`_el.__eN`), and its selection binding stays per row
     name: 'rows: delegated events and a selection binding after row directives',
     template:
-      "<ul>${repeat(items(), (it) => html`<li><b ${when(it.on)}>b</b>${whenElse(it.done, html`<s>s</s>`, html`<u>u</u>`)}<a @click=${() => go(it.id)}>go</a><i class=${sel() === it.id ? 'on' : ''} @click=${go}>i</i></li>`, null, (it) => it.id)}</ul>",
+      "<ul>${repeat(items(), (it) => html`<li><b ${when(it.on)}>b</b>${when(it.done, html`<s>s</s>`, html`<u>u</u>`)}<a @click=${() => go(it.id)}>go</a><i class=${sel() === it.id ? 'on' : ''} @click=${go}>i</i></li>`, { key: 'id' })}</ul>",
   },
   {
     name: 'rows: row-level when with several bindings on one signal',
@@ -294,12 +295,12 @@ const cases: Case[] = [
   {
     name: 'nested rows: signal text without item comment bindings, key property',
     template:
-      '<ul>${repeat(groups(), (g) => html`<li><ol>${repeat(g.items, (it) => html`<li><b>${it.label}</b><i>${sel()}</i> ${other()}</li>`, null, (it) => it.id)}</ol></li>`)}</ul>',
+      '<ul>${repeat(groups(), (g) => html`<li><ol>${repeat(g.items, (it) => html`<li><b>${it.label}</b><i>${sel()}</i> ${other()}</li>`, { key: "id" })}</ol></li>`)}</ul>',
   },
   {
     name: 'nested rows: expression signal bindings and bindings on the inner row element',
     template:
-      '<ul>${repeat(groups(), (g) => html`<li><ol>${repeat(g.items, (it, j) => html`<li title="${a()}-${b()}" style="left: ${x()}"><i>${user().name}</i></li>`, null, (it) => it.k + 1)}</ol></li>`)}</ul>',
+      '<ul>${repeat(groups(), (g) => html`<li><ol>${repeat(g.items, (it, j) => html`<li title="${a()}-${b()}" style="left: ${x()}"><i>${user().name}</i></li>`, { key: (it) => it.k + 1 })}</ol></li>`)}</ul>',
   },
   {
     name: 'nested rows: no bindings, driven by a component signal',
@@ -315,12 +316,12 @@ const cases: Case[] = [
   {
     name: 'escaping: backslash, backtick and newline in row, branch and main templates (dev)',
     template:
-      '<p title="a\\b">`q` ${t()}</p><ul>${repeat(items(), (it) => html`<li title="c\\d">${it.x} e\\f</li>`, html`<li>g\\h</li>`)}</ul><ol>${repeat(items(), (it) => html`<li>s\\t</li>`)}</ol><div ${when(a())}><i>`w`\\</i></div>',
+      '<p title="a\\b">`q` ${t()}</p><ul>${repeat(items(), (it) => html`<li title="c\\d">${it.x} e\\f</li>`, { empty: html`<li>g\\h</li>` })}</ul><ol>${repeat(items(), (it) => html`<li>s\\t</li>`)}</ol><div ${when(a())}><i>`w`\\</i></div>',
   },
   {
     name: 'escaping: the same templates, production',
     template:
-      '<p title="a\\b">`q` ${t()}</p><ul>${repeat(items(), (it) => html`<li title="c\\d">${it.x} e\\f</li>`, html`<li>g\\h</li>`)}</ul><ol>${repeat(items(), (it) => html`<li>s\\t</li>`)}</ol><div ${when(a())}><i>`w`\\</i></div>',
+      '<p title="a\\b">`q` ${t()}</p><ul>${repeat(items(), (it) => html`<li title="c\\d">${it.x} e\\f</li>`, { empty: html`<li>g\\h</li>` })}</ul><ol>${repeat(items(), (it) => html`<li>s\\t</li>`)}</ol><div ${when(a())}><i>`w`\\</i></div>',
     emit: PROD,
   },
   {

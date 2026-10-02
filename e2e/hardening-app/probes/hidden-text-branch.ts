@@ -1,7 +1,7 @@
-import { defineComponent, signal, html, whenElse } from 'thane';
+import { defineComponent, signal, html, when } from 'thane';
 import { expose } from '../shared/expose.js';
 
-// A text-only whenElse() branch that starts hidden. Showing it put the text "null" in place of
+// A text-only when() branch that starts hidden. Showing it put the text "null" in place of
 // its placeholder, and the binding went inert.
 export const HiddenTextBranch = defineComponent('hardening-hidden-text-branch', () => {
   const on = signal(false);
@@ -9,6 +9,6 @@ export const HiddenTextBranch = defineComponent('hardening-hidden-text-branch', 
   expose('hiddenTextBranch', { on, n });
   return {
     // prettier-ignore
-    template: html`<section class="hidden-text">${whenElse(on(), html`text-${n()}`, html`<u class="hidden-text-else">else</u>`)}</section>`,
+    template: html`<section class="hidden-text">${when(on(), html`text-${n()}`, html`<u class="hidden-text-else">else</u>`)}</section>`,
   };
 });

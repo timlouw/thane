@@ -79,7 +79,7 @@ describe('dom-binding remount semantics', () => {
 });
 
 describe('a branch template with no element', () => {
-  // A whenElse() branch that is only text and starts hidden. Before branches became anchored ranges, its placeholder was
+  // A when() branch that is only text and starts hidden. Before branches became anchored ranges, its placeholder was
   // replaced by `null` (the text "null" in a real DOM) and the binding went inert; between anchors the
   // text is inserted and removed like any other content.
   test('a text-only branch that starts hidden shows its text and keeps toggling, without errors', () => {

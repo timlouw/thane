@@ -43,7 +43,6 @@ const KEPT: Record<string, EntrySurface> = {
       'unmount',
       'untrack',
       'when',
-      'whenElse',
     ],
     types: [
       'Signal',

@@ -46,7 +46,7 @@ const shapes: { name: string; template: string; ids: Record<string, number> }[] 
     name: 'developer ids on bound elements, directive roots, a list container and inside a hidden branch',
     template:
       '<div><p id="d-attr" title=${t()}>P</p><div id="d-when" ${when(show())}><b title=${t()}>W</b></div>' +
-      '${whenElse(show(), html`<i id="d-then" title=${t()}>T</i>`, html`<i id="d-else">E</i>`)}' +
+      '${when(show(), html`<i id="d-then" title=${t()}>T</i>`, html`<i id="d-else">E</i>`)}' +
       '<ul id="d-list">${repeat(items(), (it) => html`<li>${it}</li>`)}</ul>' +
       '<button id="d-btn" @click=${inc}>${clicks()}</button>' +
       '<section ${when(hidden())}><span id="d-inner" title=${t()}>I</span></section></div>',
@@ -75,35 +75,35 @@ const shapes: { name: string; template: string; ids: Record<string, number> }[] 
     ids: {},
   },
   {
-    name: 'when() / whenElse() alone in an element, next to text and three deep, with events and children',
+    name: 'when() / when() alone in an element, next to text and three deep, with events and children',
     template:
       '<div><section><div id="d-only" ${when(show())} title=${t()}>${t()}<button @click=${inc}>+</button>${ShapeKid({ label: "only" })}</div></section>' +
-      '<section>before ${whenElse(show(), html`<i title=${t()}>${t()}${ShapeKid({ label: "then" })}</i>`, html`<u>${t()}</u>`)} after</section>' +
-      '<div ${when(show())}>L1:${t()}${whenElse(hidden(), html`<div>L2:${t()}<p id="d-l3" ${when(show())} title=${t()}>L3<button @click=${inc}>+</button>${ShapeKid({ label: "l3" })}</p></div>`, html`<span>no</span>`)}</div></div>',
+      '<section>before ${when(show(), html`<i title=${t()}>${t()}${ShapeKid({ label: "then" })}</i>`, html`<u>${t()}</u>`)} after</section>' +
+      '<div ${when(show())}>L1:${t()}${when(hidden(), html`<div>L2:${t()}<p id="d-l3" ${when(show())} title=${t()}>L3<button @click=${inc}>+</button>${ShapeKid({ label: "l3" })}</p></div>`, html`<span>no</span>`)}</div></div>',
     ids: { 'd-only': 2, 'd-l3': 2 },
   },
   {
-    name: 'when() and whenElse() at the top level of the template',
+    name: 'when() and when() at the top level of the template',
     template:
-      '<b ${when(show())} title=${t()}>${t()}</b>${whenElse(hidden(), html`<i title=${t()}>${t()}</i>`, html`<u>${t()}</u>`)}<span id="d-static">S</span>',
+      '<b ${when(show())} title=${t()}>${t()}</b>${when(hidden(), html`<i title=${t()}>${t()}</i>`, html`<u>${t()}</u>`)}<span id="d-static">S</span>',
     ids: { 'd-static': 1 },
   },
   {
-    name: 'a text-only whenElse() branch that starts hidden',
-    template: '<section>${whenElse(hidden(), html`text-${t()}`, html`<u id="d-else2">else</u>`)}</section>',
+    name: 'a text-only when() branch that starts hidden',
+    template: '<section>${when(hidden(), html`text-${t()}`, html`<u id="d-else2">else</u>`)}</section>',
     ids: { 'd-else2': 2 },
   },
   {
     name: 'a row when() of unknown initial value before a child component',
     template:
-      '<ul>${repeat(rows(), (r) => html`<li><b ${when(unknown())}>${t()}</b>${ShapeKid({ label: r.g })}</li>`, null, (r) => r.id)}</ul>',
+      '<ul>${repeat(rows(), (r) => html`<li><b ${when(unknown())}>${t()}</b>${ShapeKid({ label: r.g })}</li>`, { key: "id" })}</ul>',
     ids: {},
   },
   {
     name: 'child hosts in a paragraph, a table row, svg and a row of their own',
     template:
-      '<div><p>${ShapeKid({ label: "p" })}</p><table><tbody>${repeat(rows(), (r) => html`<tr><td>${r.g}</td>${ShapeKid({ label: r.g })}</tr>`, null, (r) => r.id)}</tbody></table>' +
-      '<ul>${repeat(rows(), (r) => html`${ShapeKid({ label: r.g })}`, null, (r) => r.id)}</ul><svg>${ShapeKid({ label: "svg" })}</svg></div>',
+      '<div><p>${ShapeKid({ label: "p" })}</p><table><tbody>${repeat(rows(), (r) => html`<tr><td>${r.g}</td>${ShapeKid({ label: r.g })}</tr>`, { key: "id" })}</tbody></table>' +
+      '<ul>${repeat(rows(), (r) => html`${ShapeKid({ label: r.g })}`, { key: "id" })}</ul><svg>${ShapeKid({ label: "svg" })}</svg></div>',
     ids: {},
   },
   {

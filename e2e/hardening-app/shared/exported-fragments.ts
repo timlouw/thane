@@ -15,10 +15,5 @@ export const ExportedBadge = html`<b class="exported-badge" data-tone=${exported
   >${ExportedKid({ n: 3 })}`;
 
 export const ExportedTags = html`<ul class="exported-tags">
-  ${repeat(
-    exportedTags(),
-    (tag) => html`<li class="exported-tag">${tag}</li>`,
-    null,
-    (tag) => tag,
-  )}
+  ${repeat(exportedTags(), (tag) => html`<li class="exported-tag">${tag}</li>`, { key: (tag) => tag })}
 </ul>`;
