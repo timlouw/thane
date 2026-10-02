@@ -87,6 +87,7 @@ const KEPT: Record<string, EntrySurface> = {
       '__bindIf',
       '__bindIfExpr',
       '__dc',
+      '__rc',
       '__enableComponentStyles',
       '__enableKeyframeScoping',
       '__mf',

@@ -51,8 +51,8 @@ export const ProductGrid = defineComponent<{ products: { (): Product[]; subscrib
     expect(js).not.toContain('ProductCard({ product })');
     expect(js).not.toMatch(/[^A-Za-z_]roducts\(\)/);
     expect(js).toContain('document.createElement("div")');
-    // Destroy child helper is used in cleanups (may be minified from __dc)
-    expect(js).toMatch(/cleanups:\[[A-Za-z_$][\w$]*\(/);
+    // The row's child is held in a variable whose `d` destroys it, and whose `u` gives it the row's new item
+    expect(js).toMatch(/cleanups:\[([A-Za-z_$][\w$]*)\.d\][\s\S]*\1\.u\(/);
     // Items getter accesses .products (may be minified from props.products)
     expect(js).toContain('.products');
   });

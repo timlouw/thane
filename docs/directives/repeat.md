@@ -19,7 +19,7 @@ The options are written in the call, as an object literal: the compiler reads th
 third argument, an option `repeat()` does not have, or a fourth argument is a build error (THANE010). The key's
 type allows only the item's properties whose values are strings or numbers.
 
-The template returned by `renderFn` has exactly one root element; every row is cloned from a static copy of it and updated in place. A row with two root elements, or none, is reported at build time as THANE007, and so is a row that is only a directive. The row's root element cannot carry `when()` (THANE008): filter the array instead. The `index` argument is the row's current position: bindings that read it are refreshed when rows move or are removed.
+The template the row function returns has exactly one root element; every row is cloned from a static copy of it and updated in place. A row with two root elements, or none, is reported at build time as THANE007, and so is a row that is only a directive. The row's root element cannot carry `when()` (THANE008): filter the array instead. The `index` argument is the row's current position: bindings that read it are refreshed when rows move or are removed. Event handlers, and bindings that also read another signal, read the row's item and index as they are when they run, after the row has been given a new item or moved.
 
 ## Basic Usage
 
@@ -111,7 +111,7 @@ target({ ...target(), price: 30 }); // only this item's DOM updates
 
 ## Child Components in Repeat
 
-Embed components inside repeat items:
+A row can be a child component call, or hold one:
 
 ```typescript
 import { ProductCard } from './product-card.js';
@@ -126,6 +126,18 @@ template: html`
   </div>
 `
 ```
+
+A component reads its props when it mounts. When a row's item changes (a new object under the same key, the
+item at a position without a key, or a row that moves, for props that read the index), the props of a child
+that reads the row are worked out again, and when one of them is not the value the child has (`Object.is`), the
+child is mounted again with them: the old instance is destroyed (its `onDestroy` runs) and a new one mounts.
+Props that come out the same keep the instance, so an immutable update that copies every item re-mounts only
+the children whose props changed. This holds wherever the child is in the row: in a `when()` branch of it, or
+in a list inside it whose props read the outer row. To keep one instance and update it in place, pass it the
+item's signal (the `Signal<Signal<T>[]>` pattern above) and change that signal instead.
+
+A `.map()` in content is compiled as `repeat()` without a key: `${products().map((product) => ProductCard({ product }))}`
+(see [JavaScript Control Flow](../templates.md#javascript-control-flow)).
 
 ## Nested Directives
 
@@ -199,7 +211,7 @@ export const ProductGrid = defineComponent<ProductGridProps>('product-grid', ({ 
         ${repeat(
           props.products(),
           (product) => ProductCard({ product }),
-      { key: (product) => product().id, empty: html`<p>No products found.</p>` },
+          { key: (product) => product().id, empty: html`<p>No products found.</p>` },
         )}
       </div>
     `,

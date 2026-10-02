@@ -29,6 +29,12 @@ describe('rewriteEventHandlers', () => {
     );
   });
 
+  test('a handler in a .map() row is delegated like a repeat() row: typed without its element', () => {
+    expect(rewritten('<ul>${items().map((i) => html`<li @click=${(e) => go(i, e)}>x</li>`)}</ul>')).toContain(
+      "((e) => go(i, e)) satisfies ThaneEventListener<'click'>}",
+    );
+  });
+
   test('the element is the tag still open before the attribute, past other substitutions', () => {
     expect(rewritten('<input class=${c} value=${v} @input=${onInput} />')).toContain(
       "satisfies ThaneEventListener<'input', 'input'>",

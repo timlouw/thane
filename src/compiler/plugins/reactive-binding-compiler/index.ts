@@ -12,6 +12,8 @@ import {
   applyEdits,
   type SourceEdit,
   sourceCache,
+  replaceReferences,
+  expressionReferencesIdentifier,
   BIND_FN,
   FN,
 } from '../../utils/index.js';
@@ -36,6 +38,7 @@ import { placeChildHosts } from './child-hosts.js';
 import { walkDirectives } from './directive-tree.js';
 import { setTemplateScope } from '../../utils/html-parser/index.js';
 import { templateScopeOf } from './template-scope.js';
+import { desugar, narrowing, substituteInTemplate, type BranchText } from './control-flow.js';
 
 // ============================================================================
 // Lifecycle hook stripping
@@ -167,6 +170,7 @@ const HELPER_IMPORT_ORDER: readonly string[] = [
   BIND_FN.SIGNAL,
   BIND_FN.ENABLE_STYLES,
   BIND_FN.DESTROY_CHILD,
+  BIND_FN.ROW_CHILD,
 ];
 const importRank = (helper: string): number => {
   const rank = HELPER_IMPORT_ORDER.indexOf(helper);
@@ -224,7 +228,31 @@ export const templateArguments = (call: ts.CallExpression): ts.Expression[] => {
 interface OwnMount {
   cm: ChildMountInfo;
   globalIndex: number;
+  /** The row signals of the lists around the directive that mounts it whose items its props read */
+  follows?: string[];
 }
+
+/**
+ * The row signals (`item$`, `index$`) of the lists in `rows` (outermost first) whose item or index `props`
+ * reads, each added to its list's row signals. A name of an inner list (`own`, the list whose row holds the
+ * child, included) shadows the same name of an outer one.
+ */
+const followedRows = (props: string, rows: readonly RepeatBlock[], own?: RepeatBlock): string[] => {
+  const shadowed = new Set(own ? [own.itemVar, own.indexVar] : []);
+  const follows: string[] = [];
+  for (let k = rows.length - 1; k >= 0; k--) {
+    const row = rows[k]!;
+    for (const name of [row.itemVar, row.indexVar]) {
+      if (!name || shadowed.has(name) || !expressionReferencesIdentifier(props, name)) continue;
+      const signal = `${name}$`;
+      row.rowSignalVars ??= [];
+      if (!row.rowSignalVars.includes(signal)) row.rowSignalVars.push(signal);
+      follows.push(signal);
+    }
+    shadowed.add(row.itemVar).add(row.indexVar);
+  }
+  return follows;
+};
 
 /**
  * Where a component's templates find their fragments, the uses of each fragment that were inlined, and the
@@ -276,9 +304,12 @@ const placeholderOf = (node: ts.Expression, scope: InlineScope): string | null =
  * html`` const of the component or the module, an html template written as a whole `${}`, and, inside any
  * other `${}`, a fragment named where a directive takes a template (`when(open(), details, summary)`)
  * and the html templates written in it. A child component call and an imported fragment get their placeholder
- * (placeholderOf), as a whole `${}` and where a directive takes a template. The text is taken as written (raw),
- * like every directive template the parser cuts from it: the escape sequences stay in place until the template
- * is emitted. `path` holds the fragments being inlined, so a fragment that uses itself is left as it is written.
+ * (placeholderOf), as a whole `${}` and where a directive takes a template. JavaScript's control flow in
+ * content, a ternary of templates, `cond && html\`…\`` and `items.map((item) => html\`…\`)`, becomes the
+ * directive it means, and so does when()'s narrowing form (see control-flow.ts). The text is taken as written
+ * (raw), like every directive template the parser cuts from it: the escape sequences stay in place until the
+ * template is emitted. `path` holds the fragments being inlined, so a fragment that uses itself is left as it is
+ * written.
  */
 const extractAndInlineFragment = (
   tplNode: ts.TaggedTemplateExpression,
@@ -304,10 +335,28 @@ const extractAndInlineFragment = (
     return extractAndInlineFragment(resolved, scope, new Set([...path, name.text]));
   };
   const template = (node: ts.TaggedTemplateExpression): string => extractAndInlineFragment(node, scope, path);
+  const branches: BranchText = {
+    isFragment: (name) =>
+      (!path.has(name.text) && resolveTemplateIdentifier(sourceFile, scope.scopeRoot, name) !== null) ||
+      scope.file.names.fragments.has(name.text),
+    isComponent: (call) => ts.isIdentifier(call.expression) && scope.file.names.components.has(call.expression.text),
+    template,
+    name: (name) => fragment(name) ?? placeholderOf(name, scope)!,
+    call: (call) => placeholderOf(call, scope)!,
+  };
 
   let content = templateLiteral.head.rawText!;
+  // The markup so far, each `${}` standing as one character: whether a span is in an element's tag
+  let markup = content;
   for (const span of templateLiteral.templateSpans) {
     const expr = span.expression;
+    const inTag = /<[A-Za-z][^<>]*$/.test(markup);
+    markup += '_' + span.literal.rawText!;
+    const flow = inTag ? null : desugar(expr, sourceFile, branches);
+    if (flow !== null) {
+      content += '${' + flow + '}' + span.literal.rawText!;
+      continue;
+    }
     const inlined = ts.isIdentifier(expr)
       ? (fragment(expr) ?? placeholderOf(expr, scope))
       : ts.isTaggedTemplateExpression(expr) && isHtmlTemplate(expr)
@@ -347,6 +396,29 @@ const inlineInExpression = (
       return;
     }
     if (ts.isCallExpression(node)) {
+      // when(value, (v) => html`…`, …): the branch reads the value again wherever it reads v
+      const fn = node.arguments[1];
+      if (
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === FN.WHEN &&
+        fn &&
+        (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))
+      ) {
+        const { param, value, body } = narrowing(node, fn, sourceFile);
+        const before = scope.mounts.length;
+        const text = substituteInTemplate(template(body), param, value);
+        // The children in the branch read it in their props too
+        for (const mount of scope.mounts.slice(before)) {
+          mount.cm.propsExpression = replaceReferences(mount.cm.propsExpression, param, value);
+        }
+        edits.push({
+          start: fn.getStart(sourceFile) - start,
+          end: fn.getEnd() - start,
+          replacement: `html\`${text}\``,
+        });
+        for (const arg of node.arguments) if (arg !== fn) visit(arg);
+        return;
+      }
       for (const arg of templateArguments(node)) {
         const text = (ts.isIdentifier(arg) ? fragment(arg) : null) ?? placeholderOf(arg, scope);
         if (arg && text !== null) {
@@ -732,24 +804,45 @@ const compileTemplates = (
   // hold it are nested in one another (a pre-rendered branch is in its parent's too), and the walk
   // visits a block before the blocks inside it, so the last one found is the innermost. A child in
   // no directive is a top-level mount.
+  //
+  // A child's props are read when it mounts. Those that read the item or index of a list around the
+  // directive that mounts it (an outer row, for a child in a row's branch or in an inner row) follow that
+  // row's signal: the child gets the props for the row's new item (its own row's are given by the row's
+  // update).
+  const roots = { conditionals: allConditionals, whenElse: allWhenElseBlocks, repeats: allRepeatBlocks };
   for (const mount of ownMounts) {
     const marker = anchorMark(mount.cm.anchorId, '.');
     let owner: string | undefined;
-    walkDirectives(
-      { conditionals: allConditionals, whenElse: allWhenElseBlocks, repeats: allRepeatBlocks },
-      {
-        cond: (c) => void (c.templateContent.includes(marker) && (owner = c.id)),
-        whenElse: (we) =>
-          void (we.thenTemplate.includes(marker)
-            ? (owner = we.thenId)
-            : we.elseTemplate.includes(marker) && (owner = we.elseId)),
-        repeat: (rep) => void (rep.itemTemplate.includes(marker) && (owner = rep.id)),
-      },
-    );
+    let ownRow: RepeatBlock | undefined;
+    let around: readonly RepeatBlock[] = [];
+    const found = (id: string, rows: readonly RepeatBlock[], row?: RepeatBlock): void => {
+      owner = id;
+      around = rows;
+      ownRow = row;
+    };
+    walkDirectives(roots, {
+      cond: (c, rows) => void (c.templateContent.includes(marker) && found(c.id, rows)),
+      whenElse: (we, rows) =>
+        void (we.thenTemplate.includes(marker)
+          ? found(we.thenId, rows)
+          : we.elseTemplate.includes(marker) && found(we.elseId, rows)),
+      repeat: (rep, rows) => void (rep.itemTemplate.includes(marker) && found(rep.id, rows, rep)),
+    });
+    const follows = followedRows(mount.cm.propsExpression, around, ownRow);
+    if (follows.length > 0) mount.follows = follows;
     if (!owner) topLevelChildMounts.push(mount);
     else if (directiveChildMounts.has(owner)) directiveChildMounts.get(owner)!.push(mount);
     else directiveChildMounts.set(owner, [mount]);
   }
+
+  // A row that is a component call, in a list inside another's row
+  walkDirectives(roots, {
+    repeat: (rep, rows) => {
+      if (!rep.componentRow || rows.length === 0) return;
+      const follows = followedRows(rep.componentRow.propsExpression, rows, rep);
+      if (follows.length > 0) rep.componentRow.follows = follows;
+    },
+  });
 
   // Each child's host goes into the template in place of its placeholder, where it fits
   const template = { template: lastProcessedTemplateContent };

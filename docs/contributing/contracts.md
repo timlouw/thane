@@ -65,7 +65,9 @@ components must be rebuilt with the matching version.
   elements) → cleanup` its binding function, which reaches its nodes in the copy (`ctx.root`, `elements` as for
   `__b`), calls `ctx.place()` to insert the copy, then binds. `__mf(anchor, fragment) → cleanup` mounts a copy
   before `anchor`, a comment that stays; the nodes are removed with the template around them.
-- `__dc(instance) → destroy`; `__sig` = `signal`; `__enableComponentStyles()`; `__enableKeyframeScoping()` (called by a module whose stylesheet defines `@keyframes`; it enables component styles too);
+- `__dc(instance) → destroy`; `__rc(component, host, props) → { u, d }` mounts a child of a list row whose
+  props read the row: `u(props)` mounts it again when one of them is not the value it has (`Object.is`), `d()`
+  destroys it; `__sig` = `signal`; `__enableComponentStyles()`; `__enableKeyframeScoping()` (called by a module whose stylesheet defines `@keyframes`; it enables component styles too);
   `mountComponent(component, target?, props?)`.
 
 ## Policy

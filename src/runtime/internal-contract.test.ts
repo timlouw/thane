@@ -7,6 +7,7 @@ import {
   __bindIf,
   __bindIfExpr,
   __dc,
+  __rc,
   __mf,
   __enableComponentStyles,
   __enableKeyframeScoping,
@@ -30,6 +31,7 @@ describe('runtime internal contract', () => {
     [RUNTIME_HELPER.REGISTER_COMPONENT]: __registerComponent,
     [RUNTIME_HELPER.REGISTER_COMPONENT_LEAN]: __registerComponentLean,
     [RUNTIME_HELPER.DESTROY_CHILD]: __dc,
+    [RUNTIME_HELPER.ROW_CHILD]: __rc,
     [RUNTIME_HELPER.MOUNT_FRAGMENT]: __mf,
     [RUNTIME_HELPER.SIGNAL]: __sig,
     [RUNTIME_HELPER.MOUNT_COMPONENT]: mountComponent,
@@ -52,6 +54,7 @@ describe('runtime internal contract', () => {
     expect(expected[RUNTIME_HELPER.REGISTER_COMPONENT]).toBe(__registerComponent);
     expect(expected[RUNTIME_HELPER.REGISTER_COMPONENT_LEAN]).toBe(__registerComponentLean);
     expect(expected[RUNTIME_HELPER.DESTROY_CHILD]).toBe(__dc);
+    expect(expected[RUNTIME_HELPER.ROW_CHILD]).toBe(__rc);
     expect(expected[RUNTIME_HELPER.SIGNAL]).toBe(__sig);
     expect(expected[RUNTIME_HELPER.MOUNT_COMPONENT]).toBe(mountComponent);
   });

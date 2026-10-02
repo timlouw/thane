@@ -6,7 +6,9 @@ This page documents current constraints, browser requirements, and by-design dec
 
 ### `html` Templates Inside Others
 
-An `html` template inside another is compiled where it is the whole `${…}` or a directive argument. In a ternary or a `map()` it would be a plain value (THANE404): use `when()` and `repeat()`.
+An `html` template inside another is compiled where it is the whole `${…}`, a directive argument, or a branch of a
+ternary, an `&&` or a `.map()` row in content. Anywhere else, such as an argument of your own function, it would
+be a plain value (THANE404). A ternary with a template on one side and text on the other is a build error too.
 
 ### Unique Selectors
 
@@ -15,7 +17,7 @@ A component's selector is the class of its host element, which scopes its styles
 
 ### One Return Object per Setup
 
-A setup function returns one object (THANE412). The compiler builds one static template per component, so an early `return { template: … }` in a branch cannot work. Use `when()` or `when()` in the template instead.
+A setup function returns one object (THANE412). The compiler builds one static template per component, so an early `return { template: … }` in a branch cannot work. Choose in the template instead, with `when()` or a ternary.
 
 ### Hot Updates Swap Whole Components
 

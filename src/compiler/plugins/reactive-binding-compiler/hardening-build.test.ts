@@ -143,9 +143,9 @@ describe('child components in the rows of a list inside a directive', () => {
     test(`inside ${shape}: the row factory mounts the child with the row's item`, async () => {
       const js = await buildAndReadJs(withKid(template), { ...DEV, extraFiles: { 'src/kid.ts': kid } });
       // The mount is in the row factory (the row element `_el` holds the child's host, reached by
-      // path) and reads the row's item
+      // path) and reads the row's item, which the row's update gives it again
       expect(js).toMatch(
-        /const (_cm\d+) = _el\.(?:first|last)ElementChild;[\s\S]*H40Kid\.__f\(\1, \{ label: it\.n \}\)/,
+        /const (_cm\d+) = _el\.(?:first|last)ElementChild;[\s\S]*__rc\(H40Kid, \1, \{ label: it\.n \}\)/,
       );
       expect(js).not.toMatch(/querySelector\("#/);
       // and nothing looks for the anchor at component level
@@ -164,7 +164,9 @@ describe('a row that is a component call with a template literal in its props', 
         '  return { template: html`<ul>${repeat(rows(), (item) => H44Card({ label: `x${item.label}` }))}</ul>` };\n});\nmount({ component: App });\n',
       { ...DEV, extraFiles: { 'src/card.ts': card } },
     );
-    expect(js).toContain('H44Card.__f(_el, { label: `x${item.label}` })');
+    expect(js).toContain('__rc(H44Card, _el, { label: `x${item.label}` })');
+    // The update's item is renamed by the bundler, as it shadows the factory's
+    expect(js).toMatch(/_cd\.u\(\{ label: `x\$\{item2?\.label\}` \}\)/);
     expect(js).not.toMatch(/item\$|<!--i\d+-->/);
   });
 });

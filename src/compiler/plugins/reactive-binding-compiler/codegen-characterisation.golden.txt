@@ -424,7 +424,7 @@
       ];
     }));
           return { el: _el, cleanups: _cleanups, value: x,
-            update: (x) => { ; } };
+            update: () => {} };
         },
       (_, i) => i);
       const _items_b1 = () => xs();
@@ -524,7 +524,7 @@
       ];
     }));
           return { el: _el, cleanups: _cleanups, value: x,
-            update: (x) => { ; } };
+            update: () => {} };
         },
       (_, i) => i);
       const _items_b5 = () => xs();
@@ -574,7 +574,7 @@
       ];
     }));
         return { el: _el, cleanups: _cleanups, value: y,
-          update: (y) => { ; } };
+          update: () => {} };
       },
     (_, i) => i);
     const _items_b12 = () => ys();
@@ -722,7 +722,8 @@
       (it, _idx, _ref) => {
         const _el = document.createElement('div');
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Card.__f(_el, { item: it }))], value: it, update: () => {} };
+        const _cd = __rc(Card, _el, { item: it });
+        return { el: _el, cleanups: [_cd.d], value: it, update: (it) => { _cd.u({ item: it }); } };
       },
     'id');
     const _items_b0 = () => items();
@@ -744,9 +745,10 @@
       (it, n, _ref) => {
         const _el = document.createElement('div');
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Card.__f(_el, { item: it, n }))], value: it, update: () => {} };
+        const _cd = __rc(Card, _el, { item: it, n });
+        return { el: _el, cleanups: [_cd.d], value: it, update: (it, n) => { _cd.u({ item: it, n }); } };
       },
-    (it) => it.a + it.b);
+    (it) => it.a + it.b, undefined, true);
     const _items_b0 = () => items();
     let _empty_b0;
     const _syncEmpty_b0 = (items) => { items.length ? _empty_b0?.remove() : _ct_b0.insertBefore(_empty_b0 ??= __T(`<li>none</li>`).content.firstElementChild, _a_b0); };
@@ -769,7 +771,8 @@
       (it, _idx, _ref) => {
         const _el = document.createElement('div');
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Card.__f(_el, { it }))], value: it, update: () => {} };
+        const _cd = __rc(Card, _el, { it });
+        return { el: _el, cleanups: [_cd.d], value: it, update: (it) => { _cd.u({ it }); } };
       },
     (_, i) => i);
     const _items_b0 = () => items().filter((x) => x.on === flag());
@@ -970,9 +973,10 @@
         const _el = _cloneNode.call(_tc_b0, true);
         const _cm0 = _el.lastElementChild;
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Kid.__f(_cm0, { label: it.name, i }))], value: it, update: () => {} };
+        const _cd0 = __rc(Kid, _cm0, { label: it.name, i });
+        return { el: _el, cleanups: [_cd0.d], value: it, update: (it, i) => { _cd0.u({ label: it.name, i }); } };
       },
-    (_, i) => i);
+    (_, i) => i, undefined, true);
     const _items_b0 = () => items();
     _rc_b0.reconcile(_items_b0());
     const _rsrc_b0_0 = items;
@@ -995,7 +999,8 @@
         const _el = _cloneNode.call(_tc_b0, true);
         const _cm0 = _el.lastElementChild;
         _insertBefore.call(_ct_b0, _el, _ref);
-        return { el: _el, cleanups: [__dc(Kid.__f(_cm0, { it }))], value: it, update: () => {} };
+        const _cd0 = __rc(Kid, _cm0, { it });
+        return { el: _el, cleanups: [_cd0.d], value: it, update: (it) => { _cd0.u({ it }); } };
       },
     (_, i) => i);
     const _items_b0 = () => items();
@@ -1027,11 +1032,12 @@
         let _p0;
         _e0.textContent = (_p0 = it.name) ?? ''; let _t0;
         _insertBefore.call(_ct_b0, _el, _ref);
+        const _cd0 = __rc(Kid, _cm0, { it });
         const _cleanups = [];
-        _cleanups.push(__dc(Kid.__f(_cm0, { it })));
+        _cleanups.push(_cd0.d);
         _cleanups.push(__dc(Other.__f(_cm1, {})));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { if (_p0 !== (_p0 = it.name)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); } };
+          update: (it) => { if (_p0 !== (_p0 = it.name)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); _cd0.u({ it }); } };
       },
     (_, i) => i);
     const _items_b0 = () => items();
@@ -1177,26 +1183,24 @@
     const _ct_b0 = _a_b0.parentNode;
     const _bind_b0 = (_el, it, i) => {
         _el.__d = it;
+        _el.__i = i;
         const _e0 = _el.firstElementChild;
         let _p0;
         _e0.textContent = (_p0 = it.label) ?? ''; let _t0;
         _e0.addEventListener('click', (_e) => { if (_e.target !== _e.currentTarget) return; open(it.id); });
-        return { el: _el, cleanups: __nc, value: it, key: undefined, p0: _p0, t0: undefined };
-    };
-    const _update_b0 = (_m, it, i) => {
-      const _el = _m.el;
-      if (_m.p0 !== (_m.p0 = it.label)) (_m.t0 ??= _el.firstElementChild.firstChild) ? (_m.t0.nodeValue = _m.p0 ?? '') : (_el.firstElementChild.textContent = _m.p0 ?? ''); _el.__d = it;
+        return { el: _el, cleanups: __nc, value: it,
+          update: (_it, _ix) => { it = _it; const i = _ix; if (_p0 !== (_p0 = it.label)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); _el.__d = it; _el.__i = i; } };
     };
     const _rc_b0 = createKeyedReconciler(_ct_b0, _a_b0,
       (it, i, _ref) => { const _el = _cloneNode.call(_tc_b0, true); const _m = _bind_b0(_el, it, i); _insertBefore.call(_ct_b0, _el, _ref); return _m; },
-    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0, _update_b0));
+    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0), true);
     const _items_b0 = () => items();
     _rc_b0.reconcile(_items_b0());
     const _rsrc_b0_0 = items;
     _subs.push(typeof _rsrc_b0_0?.subscribe === 'function' ? _rsrc_b0_0.subscribe(() => { _rc_b0.reconcile(_items_b0()); }, true) : () => {});
     _subs.push(() => _rc_b0.clearAll());
     _ct_b0.addEventListener('click', (_e) => { let _row = _e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; pick(it); if (_cell !== null && _cell === _row.firstElementChild.nextElementSibling) { _e.stopPropagation(); remove(_e); return; } });
-    _ct_b0.addEventListener('keydown', (_e) => { let _row = _e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; if (_cell !== null && _cell === _row.firstElementChild.nextElementSibling.nextElementSibling) { if (_e.key !== 'Enter') return; { const e = _e; save(it, i, e); }; return; } });
+    _ct_b0.addEventListener('keydown', (_e) => { let _row = _e.target, _cell = null; while (_row && _row.parentNode !== _ct_b0) { _cell = _row; _row = _row.parentNode; } if (!_row || !_row.__d) return; const it = _row.__d; const i = _row.__i; if (_cell !== null && _cell === _row.firstElementChild.nextElementSibling.nextElementSibling) { if (_e.key !== 'Enter') return; { const e = _e; save(it, i, e); }; return; } });
     return () => { for (let i = 0; i < _subs.length; i++) _subs[i](); };
 --- static templates
   const __tpl = __T(`<ul><!----></ul>`);
@@ -1214,15 +1218,12 @@
         const _ev1 = _el.firstElementChild.nextElementSibling;
         ;
         _ev0.addEventListener('click', (_e) => { if (_e.target !== _e.currentTarget) return; open(it); }); _ev1.addEventListener('keydown', (_e) => { if (_e.target !== _e.currentTarget) return; if (_e.key !== 'Enter') return; { const ev = _e; key(ev, it); }; });
-        return { el: _el, cleanups: __nc, value: it, key: undefined };
-    };
-    const _update_b0 = (_m, it, _idx) => {
-      const _el = _m.el;
-      ;
+        return { el: _el, cleanups: __nc, value: it,
+          update: (_it) => { it = _it; } };
     };
     const _rc_b0 = createKeyedReconciler(_ct_b0, _a_b0,
       (it, _idx, _ref) => { const _el = _cloneNode.call(_tc_b0, true); const _m = _bind_b0(_el, it, _idx); _insertBefore.call(_ct_b0, _el, _ref); return _m; },
-    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0, _update_b0));
+    (_, i) => i, __batchRows(16, _tc_b0, _bind_b0));
     const _items_b0 = () => items();
     _rc_b0.reconcile(_items_b0());
     const _rsrc_b0_0 = items;
@@ -1290,7 +1291,7 @@
         _cleanups.push(sep.subscribe(() => { if (_p3 !== (_p3 = it.t + sep())) _m2.setAttribute('title', _p3); }, true));
         _cleanups.push(unit.subscribe(() => { if (_p4 !== (_p4 = `width: ${it.w + unit()}`)) _m3.style.cssText = _p4; }, true));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { if (_p0 !== (_p0 = it.x)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); if (_p1 !== (_p1 = it.label + suffix())) _m0.textContent = (_p1) ?? ''; if (_p3 !== (_p3 = it.t + sep())) _m2.setAttribute('title', _p3); if (_p4 !== (_p4 = `width: ${it.w + unit()}`)) _m3.style.cssText = _p4; } };
+          update: (_it) => { it = _it; if (_p0 !== (_p0 = it.x)) (_t0 ??= _e0.firstChild) ? (_t0.nodeValue = _p0 ?? '') : (_e0.textContent = _p0 ?? ''); if (_p1 !== (_p1 = it.label + suffix())) _m0.textContent = (_p1) ?? ''; if (_p3 !== (_p3 = it.t + sep())) _m2.setAttribute('title', _p3); if (_p4 !== (_p4 = `width: ${it.w + unit()}`)) _m3.style.cssText = _p4; } };
       },
     'id');
     let _sel_b0_1 = sel(); _subs.push(sel.subscribe((_v) => { const _o = _rc_b0.get(_sel_b0_1); if (_o) _o.el.className = ''; const _n = _rc_b0.get(_v); if (_n) _n.el.className = 'on'; _sel_b0_1 = _v; }, true));
@@ -1555,7 +1556,7 @@
         _cleanups.push(__bindIfExpr(_ws_b2, _wm_b2, [it$], () => it$().done, `<s>s</s>`, () => []));
         _cleanups.push(__bindIfExpr(_wm_b2, _we_b2, [it$], () => !(it$().done), `<u>u</u>`, () => []));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { if (_p0 !== (_p0 = sel() === it.id ? 'on' : '')) _m0.className = _p0; _el.__d = it; it$(it); } };
+          update: (_it) => { it = _it; if (_p0 !== (_p0 = sel() === it.id ? 'on' : '')) _m0.className = _p0; _el.__d = it; it$(it); } };
       },
     'id');
     const _items_b0 = () => items();
@@ -1599,7 +1600,7 @@
       ];
     }));
         return { el: _el, cleanups: _cleanups, value: it,
-          update: (it) => { ; } };
+          update: () => {} };
       },
     (_, i) => i);
     const _items_b0 = () => items();
@@ -1759,7 +1760,7 @@
             _cleanups.push(x.subscribe(() => { _s1.style.setProperty('left', x()); }, true));
             _cleanups.push(user.subscribe(() => { _st0.data = user().name ?? ''; }, true));
             return { el: _el, cleanups: _cleanups, value: it,
-              update: (it) => { ; } };
+              update: () => {} };
           },
         (it) => it.k + 1);
         const _items_b1 = () => g$().items;
@@ -2023,8 +2024,9 @@
         const _a_b3 = _we_b1.nextSibling.lastChild;
         ;
         _insertBefore.call(_ct_b0, _el, _ref);
+        const _cd0 = __rc(Kid, _cm0, { g });
         const _cleanups = [];
-        _cleanups.push(__dc(Kid.__f(_cm0, { g })));
+        _cleanups.push(_cd0.d);
         _cleanups.push(__bindIf(_ws_b1, _we_b1, on, `<b><!----> <!----></b>`, (_c) => {
       const _b2 = _c.firstChild.nextSibling;
       _b2.data = lbl() ?? '';
@@ -2042,7 +2044,7 @@
         _cleanups.push(typeof _rsrc_b3_0?.subscribe === 'function' ? _rsrc_b3_0.subscribe(() => { _rc_b3.reconcile(_items_b3()); }, true) : () => {});
         _cleanups.push(() => _rc_b3.clearAll());
         return { el: _el, cleanups: _cleanups, value: g,
-          update: (g) => { g$(g); } };
+          update: (g) => { _cd0.u({ g }); g$(g); } };
       },
     (_, i) => i);
     const _items_b0 = () => groups();

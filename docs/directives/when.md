@@ -9,6 +9,9 @@ html`<p ${when(open())}>Now you see me</p>`;
 // In content: a template while the condition is truthy, and another (or nothing) while it is not
 html`${when(open(), html`<p>Open</p>`, html`<p>Closed</p>`)}`;
 html`${when(open(), html`<p>Open</p>`)}`;
+
+// Narrowing: the branch is a function of the condition's value, typed without null
+html`${when(user(), (u) => html`<p>${u.name}</p>`)}`;
 ```
 
 Hidden content is not in the DOM: its nodes are removed and its bindings disposed. Showing it again clones
@@ -72,6 +75,38 @@ template: html`
 
 When the condition changes, every node of the old branch goes, rows and child components at its top level
 included, and every node of the new one comes in.
+
+The content form can also be written with JavaScript's own operators: ``${open() ? html`…` : html`…`}`` and
+``${open() && html`…`}`` compile to the same `when()` (see
+[JavaScript Control Flow](../templates.md#javascript-control-flow)).
+
+## Narrowing
+
+The then-branch can be a function of the condition's value. It receives the value typed without `null`,
+`undefined` and the other falsy types, so a branch about a value that may be missing reads it directly:
+
+```typescript
+const user = signal<User | null>(null);
+
+template: html`
+  ${when(
+    user(),
+    (u) => html`<h2>${u.name}</h2>
+      <button @click=${() => greet(u)}>Greet</button>
+      ${Avatar({ url: u.avatarUrl })}`,
+    html`<p>Signed out</p>`,
+  )}
+`;
+```
+
+The function is not called at run time: the compiler reads its body as the branch, with each use of the
+parameter replaced by the condition, `user()`. Each binding of the branch therefore follows the condition's
+signals, and a handler reads the value when it runs. The condition is evaluated once for each use, so keep it a
+signal read or a short expression of one; give a long one a `computed()`.
+
+The function takes one parameter, a name, and its body is an `html` template (``(u) => html`…` ``); anything
+else is a build error (THANE014). In a `repeat()` row the condition can read the row's item:
+``when(row.owner, (owner) => html`<b>${owner.name}</b>`)``.
 
 ## Conditions
 

@@ -34,20 +34,40 @@ export const App = defineComponent(() => {
 };
 
 describe('runtime helper imports follow the emitted code', () => {
-  test('child-component rows inside a when() import __dc', () => {
-    const r = compile(
-      'return { template: html`<div ${when(show())}><ul>${repeat(items(), (i) => Card({ label: i.n }))}</ul></div>` };',
-    );
-    expect(r.called).toContain(RUNTIME_HELPER.DESTROY_CHILD);
-    expect(r.imported).toEqual(r.called);
+  test('child-component rows inside a when() import __dc, and __rc for props that read the row', () => {
+    for (const [props, helper] of [
+      ['{ label: n() }', RUNTIME_HELPER.DESTROY_CHILD],
+      ['{ label: i.n }', RUNTIME_HELPER.ROW_CHILD],
+    ] as const) {
+      const r = compile(
+        `return { template: html\`<div \${when(show())}><ul>\${repeat(items(), (i) => Card(${props}))}</ul></div>\` };`,
+      );
+      expect(r.called).toContain(helper);
+      expect(r.imported).toEqual(r.called);
+    }
   });
 
-  test('child-component rows inside a when() branch import __dc', () => {
+  test('child-component rows inside a when() branch import __dc, and __rc for props that read the row', () => {
+    for (const [props, helper] of [
+      ['{ label: n() }', RUNTIME_HELPER.DESTROY_CHILD],
+      ['{ label: i.n }', RUNTIME_HELPER.ROW_CHILD],
+    ] as const) {
+      const r = compile(
+        `return { template: html\`<div>\${when(show(), html\`<ul>\${repeat(items(), (i) => Card(${props}))}</ul>\`, html\`<p>none</p>\`)}</div>\` };`,
+      );
+      expect(r.called).toContain(helper);
+      expect(r.imported).toEqual(r.called);
+    }
+  });
+
+  test("a child in a row's branch whose props read the row follows the row's signal", () => {
     const r = compile(
-      'return { template: html`<div>${when(show(), html`<ul>${repeat(items(), (i) => Card({ label: i.n }))}</ul>`, html`<p>none</p>`)}</div>` };',
+      'return { template: html`<ul>${repeat(items(), (i) => html`<li>${when(show(), html`${Card({ label: i.n })}`)}</li>`)}</ul>` };',
     );
-    expect(r.called).toContain(RUNTIME_HELPER.DESTROY_CHILD);
+    expect(r.called).toContain(RUNTIME_HELPER.ROW_CHILD);
+    expect(r.called).toContain(RUNTIME_HELPER.SIGNAL);
     expect(r.imported).toEqual(r.called);
+    expect(r.out).toMatch(/i\$\.subscribe\(\(\) => _cd\d+\.u\(\{ label: i\.n \}\), true\)/);
   });
 
   const shapes: Array<[string, string]> = [

@@ -88,20 +88,22 @@ const styles = css`
 
 **Severity:** Error
 
-An `html` template inside another is compiled where it is the whole `${…}` (it is inlined) or an argument of a directive (a `when()` branch, a `repeat()` row or empty template). Anywhere else, such as in a ternary or a `map()`, it would be a plain value, and it is reported.
+An `html` template inside another is compiled where it is the whole `${…}` (it is inlined), an argument of a
+directive (a `when()` branch, a `repeat()` row or its `empty` template), or a branch of a ternary, an `&&` or a
+`.map()` row in content (each is compiled as the directive it means; see
+[JavaScript Control Flow](templates.md#javascript-control-flow)). Anywhere else, such as an argument of your own
+function or an attribute's value, it would be a plain value, and it is reported. The compiler also stops at a
+ternary in content with a template on one side and text on the other.
 
 ```typescript
-// ❌ BAD — an html template in a ternary, and in map()
-template: html`<div>${open() ? html`<p>Open</p>` : ''}</div>`;
-template: html`<ul
-  >${items().map((i) => html`<li>${i}</li>`)}</ul
->`;
+// ❌ BAD — a template passed to a function, and a ternary of a template and text
+template: html`<div>${wrap(html`<p>Open</p>`)}</div>`;
+template: html`<div>${open() ? html`<p>Open</p>` : 'closed'}</div>`;
 
-// ✅ GOOD — a directive chooses, or repeats
+// ✅ GOOD — control flow or a directive chooses, or repeats
+template: html`<div>${open() ? html`<p>Open</p>` : html`<p>Closed</p>`}</div>`;
+template: html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`;
 template: html`<div>${when(open(), html`<p>Open</p>`)}</div>`;
-template: html`<ul
-  >${repeat(items(), (i) => html`<li>${i}</li>`)}</ul
->`;
 
 // ✅ GOOD — a whole ${…} is inlined, like a const fragment
 template: html`<div>${html`<span>nested</span>`}</div>`;

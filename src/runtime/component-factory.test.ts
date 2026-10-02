@@ -1,5 +1,5 @@
 /**
- * Characterisation of the component factories, `__dc` and `mountComponent`.
+ * Characterisation of the component factories, `__dc`, `__rc` and `mountComponent`.
  *
  * component.ts has little other unit coverage: its behaviour is covered by the
  * e2e contract and destroy suites. These tests pin, with an operation log over a fake DOM, what
@@ -13,6 +13,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import {
   __dc,
+  __rc,
   __enableComponentStyles,
   __registerComponent,
   __registerComponentLean,
@@ -426,6 +427,64 @@ describe('__dc', () => {
     __dc({ root: el(), __onDestroy: () => log.push('d') } as any)();
     __dc({ root: el(), __bindingsCleanup: () => log.push('b') } as any)();
     expect(log).toEqual(['d', 'b']);
+  });
+});
+
+describe('__rc', () => {
+  /** A child whose factory logs the props it mounts with and whose destroy logs them too */
+  const child = {
+    __f: (host: any, props: { label: string; item?: object }) => {
+      log.push(`mount ${props.label}`);
+      host.textContent = props.label;
+      return { root: host, __onDestroy: () => log.push(`destroy ${props.label}`) };
+    },
+  };
+  const host = (): any => ({ textContent: '' });
+
+  test('mounts the child with its props', () => {
+    const h = host();
+    __rc(child as any, h, { label: 'a' });
+    expect(log).toEqual(['mount a']);
+    expect(h.textContent).toBe('a');
+  });
+
+  test('props that are each the same value keep the child', () => {
+    const item = {};
+    const rc = __rc(child as any, host(), { label: 'a', item });
+    rc.u({ label: 'a', item });
+    expect(log).toEqual(['mount a']);
+  });
+
+  test('a prop with another value destroys the child, empties its host, and mounts it again', () => {
+    const h = host();
+    const rc = __rc(child as any, h, { label: 'a' });
+    rc.u({ label: 'b' });
+    expect(log).toEqual(['mount a', 'destroy a', 'mount b']);
+    expect(h.textContent).toBe('b');
+    // The props it has now are the new ones
+    rc.u({ label: 'b' });
+    expect(log).toEqual(['mount a', 'destroy a', 'mount b']);
+  });
+
+  test('a new object in a prop, or a prop added or removed, mounts it again', () => {
+    const rc = __rc(child as any, host(), { label: 'a', item: {} });
+    rc.u({ label: 'a', item: {} });
+    rc.u({ label: 'a' });
+    rc.u({ label: 'a', item: undefined });
+    expect(log).toEqual(['mount a', 'destroy a', 'mount a', 'destroy a', 'mount a', 'destroy a', 'mount a']);
+  });
+
+  test('NaN is the same value as NaN', () => {
+    const rc = __rc(child as any, host(), { label: 'a', n: NaN } as any);
+    rc.u({ label: 'a', n: NaN });
+    expect(log).toEqual(['mount a']);
+  });
+
+  test('d destroys the child it has now', () => {
+    const rc = __rc(child as any, host(), { label: 'a' });
+    rc.u({ label: 'b' });
+    rc.d();
+    expect(log).toEqual(['mount a', 'destroy a', 'mount b', 'destroy b']);
   });
 });
 

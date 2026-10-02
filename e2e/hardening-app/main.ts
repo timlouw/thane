@@ -14,6 +14,7 @@ import { ChildHosts } from './probes/child-hosts.js';
 import { ChildSameId } from './probes/child-same-id.js';
 import { ComponentRowTemplate } from './probes/component-row-template.js';
 import { ComponentRowsInWhen } from './probes/component-rows-in-when.js';
+import { ControlFlow } from './probes/control-flow.js';
 import { CssCommentQuote } from './probes/css-comment-quote.js';
 import { CssNamespace } from './probes/css-namespace.js';
 import { DestroyRows } from './probes/destroy-rows.js';
@@ -35,6 +36,7 @@ import { NestedLists } from './probes/nested-lists.js';
 import { NestedRowEvent } from './probes/nested-row-event.js';
 import { NestedRowWhen } from './probes/nested-row-when.js';
 import { NestedWhenElseChild } from './probes/nested-when-else-child.js';
+import { Narrowing } from './probes/narrowing.js';
 import { PreWhitespace } from './probes/pre-whitespace.js';
 import { QuotesInAttrs } from './probes/quotes-in-attrs.js';
 import { RebuiltMarkup } from './probes/rebuilt-markup.js';
@@ -42,6 +44,8 @@ import { ReorderBeforeAnchor } from './probes/reorder-before-anchor.js';
 import { RootList } from './probes/root-list.js';
 import { RowChildAfterWhen } from './probes/row-child-after-when.js';
 import { RowChildInWhen } from './probes/row-child-in-when.js';
+import { RowChildProps } from './probes/row-child-props.js';
+import { RowClosures } from './probes/row-closures.js';
 import { RowDirectives } from './probes/row-directives.js';
 import { RowMethodCall } from './probes/row-method-call.js';
 import { RowTextSpace } from './probes/row-text-space.js';
@@ -65,6 +69,7 @@ const probes: Record<string, ComponentHTMLSelector<any>> = {
   childSameId: ChildSameId,
   componentRowTemplate: ComponentRowTemplate,
   componentRowsInWhen: ComponentRowsInWhen,
+  controlFlow: ControlFlow,
   cssCommentQuote: CssCommentQuote,
   cssNamespace: CssNamespace,
   destroyRows: DestroyRows,
@@ -86,6 +91,7 @@ const probes: Record<string, ComponentHTMLSelector<any>> = {
   nestedRowEvent: NestedRowEvent,
   nestedRowWhen: NestedRowWhen,
   nestedWhenElseChild: NestedWhenElseChild,
+  narrowing: Narrowing,
   preWhitespace: PreWhitespace,
   quotesInAttrs: QuotesInAttrs,
   rebuiltMarkup: RebuiltMarkup,
@@ -93,6 +99,8 @@ const probes: Record<string, ComponentHTMLSelector<any>> = {
   rootList: RootList,
   rowChildAfterWhen: RowChildAfterWhen,
   rowChildInWhen: RowChildInWhen,
+  rowChildProps: RowChildProps,
+  rowClosures: RowClosures,
   rowDirectives: RowDirectives,
   rowMethodCall: RowMethodCall,
   rowTextSpace: RowTextSpace,

@@ -1,16 +1,18 @@
 /**
  * THANE404 — no-nested-html-tags
  *
- * An `html` tagged template inside another is compiled where it is the whole `${}` (it is inlined) or an
- * argument of a directive (a branch, a row, an empty template). Anywhere else in a `${}` it would be a
- * plain value, and it is reported:
+ * An `html` tagged template inside another is compiled where it is the whole `${}` (it is inlined), an argument
+ * of a directive (a branch, a row, an empty template), or a branch of JavaScript control flow in content (a
+ * ternary, `&&`, a `.map()` row), which the compiler turns into the directive it means. Anywhere else in a `${}`
+ * it would be a plain value, and it is reported:
  *
  *   html`<div>${html`<span>${count()}</span>`}</div>`             // ✅ inlined
  *   html`<div>${when(show(), html`<p>Yes</p>`)}</div>`            // ✅ directive arguments
- *   html`<div>${repeat(items(), (i) => html`…`)}</div>`            // ✅
+ *   html`<div>${show() ? html`<p>Yes</p>` : null}</div>`          // ✅ control flow in content
+ *   html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`     // ✅
  *
- *   html`<div>${show() ? html`<p>Yes</p>` : ''}</div>`            // ❌ THANE404: use when()
- *   html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`     // ❌ THANE404: use repeat()
+ *   html`<div title=${show() ? html`<b>a</b>` : ''}>x</div>`      // ❌ THANE404: in a tag
+ *   html`<div>${label(html`<b>a</b>`)}</div>`                     // ❌ THANE404: a plain value
  */
 
 import ts from 'typescript';
@@ -29,6 +31,39 @@ const isDirectiveCall = (node: ts.Node): boolean => {
   return ts.isIdentifier(callee) && DIRECTIVE_CALLS.has(callee.text);
 };
 
+const unwrap = (node: ts.Expression): ts.Expression => {
+  while (ts.isParenthesizedExpression(node)) node = node.expression;
+  return node;
+};
+
+/**
+ * The branches of control flow in content, where a template goes: a ternary's two (and those of the ternaries
+ * nested in them), the right side of `&&`, a `.map()` row's body. Null for any other expression.
+ */
+const branchesOf = (expr: ts.Expression): { branches: ts.Expression[]; rest: ts.Node[] } | null => {
+  const node = unwrap(expr);
+  if (ts.isConditionalExpression(node)) {
+    const inner = [node.whenTrue, node.whenFalse].map((b) => branchesOf(b) ?? { branches: [b], rest: [] });
+    return { branches: inner.flatMap((b) => b.branches), rest: [node.condition, ...inner.flatMap((b) => b.rest)] };
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+    const right = branchesOf(node.right) ?? { branches: [node.right], rest: [] };
+    return { branches: right.branches, rest: [node.left, ...right.rest] };
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === 'map' &&
+    node.arguments.length === 1
+  ) {
+    const row = node.arguments[0]!;
+    if (ts.isArrowFunction(row) && !ts.isBlock(row.body)) {
+      return { branches: [row.body], rest: [node.expression.expression, ...row.parameters] };
+    }
+  }
+  return null;
+};
+
 const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   const { diagnostics, report } = createReporter(sourceFile, filePath, ErrorCode.NO_NESTED_HTML_TAGS, 'error');
 
@@ -38,14 +73,26 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
         report(
           node,
           "An 'html' template here is not compiled: inside another template, one is compiled where it is the whole " +
-            '${…} or a directive argument. Use when() to choose between templates, and repeat() for a list.',
+            '${…}, a directive argument, or a branch of a ternary, && or .map() in content.',
         );
         // Still visit children to catch deeper nesting
       }
-      // A template that is the whole `${}` is inlined; anything else in a `${}` is inside this one
       const template = node.template;
       if (ts.isTemplateExpression(template)) {
-        for (const span of template.templateSpans) visit(span.expression, !isTaggedWith(span.expression, [FN.HTML]));
+        // The markup so far, each `${}` standing as one character: whether a span is in an element's tag
+        let markup = template.head.rawText ?? template.head.text;
+        for (const span of template.templateSpans) {
+          const inTag = /<[A-Za-z][^<>]*$/.test(markup);
+          markup += '_' + (span.literal.rawText ?? span.literal.text);
+          const flow = inTag ? null : branchesOf(span.expression);
+          if (flow) {
+            for (const branch of flow.branches) visit(branch, !isTaggedWith(unwrap(branch), [FN.HTML]));
+            for (const other of flow.rest) visit(other, true);
+            continue;
+          }
+          // A template that is the whole `${}` is inlined; anything else in a `${}` is inside this one
+          visit(span.expression, !isTaggedWith(span.expression, [FN.HTML]));
+        }
       }
       return;
     }
@@ -69,7 +116,8 @@ export const noNestedHtmlTags: LintRuleDefinition = {
     code: ErrorCode.NO_NESTED_HTML_TAGS,
     name: 'no-nested-html-tags',
     severity: 'error',
-    description: 'An html`` template inside another is the whole ${…} or a directive argument.',
+    description:
+      'An html`` template inside another is the whole ${…}, a directive argument, or a branch of control flow in content.',
   },
   check,
 };

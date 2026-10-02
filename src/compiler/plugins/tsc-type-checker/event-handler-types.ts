@@ -71,20 +71,17 @@ const rawText = (part: ts.TemplateLiteralLikeNode): string => part.rawText ?? pa
 /** The name of the tag still open at the end of `markup` (the element an attribute belongs to), or '' */
 const openTagName = (markup: string): string => /<([a-zA-Z][\w-]*)[^<>]*$/.exec(markup)?.[1]?.toLowerCase() ?? '';
 
-/** Whether a template is (inside) a list row: a function that is `repeat()`'s row argument holds it */
+/**
+ * Whether a template is (inside) a list row: a function that is `repeat()`'s row argument holds it, or the
+ * callback of a `.map()` in a template, which the compiler turns into a repeat()
+ */
 const isInRow = (node: ts.Node): boolean => {
   for (let at: ts.Node | undefined = node.parent; at; at = at.parent) {
     const call: ts.Node | undefined = at.parent;
-    if (
-      (ts.isArrowFunction(at) || ts.isFunctionExpression(at)) &&
-      call &&
-      ts.isCallExpression(call) &&
-      ts.isIdentifier(call.expression) &&
-      call.expression.text === FN.REPEAT &&
-      call.arguments[1] === at
-    ) {
-      return true;
-    }
+    if (!(ts.isArrowFunction(at) || ts.isFunctionExpression(at)) || !call || !ts.isCallExpression(call)) continue;
+    const callee = call.expression;
+    if (ts.isIdentifier(callee) && callee.text === FN.REPEAT && call.arguments[1] === at) return true;
+    if (ts.isPropertyAccessExpression(callee) && callee.name.text === 'map' && call.arguments[0] === at) return true;
   }
   return false;
 };

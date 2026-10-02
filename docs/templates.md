@@ -113,6 +113,8 @@ Use ternary operators for conditional text:
 template: html`<span>${count() > 0 ? 'Positive' : 'Zero or negative'}</span>`;
 ```
 
+A ternary of templates chooses between them: see [JavaScript Control Flow](#javascript-control-flow).
+
 ## Nullish Coalescing
 
 Use `??` for fallback values:
@@ -196,8 +198,39 @@ export const Orders = defineComponent(() => {
 });
 ```
 
-Anywhere else in a `${…}`, such as a ternary or a `map()`, an `html` template would be a plain value, and the
-build reports it (lint rule THANE404): use `when()` to choose between templates, and `repeat()` for a list.
+#### JavaScript Control Flow
+
+In content, a ternary, an `&&` or a `.map()` of templates is compiled as the directive it means:
+
+```typescript
+template: html`
+  ${open() ? html`<p>Open</p>` : html`<p>Closed</p>`}
+  ${open() && html`<p>Open</p>`}
+  ${error() ? html`<p class="error">${error()}</p>` : null}
+  ${role() === 'admin' ? AdminPanel({}) : role() === 'user' ? UserPanel({}) : html`<p>Sign in</p>`}
+  <ul>${items().map((item) => html`<li>${item.name}</li>`)}</ul>
+  <div>${cards().map((card) => Card({ card }))}</div>
+`;
+```
+
+| Written                     | Compiled as                     |
+| :-------------------------- | :------------------------------ |
+| `c ? A : B`                 | `when(c, A, B)`                 |
+| `c ? A : null`              | `when(c, A)`                    |
+| `c ? null : B`              | `when(!(c), B)`                 |
+| `c && A`                    | `when(c, A)`                    |
+| `items.map((item, i) => A)` | `repeat(items, (item, i) => A)` |
+
+A branch is a template: an `html` template, a fragment, a child component call, another such expression (a
+chain of ternaries is a chain of `when()`s), or nothing: `null`, `undefined`, `false` or `''`. A `.map()` row
+is an `html` template or a child component call, written as the arrow function's expression body. The compiled
+code is the directive's, so a branch or a row costs the same either way; write `when()` or `repeat()` for what
+only they take: the tag form of `when()`, its narrowing form, and `repeat()`'s `key` and `empty`.
+
+A ternary whose branches are both text is a text binding, as before (`${n > 0 ? 'Positive' : 'None'}`). One
+with a template on one side and text on the other is a build error (THANE404): the template would never be
+compiled. An `html` template anywhere else in a `${…}`, such as an argument of your own function, is reported
+too.
 
 #### Fragments Shared Across Files
 

@@ -86,8 +86,11 @@ export interface RepeatBlock {
   itemVar: string; // e.g., "country"
   indexVar?: string | undefined; // e.g., "index" (optional)
   itemTemplate: string; // HTML template for each item (processed)
-  /** A row that is a component call: the component and its props, as written */
-  componentRow?: { componentName: string; propsExpression: string } | undefined;
+  /**
+   * A row that is a component call: the component and its props, as written, and the signals of the rows
+   * around this list that its props read (see RowChildMount)
+   */
+  componentRow?: { componentName: string; propsExpression: string; follows?: string[] } | undefined;
   emptyTemplate?: string | undefined; // HTML template shown when list is empty
   trackByFn?: string | undefined; // Custom trackBy function source: the reconciler's row key (its property name for `(x) => x.prop`)
   startIndex: number; // Position in HTML where ${repeat starts

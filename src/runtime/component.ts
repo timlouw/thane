@@ -528,6 +528,40 @@ export const __dc =
     if (i.__onDestroy) i.__onDestroy();
   };
 
+type Props = Record<string, unknown>;
+
+const sameProps = (a: Props, b: Props): boolean => {
+  const keys = Object.keys(a);
+  if (keys.length !== Object.keys(b).length) return false;
+  for (const key of keys) if (!Object.is(a[key], b[key])) return false;
+  return true;
+};
+
+/**
+ * A child component in a list row whose props read the row's item or index, mounted into `host`. A component
+ * reads its props when it mounts, so when the row's item changes, `u` is called with the props for the new one:
+ * when one of them is not the value the child has, the child is destroyed and mounted again with them. `d`
+ * destroys it.
+ *
+ * @internal — emitted by the compiler; not part of the public API.
+ */
+export const __rc = (
+  child: ComponentRef,
+  host: HTMLElement,
+  props: Props,
+): { u: (props: Props) => void; d: () => void } => {
+  let destroy = __dc(child.__f(host, props));
+  return {
+    u: (next) => {
+      if (sameProps(props, next)) return;
+      destroy();
+      host.textContent = '';
+      destroy = __dc(child.__f(host, (props = next)));
+    },
+    d: () => destroy(),
+  };
+};
+
 /**
  * Handle returned by mount(), allowing the caller to destroy the mounted
  * component and invoke its onDestroy lifecycle hook.

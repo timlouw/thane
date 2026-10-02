@@ -1500,3 +1500,171 @@ test.describe('a keyed list reordered while a row goes', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 });
+
+test.describe('JavaScript control flow in templates', () => {
+  test('a ternary, &&, a chain of ternaries and .map() rows show and update like the directives they mean', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'controlFlow');
+    const set = (key: string, value: unknown) => setProbe(page, 'controlFlow', key, value);
+    await expect(page.locator('.flow-ternary')).toHaveText('off');
+    await expect(page.locator('.flow-and')).toHaveText('');
+    await expect(page.locator('.flow-chain')).toHaveText('none');
+    await expect(page.locator('.flow-row')).toHaveText(['0:a', '1:b']);
+    await expect(page.locator('.flow-cards .card')).toHaveText(['a', 'b']);
+    await expect(page.locator('.flow-text')).toHaveText('no');
+
+    await set('open', true);
+    await set('n', 1);
+    await expect(page.locator('.flow-on')).toHaveText('on 1');
+    await expect(page.locator('.flow-and-on')).toHaveText('shown');
+    await expect(page.locator('.flow-chain')).toHaveText('some');
+    await expect(page.locator('.flow-text')).toHaveText('yes');
+    await set('n', 3);
+    await expect(page.locator('.flow-on')).toHaveText('on 3');
+    await expect(page.locator('.flow-chain')).toHaveText('many');
+
+    // .map() rows are keyed by index: the rows stay, and show the items now at their positions
+    await set('items', ['c', 'a', 'b']);
+    await expect(page.locator('.flow-row')).toHaveText(['0:c', '1:a', '2:b']);
+    await expect(page.locator('.flow-cards .card')).toHaveText(['c', 'a', 'b']);
+    await set('items', []);
+    await expect(page.locator('.flow-row')).toHaveCount(0);
+
+    await set('open', false);
+    await expect(page.locator('.flow-ternary')).toHaveText('off');
+    await expect(page.locator('.flow-and-on')).toHaveCount(0);
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe("when()'s narrowing form", () => {
+  test('the branch gets the value: its bindings, handlers and child props read it, and follow it', async ({ page }) => {
+    const probe = await mountProbe(page, 'narrowing');
+    const set = (key: string, value: unknown) => setProbe(page, 'narrowing', key, value);
+    await expect(page.locator('.narrow-none')).toHaveText('none');
+    await expect(page.locator('.narrow-tag')).toHaveText(['x']);
+
+    await set('user', { name: 'Ada', tags: ['a', 'b'] });
+    await expect(page.locator('.narrow-name')).toHaveText('Ada (2)');
+    await expect(page.locator('.narrow-name')).toHaveAttribute('title', 'Ada');
+    await expect(page.locator('.narrow .card')).toHaveText('Ada');
+    await page.locator('.narrow-greet').click();
+    await expect(page.locator('.narrow-greeted')).toHaveText('Ada');
+
+    // Another value while the branch shows: its bindings and handlers read the new one
+    await set('user', { name: 'Grace', tags: [] });
+    await expect(page.locator('.narrow-name')).toHaveText('Grace (0)');
+    await page.locator('.narrow-greet').click();
+    await expect(page.locator('.narrow-greeted')).toHaveText('Grace');
+
+    await set('user', null);
+    await expect(page.locator('.narrow-name')).toHaveCount(0);
+    await expect(page.locator('.narrow-none')).toHaveText('none');
+
+    // In rows, the condition reads the row's item
+    await set('rows', [
+      { id: 1, tag: null },
+      { id: 2, tag: 'y' },
+    ]);
+    await expect(page.locator('.narrow-tag')).toHaveText(['y']);
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe('a child component in a row reads the row in its props', () => {
+  test("a row's new item mounts its child again; the same item keeps it", async ({ page }) => {
+    const probe = await mountProbe(page, 'rowChildProps');
+    await expect(page.locator('.child-props-in-row .ckid')).toHaveText(['a', 'b']);
+    await expect(page.locator('.child-props-as-row .ckid')).toHaveText(['row-a', 'row-b']);
+
+    // Row 1 gets a new object with the same key; row 2 keeps its object
+    await page.evaluate(() => {
+      const { rows } = (window as any).__probe.rowChildProps;
+      rows([{ id: 1, label: 'c' }, rows()[1]]);
+    });
+    await expect(page.locator('.child-props-in-row .ckid')).toHaveText(['c', 'b']);
+    await expect(page.locator('.child-props-as-row .ckid')).toHaveText(['row-c', 'row-b']);
+    expect(await countingKidCounts(page)).toEqual({
+      mount: { 'a': 1, 'b': 1, 'c': 1, 'row-a': 1, 'row-b': 1, 'row-c': 1 },
+      destroy: { 'a': 1, 'row-a': 1 },
+    });
+
+    await setProbe(page, 'rowChildProps', 'rows', []);
+    await expect(page.locator('.ckid')).toHaveCount(0);
+    expect((await countingKidCounts(page)).destroy).toEqual({
+      'a': 1,
+      'b': 1,
+      'c': 1,
+      'row-a': 1,
+      'row-b': 1,
+      'row-c': 1,
+    });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});
+
+test.describe("a row's code reads its item and index as they are now", () => {
+  /** Row 1 gets a new object with the label 'c' under its key; row 2 keeps its object */
+  const relabel = (page: Page) =>
+    page.evaluate(() => {
+      const { rows } = (window as any).__probe.rowClosures;
+      rows([{ ...rows()[0], label: 'c' }, rows()[1]]);
+    });
+  const swap = (page: Page) =>
+    page.evaluate(() => {
+      const { rows } = (window as any).__probe.rowClosures;
+      rows([rows()[1], rows()[0]]);
+    });
+  const picked = (page: Page) => page.evaluate(() => (window as any).__probe.rowClosures.picked());
+
+  test('a binding that reads the item and another signal', async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await expect(page.locator('.rc-mixed li')).toHaveText(['a!', 'b!']);
+    await relabel(page);
+    await expect(page.locator('.rc-mixed li')).toHaveText(['c!', 'b!']);
+    await setProbe(page, 'rowClosures', 'suffix', '?');
+    await expect(page.locator('.rc-mixed li')).toHaveText(['c?', 'b?']);
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('a listener on a row element (.self) reads the new item', async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await relabel(page);
+    await page.locator('.rc-self li').first().click();
+    expect(await picked(page)).toBe('self c');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('a delegated handler and a listener read the index after the rows move', async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await page.locator('.rc-index li').nth(1).click();
+    expect(await picked(page)).toBe('index 1');
+    await page.locator('.rc-self-index li').nth(1).click();
+    expect(await picked(page)).toBe('self index 1');
+    await swap(page);
+    await expect(page.locator('.rc-index li')).toHaveText(['b', 'a']);
+    await page.locator('.rc-index li').nth(1).click();
+    expect(await picked(page)).toBe('index 1');
+    await page.locator('.rc-index li').first().click();
+    expect(await picked(page)).toBe('index 0');
+    await page.locator('.rc-self-index li').first().click();
+    expect(await picked(page)).toBe('self index 0');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test("a child in a row's when() branch, and in an inner row, gets the row's new item", async ({ page }) => {
+    const probe = await mountProbe(page, 'rowClosures');
+    await expect(page.locator('.rc-branch-kid .ckid')).toHaveText(['branch a', 'branch b']);
+    await expect(page.locator('.rc-inner-kid .ckid')).toHaveText(['a/k', 'b/k']);
+    // The branch stays (on is still true) and the inner row's item is the same object
+    await relabel(page);
+    await expect(page.locator('.rc-branch-kid .ckid')).toHaveText(['branch c', 'branch b']);
+    await expect(page.locator('.rc-inner-kid .ckid')).toHaveText(['c/k', 'b/k']);
+    expect(await countingKidCounts(page)).toEqual({
+      mount: { 'branch a': 1, 'branch b': 1, 'branch c': 1, 'a/k': 1, 'b/k': 1, 'c/k': 1 },
+      destroy: { 'branch a': 1, 'a/k': 1 },
+    });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});

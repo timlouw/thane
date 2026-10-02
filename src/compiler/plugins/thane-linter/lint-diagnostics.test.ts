@@ -116,24 +116,29 @@ describe('THANE404 diagnostics', () => {
   const error = diag('error', ErrorCode.NO_NESTED_HTML_TAGS);
   const MESSAGE =
     "An 'html' template here is not compiled: inside another template, one is compiled where it is the whole " +
-    '${…} or a directive argument. Use when() to choose between templates, and repeat() for a list.';
+    '${…}, a directive argument, or a branch of a ternary, && or .map() in content.';
 
-  test('reports a nested html template at its tag unless it is the whole ${} or in a directive call', () => {
+  test('reports a nested html template at its tag unless it is the whole ${}, in a directive call or a branch', () => {
     const src = [
       'const t = html`<div>${html`<p>${html`<i/>`}</p>`}</div>`;',
       'const u = html`${when(x(), html`<b/>`)}${when(x(), html`<c/>`, html`<d/>`)}`;',
       'const v = html`${fmt(html`<e/>`)}`;',
       'const w = html`${repeat(xs, (i) => html`${html`<s/>`}`)}`;',
       'const m = html`${lib.html`<q/>`}${lib.when(x(), html`<r/>`)}`;',
-      "const y = html`${on() ? html`<y/>` : ''}${xs.map((i) => html`<z/>`)}`;",
+      "const y = html`${on() ? html`<y/>` : ''}${xs.map((i) => html`<z/>`)}${on() && html`<a/>`}`;",
       'const k = html`${fmt(html`${html`<k/>`}`)}`;',
+      "const g = html`<p title=${on() ? html`<g/>` : ''}>${on() ? a : b ? html`<h/>` : null}</p>`;",
+      'const f = html`${on() ? fmt(html`<f/>`) : html`<f2/>`}${xs.map((i) => { return html`<f3/>`; })}`;',
     ];
     expect(run(noNestedHtmlTags, src)).toStrictEqual([
       error(src, 3, 'html`<e/>', MESSAGE),
       error(src, 5, 'html`<r/>', MESSAGE),
-      error(src, 6, 'html`<y/>', MESSAGE),
-      error(src, 6, 'html`<z/>', MESSAGE),
       error(src, 7, 'html`${html', MESSAGE),
+      // In a tag, a ternary of templates is a plain value
+      error(src, 8, 'html`<g/>', MESSAGE),
+      // A template inside a branch's call, and a .map() row with a block body, are plain values
+      error(src, 9, 'html`<f/>', MESSAGE),
+      error(src, 9, 'html`<f3/>', MESSAGE),
     ]);
   });
 });

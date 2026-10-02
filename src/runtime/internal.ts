@@ -7,6 +7,7 @@ export {
   __enableComponentStyles,
   __enableKeyframeScoping,
   __dc,
+  __rc,
   __T,
   mountComponent,
 } from './component.js';
