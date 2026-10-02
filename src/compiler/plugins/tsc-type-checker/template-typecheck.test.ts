@@ -106,6 +106,32 @@ const CASES: Record<string, string> = {
     '});',
     '',
   ].join('\n'),
+  // Refs: one for the tag's element, one for a wider type, one on a custom element; a canvas ref on an input
+  'src/refs.ts': [
+    "import { defineComponent, html, ref, signal, when } from 'thane';",
+    '',
+    'export const Refs = defineComponent(() => {',
+    '  const input = ref<HTMLInputElement>();',
+    '  const box = ref();',
+    '  const custom = ref<HTMLDivElement>();',
+    '  const open = signal(true);',
+    '  return {',
+    '    template: html`<input ${input} /><div ${box} ${when(open())}></div><my-el ${custom}></my-el>`,',
+    '    onMount: () => input.el.focus(),',
+    '  };',
+    '});',
+    '',
+  ].join('\n'),
+  'src/wrong-refs.ts': [
+    "import { defineComponent, html, ref, signal } from 'thane';",
+    '',
+    'export const WrongRefs = defineComponent(() => {',
+    '  const canvas = ref<HTMLCanvasElement>();',
+    '  const open = signal(true);',
+    '  return { template: html`<input ${canvas} /><p ${open}>x</p>` };',
+    '});',
+    '',
+  ].join('\n'),
   // A call that returns a handler, and a ternary of handlers: each runs on the event, and its value is dropped
   'src/dropped-handler.ts': component(
     'DroppedHandler',
@@ -237,11 +263,21 @@ describe('template event handlers in the type check', () => {
     expect(errors[4]).toContain("Type 'Signal<number>' does not satisfy the expected type 'ThaneContent'");
   });
 
+  test("a ref is checked against its tag's element; any other value alone in a tag is an error", () => {
+    expect(errorsIn('src/refs.ts')).toEqual([]);
+    const errors = errorsIn('src/wrong-refs.ts');
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toContain(`src/wrong-refs.ts:${at('src/wrong-refs.ts', 'canvas} />')} - error TS2345`);
+    expect(errors[0]).toContain('"this ref is for another kind of element than the tag it is in"');
+    expect(errors[1]).toContain(`src/wrong-refs.ts:${at('src/wrong-refs.ts', 'open}>')} - error TS2345`);
+    expect(errors[1]).toContain("a ${…} alone in an element's tag is when(condition) or an element ref");
+  });
+
   test('the printed source is the source as written', () => {
     expect(output).toContain('<b @click=${(e: KeyboardEvent) => e.key}>x</b>');
     expect(output).not.toContain('satisfies ThaneEventListener');
     expect(output).toContain('<b @click=${makeHandler(1)} @blur=${open() ? close : show}>x</b>');
     expect(output).not.toContain('__thaneEventCall');
-    expect(output).not.toMatch(/satisfies Thane(Content|Attribute)/);
+    expect(output).not.toMatch(/satisfies Thane(Content|Attribute)|__thaneTag/);
   });
 });

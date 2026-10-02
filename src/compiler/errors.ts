@@ -19,6 +19,7 @@ export enum ErrorCode {
   SHARED_SELECTOR = 'THANE013',
   WHEN_ARGUMENTS = 'THANE014',
   EVENT_MODIFIER = 'THANE015',
+  TAG_VALUE = 'THANE016',
 
   // Build errors
   FILE_NOT_FOUND = 'THANE200',

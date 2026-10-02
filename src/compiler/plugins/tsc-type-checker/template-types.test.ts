@@ -80,7 +80,15 @@ describe('rewriteTemplates', () => {
     expect(rewritten('<p>mail @me=${name}</p>')).toBe(inTemplate('<p>mail @me=${(name) satisfies ThaneContent}</p>'));
     expect(rewritten('<b @click=${a}${b}>x</b><i ${when(on())}></i>')).toBe(
       inTemplate(
-        '<b @click=${(a) satisfies ThaneAttribute}${(b) satisfies ThaneAttribute}>x</b><i ${(when(on())) satisfies ThaneAttribute}></i>',
+        "<b @click=${(a) satisfies ThaneAttribute}${(b) satisfies ThaneAttribute}>x</b><i ${__thaneTag<'i'>()(when(on()))}></i>",
+      ),
+    );
+  });
+
+  test("a value alone in a tag is checked as a when() or a ref for the tag's element; one in quotes is an attribute's", () => {
+    expect(rewritten('<input ${input} class="a ${c}" title=\'${t}\' />')).toBe(
+      inTemplate(
+        "<input ${__thaneTag<'input'>()(input)} class=\"a ${(c) satisfies ThaneAttribute}\" title='${(t) satisfies ThaneAttribute}' />",
       ),
     );
   });

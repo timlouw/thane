@@ -248,7 +248,7 @@ export const Card = defineComponent(() => {
 
 **Severity:** Error
 
-The compiler finds the template markers (`html`, `css`, `when`, `repeat`) and `defineComponent` by their names. Import them from `thane` under those names: a renamed import, or one read through a namespace import, is never compiled.
+The compiler finds the template markers (`html`, `css`, `when`, `repeat`), `ref` and `defineComponent` by their names. Import them from `thane` under those names: a renamed import, or one read through a namespace import, is never compiled.
 
 ```typescript
 // ❌ BAD — renamed: h`…` is not compiled
@@ -351,6 +351,7 @@ These are reported by the compiler while it compiles a template, as build errors
 | THANE013 | Two components of the build with one selector (declared under one name, each with a derived selector). They share their host class, and the styles of the one registered first apply to both. Rename one, or give it an explicit selector     |
 | THANE014 | A content `when()` that is not a conditional: a condition alone (`when(cond)` goes in an element's tag), more than three arguments, or a branch that is not a template |
 | THANE015 | An event modifier the compiler does not know (`@click.prevnet`), or `.passive` with `.prevent` |
+| THANE016 | A `${…}` alone in a tag that is not `when()` or an element ref, or a ref in a list row |
 
 ### THANE007 — one root element per row
 
@@ -437,5 +438,20 @@ template: html`<form @submit.prevent=${save}>…</form>`;
 
 The modifiers are listed in [Event Handling](event-handling.md#modifiers). An unknown one used to be ignored, so the
 handler ran without the `preventDefault()` it asked for.
+
+### THANE016 — a value alone in a tag is when() or a ref
+
+```typescript
+// ❌ BAD — kept in the template as text; an attribute takes name=${…}
+template: html`<input ${disabled()} />`;
+// ❌ BAD — a ref in a list row would name one row's element
+template: html`<ul>${repeat(items(), (item) => html`<li ${selected}>${item.name}</li>`)}</ul>`;
+
+// ✅ GOOD
+template: html`<input disabled=${disabled()} ${input} ${when(open())} />`;
+```
+
+A `${…}` alone in a tag used to stay in the template as written. In a row, read the element in a handler
+(`e.currentTarget`), or give the row a component of its own that holds the ref.
 
 ← [Back to Docs](README.md)

@@ -14,7 +14,7 @@ import type { TemplateScope } from '../../utils/html-parser/index.js';
 
 const SIGNAL_FACTORIES = new Set(['signal', 'computed']);
 
-type Declared = { kind: 'signal' } | { kind: 'function'; node: ts.FunctionLikeDeclaration };
+type Declared = { kind: 'signal' } | { kind: 'ref' } | { kind: 'function'; node: ts.FunctionLikeDeclaration };
 
 const isFunctionNode = (node: ts.Node): node is ts.ArrowFunction | ts.FunctionExpression =>
   ts.isArrowFunction(node) || ts.isFunctionExpression(node);
@@ -38,6 +38,13 @@ const declareFrom = (statements: readonly ts.Statement[], into: Map<string, Decl
           SIGNAL_FACTORIES.has(init.expression.text)
         ) {
           into.set(name, { kind: 'signal' });
+        } else if (
+          init &&
+          ts.isCallExpression(init) &&
+          ts.isIdentifier(init.expression) &&
+          init.expression.text === 'ref'
+        ) {
+          into.set(name, { kind: 'ref' });
         } else into.set(name, null); // something else: not a function of the component
       }
     }
@@ -109,6 +116,7 @@ export const templateScopeOf = (sourceFile: ts.SourceFile, setup?: ts.FunctionLi
 
   return {
     isFunction: (name) => declared.get(name)?.kind === 'function',
+    isRef: (name) => declared.get(name)?.kind === 'ref',
     readsOf: (name) => readsOf(name, new Set()),
   };
 };

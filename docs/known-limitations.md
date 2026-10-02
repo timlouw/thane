@@ -133,7 +133,6 @@ These features are **not currently supported**:
 | :-------------------------------- | :---------------------------------------------------------- |
 | Shadow DOM                        | By design — Light DOM only                                  |
 | SSR / Server-Side Rendering       | Not supported                                               |
-| `ref` API (direct element access) | Not available — use `ctx.root.querySelector()` in `onMount` |
 | Context / Provide / Inject        | Not available — use module-level signals for shared state   |
 | Async component setup             | Not supported — use `onMount` for async work                |
 | Multiple router instances         | Not supported — single-instance only                        |

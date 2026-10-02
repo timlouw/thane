@@ -36,6 +36,7 @@ import { processHtmlTemplateWithConditionals } from './template-processing.js';
 import { anchorMark } from './template-utils.js';
 import { placeChildHosts } from './child-hosts.js';
 import { walkDirectives } from './directive-tree.js';
+import { refInRow } from './repeat-analysis.js';
 import { setTemplateScope } from '../../utils/html-parser/index.js';
 import { templateScopeOf } from './template-scope.js';
 import { desugar, narrowing, substituteInTemplate, type BranchText } from './control-flow.js';
@@ -90,6 +91,7 @@ const OWNERLESS_CALLS: ReadonlySet<string> = new Set([
   'batch',
   'untrack',
   'defineComponent',
+  'ref',
   FN.HTML,
   FN.CSS,
   FN.WHEN,
@@ -882,6 +884,16 @@ const compileTemplates = (
     else if (directiveChildMounts.has(owner)) directiveChildMounts.get(owner)!.push(mount);
     else directiveChildMounts.set(owner, [mount]);
   }
+
+  // A ref in a branch of a list row would name one row's element (THANE016), as a ref in the row itself does
+  const refsIn = (events: readonly EventBinding[] | undefined, rows: readonly RepeatBlock[]): void => {
+    const ref = rows.length > 0 ? events?.find((e) => e.ref) : undefined;
+    if (ref) throw new Error(refInRow(ref.handlerExpression));
+  };
+  walkDirectives(roots, {
+    cond: (c, rows) => refsIn(c.nestedEventBindings, rows),
+    whenElse: (we, rows) => refsIn([...(we.thenEventBindings ?? []), ...(we.elseEventBindings ?? [])], rows),
+  });
 
   // A row that is a component call, in a list inside another's row
   walkDirectives(roots, {

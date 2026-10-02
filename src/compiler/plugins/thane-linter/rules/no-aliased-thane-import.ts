@@ -20,7 +20,14 @@ import { FN } from '../../../utils/constants.js';
 import { createReporter } from './lint-utils.js';
 
 /** The names the compiler reads a construct by. */
-const COMPILED_BY_NAME: ReadonlySet<string> = new Set([FN.HTML, FN.CSS, FN.WHEN, FN.REPEAT, FN.DEFINE_COMPONENT]);
+const COMPILED_BY_NAME: ReadonlySet<string> = new Set([
+  FN.HTML,
+  FN.CSS,
+  FN.WHEN,
+  FN.REPEAT,
+  FN.DEFINE_COMPONENT,
+  'ref',
+]);
 
 const importLine = (name: string): string => `import { ${name} } from 'thane'`;
 

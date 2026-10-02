@@ -145,8 +145,10 @@ export interface EventBinding {
   id: string; // Unique ID for this event handler (e.g., 'e0', 'e1')
   eventName: string; // Event type (e.g., 'click', 'mouseenter')
   modifiers: string[]; // Event modifiers (e.g., ['stop', 'prevent'])
-  handlerExpression: string; // The handler code (method reference or arrow function)
+  handlerExpression: string; // The handler code (method reference or arrow function); for a ref, its name
   elementId: string; // ID of the element with the event binding
+  /** An element ref in the tag (`<input ${input}>`): the binding assigns the element to the ref's `el` */
+  ref?: boolean;
   startIndex: number; // Position in HTML where @event= starts
   endIndex: number; // Position after closing quote
 }

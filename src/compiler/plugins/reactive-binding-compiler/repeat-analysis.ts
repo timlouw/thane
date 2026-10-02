@@ -122,6 +122,11 @@ const ensureRowElementId = (el: HtmlElement, state: IdState, prefix: 'b' | 'i'):
  *   <tr><td><span></span></td></tr>
  * Plus navigation paths to each dynamic element.
  */
+/** THANE016 for an element ref in a list row: each row has its element, and one ref would name only one of them */
+export const refInRow = (name: string): string =>
+  `${ErrorCode.TAG_VALUE}: \${${name}} in a list row — a ref names one element, and each row has one of its own. ` +
+  'Read the element from the event in a handler (e.currentTarget), or give the row a component that holds the ref.';
+
 export const generateStaticRepeatTemplate = (
   itemTemplate: string,
   itemBindings: ItemBinding[],
@@ -429,6 +434,7 @@ const classifyParsedBindings = (
     if (binding.type === 'when' || binding.type === 'whenElse' || binding.type === 'repeat') continue;
     const insideRange = allRanges.some((r) => binding.expressionStart >= r.start && binding.expressionStart < r.end);
     if (insideRange) continue;
+    if (binding.type === 'ref') throw new Error(refInRow(binding.handlerExpression!));
     if (binding.type === 'event' && binding.eventName && binding.handlerExpression) {
       // Every handler on a row element is a row event, whether or not it mentions the item:
       // rows do not exist when the component binds, so a root-level listener would attach to

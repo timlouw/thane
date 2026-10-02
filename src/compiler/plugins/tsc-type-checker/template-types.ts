@@ -8,8 +8,10 @@
  *
  * - content, `<p>${value}</p>`: `(value) satisfies ThaneContent`, text, a number, true or false, nothing (null or
  *   undefined), or templates (a Fragment, or a list of them);
- * - in an element's tag, `<p class=${value}>`: `(value) satisfies ThaneAttribute`, text, a number, true or false,
+ * - an attribute's value, `<p class=${value}>`: `(value) satisfies ThaneAttribute`, text, a number, true or false,
  *   or nothing;
+ * - alone in an element's tag, `<input ${value}>`: `__thaneTag<'input'>()(value)`, a `when()` or an element ref
+ *   for that kind of element;
  * - an event attribute's handler, as follows.
  *
  * Each handler the compiler registers as the listener (an arrow function, a function expression, or a reference
@@ -38,6 +40,17 @@ export const TEMPLATE_TYPES_DECLARATION =
   "type ThaneContent = string | number | boolean | null | undefined | import('thane').Fragment | ReadonlyArray<import('thane').Fragment>;\n" +
   "/** What a `${…}` in an element's tag gives an attribute: text, a number, true or false, or nothing (null or undefined) */\n" +
   'type ThaneAttribute = string | number | boolean | null | undefined;\n' +
+  "/** The element of a tag: lib.dom's for its name, never (no check) for one lib.dom does not know */\n" +
+  'type ThaneElement<K extends string> = K extends keyof HTMLElementTagNameMap ? HTMLElementTagNameMap[K] : K extends keyof SVGElementTagNameMap ? SVGElementTagNameMap[K] : never;\n' +
+  '/** A `${…}` alone in a tag: a when() (a string), or a ref for that kind of element */\n' +
+  'type ThaneTagCheck<K extends string, V> = V extends string\n' +
+  '  ? unknown\n' +
+  "  : V extends import('thane').Ref<infer T>\n" +
+  '    ? ThaneElement<K> extends T\n' +
+  '      ? unknown\n' +
+  "      : 'this ref is for another kind of element than the tag it is in'\n" +
+  '    : "a ${…} alone in an element\'s tag is when(condition) or an element ref";\n' +
+  'declare function __thaneTag<K extends string>(): <V>(value: V & ThaneTagCheck<K, V>) => void;\n' +
   '/** The type of an `@event=${handler}` handler: the event lib.dom gives the name (or any), on the element of the tag `T` */\n' +
   "type ThaneEventListener<K extends string, T extends string = ''> = (\n" +
   '  event: (K extends keyof HTMLElementEventMap ? HTMLElementEventMap[K] : any) &\n' +
@@ -114,6 +127,14 @@ const isInRow = (node: ts.Node): boolean => {
 /** Whether `markup` (a template's text so far) ends inside an element's tag */
 const inTag = (markup: string): boolean => /<[a-zA-Z][\w-]*[^<>]*$/.test(markup);
 
+/** Whether `markup`, which ends inside a tag, ends where an attribute's value goes: after `=`, or in quotes */
+const inAttributeValue = (markup: string): boolean => {
+  const tag = /<[a-zA-Z][\w-]*[^<>]*$/.exec(markup)?.[0] ?? '';
+  const quotes = (quote: string): number => tag.split(quote).length - 1;
+  // After `=`, past other substitutions of the same value (`=${a}${b}`, each `_` in the markup)
+  return /=\s*_*$/.test(tag) || quotes('"') % 2 === 1 || quotes("'") % 2 === 1;
+};
+
 const isHtmlTemplate = (node: ts.Node): node is ts.TaggedTemplateExpression & { template: ts.TemplateExpression } =>
   ts.isTaggedTemplateExpression(node) &&
   ts.isIdentifier(node.tag) &&
@@ -156,7 +177,9 @@ const templateInsertions = (sourceFile: ts.SourceFile): Insertion[] => {
           const type = tag ? `ThaneEventListener<'${match[1]!}', '${tag}'>` : `ThaneEventListener<'${match[1]!}'>`;
           return wrap('(', `) satisfies ${type}`);
         }
-        wrap('(', inTag(markup) ? ') satisfies ThaneAttribute' : ') satisfies ThaneContent');
+        if (!inTag(markup)) return wrap('(', ') satisfies ThaneContent');
+        if (inAttributeValue(markup)) return wrap('(', ') satisfies ThaneAttribute');
+        wrap(`__thaneTag<'${openTagName(markup)}'>()(`, ')');
       });
     }
     ts.forEachChild(node, (child) => visit(child, isHtmlTemplate(node) ? depth + 1 : depth));

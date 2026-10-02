@@ -35,6 +35,7 @@ Complete API surface for the Thane framework, covering all public exports, the t
 | `mount`                | `(options: MountOptions) => MountHandle`                           | Mount a component to the DOM              |
 | `unmount`              | `(handle: MountHandle) => void`                                    | Destroy a mounted component               |
 | `registerGlobalStyles` | `(...styles: string[]) => void`                                    | Register global styles (deduplicated)     |
+| `ref`                  | `<T extends Element = HTMLElement>() => Ref<T>`                    | A ref to an element of the template, put in its tag: `<input ${input}>`; `input.el` is the element from `onMount` on ([Element Refs](templates.md#element-refs)) |
 
 `ComponentReturnType` and `MountOptions` are described under [Shapes You Pass In](#shapes-you-pass-in).
 

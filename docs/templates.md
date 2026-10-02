@@ -177,6 +177,32 @@ template: html`<p>${user()}</p>`;
 template: html`<p>${user().name}</p>`; // ✅
 ```
 
+## Element Refs
+
+A ref names an element of the template, for the code that needs the element itself: focus, measuring, a canvas, a
+library that takes a node. Create it in the setup with `ref()`, typed with the element, and put it in the element's tag:
+
+```typescript
+import { defineComponent, html, ref } from 'thane';
+
+export const Search = defineComponent(() => {
+  const input = ref<HTMLInputElement>();
+  return {
+    template: html`<input ${input} type="search" />`,
+    onMount: () => input.el.focus(),
+  };
+});
+```
+
+The compiled template assigns the element to `input.el` when it binds, from the path it reaches the element by, before
+`onMount` runs; there is no query. A ref in a `when()` branch is the element while the branch shows, and `null` while it
+is hidden. In the setup itself, before the template is bound, `el` is `null`: read it in `onMount` or a handler. The type
+check checks the ref's type against the tag: a `ref<HTMLCanvasElement>()` on an `<input>` is a type error.
+
+A ref names one element, so one in a list row is a build error (THANE016): read the element from the event in a handler
+(`e.currentTarget`), or give the row a component that holds the ref. Any other `${…}` alone in a tag is a build error too:
+in a tag, a value is an attribute's (`name=${…}`), `when()` or a ref.
+
 ## Child Components in Templates
 
 Embed child components using their function-call syntax:

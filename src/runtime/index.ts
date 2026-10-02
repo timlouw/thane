@@ -33,6 +33,7 @@ declare global {
 export type { Signal, ReadonlySignal } from './types.js';
 export { signal, batch, computed, effect, untrack, onCleanup } from './signal.js';
 export { html, css, when, repeat, type Fragment } from './markers.js';
+export { ref, type Ref } from './ref.js';
 export {
   defineComponent,
   registerGlobalStyles,

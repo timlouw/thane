@@ -931,10 +931,12 @@ export const generateInitBindingsFunction = (
   };
 
   const buildEventListenerStatements = (events: EventBinding[], scope: NavScope): string[] =>
-    events.map(
-      (evt) =>
-        `${scope.at(evt.elementId, nodeVar(evt.elementId))}.addEventListener('${evt.eventName}', ${compileEventHandler(evt)});`,
-    );
+    events.map((evt) => {
+      const el = scope.at(evt.elementId, nodeVar(evt.elementId));
+      return evt.ref
+        ? `${evt.handlerExpression}.el = ${el};`
+        : `${el}.addEventListener('${evt.eventName}', ${compileEventHandler(evt)});`;
+    });
   // Events inside when() content (and whenElse branches nested in it) are bound by the branch
   // initializer, not at the top level. Row events belong to the row generator.
   const conditionalEventIds = new Set<string>();
@@ -1766,6 +1768,9 @@ export const generateInitBindingsFunction = (
     for (const we of parts.whenElse) for (const call of whenElseCalls(we, scope)) sink.cleanup(call);
     for (const rep of parts.repeats) sink.repeat(rep);
     for (const line of buildEventListenerStatements(parts.events, scope)) sink.statement(line);
+    // A ref in a branch is cleared when the branch hides
+    if (scope !== top)
+      for (const evt of parts.events) if (evt.ref) sink.cleanup(`() => { ${evt.handlerExpression}.el = null; }`);
     // Child components: mounted once, destroyed with the template around them
     for (const mount of parts.mounts) {
       const { setup, cleanups } = mountChild(mount, '', scope);

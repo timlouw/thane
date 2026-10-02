@@ -1754,3 +1754,40 @@ test.describe('ownership', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 });
+
+test.describe('element refs', () => {
+  test('onMount reaches the element through its ref, and a handler reads one', async ({ page }) => {
+    const probe = await mountProbe(page, 'elementRefs');
+    await expect(page.locator('.refs-input')).toBeFocused();
+    await page.locator('.refs-input').fill('changed');
+    await page.locator('.refs-copy').click();
+    await expect(page.locator('.refs-copied')).toHaveText('changed');
+    // The ref is the element itself: a canvas ref has the canvas's API
+    expect(
+      await page.evaluate(() => {
+        const { canvas } = (window as any).__probe.elementRefs;
+        return [canvas.el.tagName, typeof canvas.el.getContext, canvas.el.width];
+      }),
+    ).toEqual(['CANVAS', 'function', 20]);
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('a ref in a when() branch is its element while the branch shows, and null while it is hidden', async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'elementRefs');
+    const panel = () =>
+      page.evaluate(() => {
+        const el = (window as any).__probe.elementRefs.panel.el as HTMLElement | null;
+        return el && { connected: el.isConnected, className: el.className };
+      });
+    expect(await panel()).toEqual({ connected: true, className: 'refs-panel' });
+    await setProbe(page, 'elementRefs', 'open', false);
+    await expect(page.locator('.refs-panel')).toHaveCount(0);
+    expect(await panel()).toBeNull();
+    await setProbe(page, 'elementRefs', 'open', true);
+    await expect(page.locator('.refs-panel')).toHaveCount(1);
+    expect(await panel()).toEqual({ connected: true, className: 'refs-panel' });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});

@@ -35,6 +35,8 @@ interface HtmlElementBase {
   children: HtmlElement[];
   parent: HtmlElement | null;
   textContent: TextNode[];
+  /** The `${…}`s alone in the tag other than `when()` (an element ref), as written, with their spans */
+  tagValues?: { text: string; start: number; end: number }[] | undefined;
 }
 
 /**

@@ -91,6 +91,8 @@ export interface TemplateScope {
   isFunction(name: string): boolean;
   /** The signals such a function reads, its helpers' included */
   readsOf(name: string): string[];
+  /** Whether the name is a ref the component declares (`const input = ref()`) */
+  isRef(name: string): boolean;
 }
 
 /** The scope of the component being compiled; the component compiler sets it around its compile */
@@ -668,6 +670,26 @@ export function findBindingsInAttributes(
         jsExpression: innerExpr,
       });
     }
+  }
+
+  // A ${…} alone in the tag other than when(): an element ref the component declares
+  for (const value of element.tagValues ?? []) {
+    const name = /^\$\{\s*([A-Za-z_$][\w$]*)\s*\}$/.exec(value.text)?.[1];
+    if (!name || !templateScope?.isRef(name)) {
+      throw new Error(
+        `${ErrorCode.TAG_VALUE}: ${value.text} in <${element.tagName}> — a \${…} alone in a tag is when(condition) or an element ref the component declares (const input = ref()). ` +
+          'For an attribute, write name=${…}.',
+      );
+    }
+    bindings.push({
+      element,
+      type: 'ref',
+      signalName: '',
+      handlerExpression: name,
+      expressionStart: value.start,
+      expressionEnd: value.end,
+      fullExpression: value.text,
+    });
   }
 
   for (const [name, attr] of element.attributes) {
