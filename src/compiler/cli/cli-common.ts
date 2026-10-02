@@ -8,8 +8,11 @@ import { syncProjectTypes } from '../plugins/router-typegen/router-typegen.js';
 import { runProjectTypeCheck } from '../plugins/tsc-type-checker/tsc-type-checker.js';
 import { logger } from '../utils/index.js';
 import { closestName } from '../utils/closest-name.js';
+import { generateComponent, initProject } from './scaffold.js';
 
-const COMMANDS = new Set(['build', 'dev', 'serve', 'types', 'typecheck']);
+/** The commands that build or check, which thane.config.json's `commands` can set options for */
+const BUILD_COMMANDS = new Set(['build', 'dev', 'serve', 'types', 'typecheck']);
+const COMMANDS = new Set([...BUILD_COMMANDS, 'init', 'generate']);
 
 const DEFAULT_OPTIONS: CLIOptions = {
   command: 'build',
@@ -206,7 +209,8 @@ const warnAboutUnreadConfig = (config: Record<string, unknown>, file: string): v
   if (commands == null) return;
   if (!isPlainObject(commands)) return warn("'commands', which is not an object of command names,");
   for (const [command, section] of Object.entries(commands)) {
-    if (!COMMANDS.has(command)) warn(`Unknown command '${command}' in 'commands'`, closestName(command, COMMANDS));
+    if (!BUILD_COMMANDS.has(command))
+      warn(`Unknown command '${command}' in 'commands'`, closestName(command, BUILD_COMMANDS));
     else if (section == null) continue;
     else if (!isPlainObject(section)) warn(`'commands.${command}', which is not an object,`);
     else {
@@ -226,7 +230,11 @@ const mergeCLIAndConfig = (args: string[], parsedCLI: CLIOptions): CLIOptions =>
   const cfgDir = dirname(loaded.path);
   const topLevel = absolutizeConfigPaths(coerceConfigToCLIOptions(loaded.config), cfgDir);
   const perCommand = absolutizeConfigPaths(
-    coerceConfigToCLIOptions(loaded.config.commands?.[parsedCLI.command]),
+    coerceConfigToCLIOptions(
+      parsedCLI.command === 'init' || parsedCLI.command === 'generate'
+        ? undefined
+        : loaded.config.commands?.[parsedCLI.command],
+    ),
     cfgDir,
   );
 
@@ -259,6 +267,9 @@ export function parseArgs(args: string[]): CLIOptions {
     options.command = commandArg;
   }
 
+  // The command's own position: the words after init and generate are theirs
+  const commandAt = commandArg ? args.indexOf(commandArg) : -1;
+  const takesWords = options.command === 'init' || options.command === 'generate';
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] ?? '';
     const flag = FLAGS.get(arg);
@@ -270,6 +281,8 @@ export function parseArgs(args: string[]): CLIOptions {
       setOption(options, flag.key, flag.value);
     } else if (arg.startsWith('--') || (arg.startsWith('-') && arg.length === 2)) {
       console.warn(`Warning: Unknown flag '${arg}'. Run 'thane --help' to see available options.`);
+    } else if (takesWords && i > commandAt && arg !== '' && !arg.startsWith('-')) {
+      (options.positionals ??= []).push(arg);
     } else if (arg !== '' && !arg.startsWith('-') && !COMMANDS.has(arg)) {
       console.warn(`Warning: Unknown command '${arg}'. Run 'thane --help' to see available commands.`);
     }
@@ -291,6 +304,9 @@ Commands:
   serve       Build and serve the application
   types       Generate hidden .thane types without building
   typecheck   Run Thane-aware TypeScript checking without building
+  init [dir]  Create a new project in dir (default: the current directory)
+  generate component <name>
+              Create name/name.component.ts and .css (<folder>/<name> puts it in folder)
 
 Options:
   --prod, -p          Production build (default: development)
@@ -336,6 +352,9 @@ Examples:
   thane types                  Generate hidden project types only
   thane typecheck              Run typecheck with generated .thane types included
   thane build --verbose        Build with detailed logging
+  thane init my-app            Create a project in ./my-app
+  thane generate component ui/user-card
+                               Create ui/user-card/user-card.component.ts and .css
 `);
 }
 
@@ -427,6 +446,27 @@ export async function cliMain(): Promise<void> {
 
   // Wire log level from CLI flags
   logger.setLevel(cliOptions.logLevel);
+
+  if (cliOptions.command === 'init') {
+    const dir = cliOptions.positionals?.[0] ?? '.';
+    const written = initProject(dir);
+    console.log(
+      `Created ${written.length} files in ${dir}:\n  ${written.join('\n  ')}\nNext: bun install, then bun run dev.`,
+    );
+    return;
+  }
+
+  if (cliOptions.command === 'generate') {
+    const [kind, path] = cliOptions.positionals ?? [];
+    if (kind !== 'component' || !path) {
+      throw new Error(
+        '[thane] Usage: thane generate component <name>, or <folder>/<name>: thane generate component ui/user-card',
+      );
+    }
+    const written = generateComponent(path, process.cwd());
+    console.log(`Created ${written.join(' and ')}`);
+    return;
+  }
 
   if (cliOptions.command === 'types') {
     const generatedCount = await syncProjectTypes(process.cwd());

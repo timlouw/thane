@@ -4,7 +4,9 @@
 
 export interface CLIOptions {
   /** Command to execute */
-  command: 'build' | 'dev' | 'serve' | 'types' | 'typecheck';
+  command: 'build' | 'dev' | 'serve' | 'types' | 'typecheck' | 'init' | 'generate';
+  /** The words after `init` and `generate`: the folder, or what to generate and its path */
+  positionals?: string[] | undefined;
   /** Production mode */
   prod: boolean;
   /** Enable gzip/brotli compression */

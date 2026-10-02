@@ -5,30 +5,37 @@
 - [Bun](https://bun.sh) >= 1.0.0
 - [Node.js](https://nodejs.org/) >= 18 _(only for Playwright E2E tests)_
 
+## A New Project
+
+```bash
+bunx thane init my-app
+cd my-app
+bun install
+bun run dev
+```
+
+`thane init` writes the files below, and an app component that counts clicks; `thane generate component user-card` adds a
+component ([CLI](cli.md#thane-init)).
+
 ## Installation
+
+In a project of your own:
 
 ```bash
 bun add thane
 ```
 
-Include Thane's generated types in your `tsconfig.json`:
+Extend Thane's TypeScript configuration in your `tsconfig.json`:
 
 ```json
-{
-  "include": ["src/**/*.ts", ".thane/types/**/*.d.ts"]
-}
+{ "extends": "thane/tsconfig.json" }
 ```
 
-Every `thane` command writes hidden type files to `.thane/types`: the route types that make `navigate()` and `route.params` type-safe. Including that folder lets your editor see them; Thane's own type check always includes it. The types of `.css` imports come with `thane` itself.
-
-For the template types in the editor (each handler's event, and the values a template takes), add the plugin too (see [Event Handling](event-handling.md#in-the-editor)):
-
-```json
-{
-  "compilerOptions": { "plugins": [{ "name": "thane/ts-plugin" }] },
-  "include": ["src/**/*.ts", ".thane/types/**/*.d.ts"]
-}
-```
+It holds the strict options, the editor plugin, and the folders a project's code is in: `src`, and `.thane/types`, where every
+`thane` command writes hidden type files (the route types that make `navigate()` and `route.params` type-safe). The
+editor plugin gives the editor the template types the build checks: each handler's event, and the values a template
+takes (see [Event Handling](event-handling.md#in-the-editor)). The types of `.css` imports come with `thane` itself.
+Your own options go next to `extends`, and override its.
 
 ## Project Structure
 

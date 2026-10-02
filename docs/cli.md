@@ -4,6 +4,31 @@ The Thane CLI is the build tool for compiling, serving, and type-checking Thane 
 
 ## Commands
 
+### `thane init`
+
+Create a new project in a folder (the current one when none is given):
+
+```bash
+thane init my-app
+cd my-app && bun install && bun run dev
+```
+
+It writes `package.json` (with the `dev`, `build`, `serve` and `typecheck` scripts), a `tsconfig.json` that extends
+`thane/tsconfig.json`, `.gitignore`, `index.html`, `src/main.ts`, and the app component, `src/app/app.component.ts` with its
+`app.component.css`. It writes over nothing: when one of those files exists, it stops and writes none.
+
+### `thane generate component`
+
+Create a component in a folder of its name, under the current directory:
+
+```bash
+thane generate component user-card        # user-card/user-card.component.ts and .css
+thane generate component ui/user-card     # ui/user-card/user-card.component.ts and .css
+```
+
+The name is lowercase words joined by hyphens; the component is exported as `UserCard`, and its stylesheet is imported
+as its `styles`. It writes over nothing.
+
 ### `thane dev`
 
 Build in watch mode and start a development server.

@@ -34,7 +34,8 @@
     "dist/contracts",
     "dist/runtime",
     "dist/ts-plugin/index.cjs",
-    "client.d.ts"
+    "client.d.ts",
+    "tsconfig.base.json"
   ],
   "bin": {
     "thane": "./dist/compiler/cli/thane.js"
@@ -66,7 +67,8 @@
     "./ts-plugin": {
       "require": "./dist/ts-plugin/index.cjs",
       "default": "./dist/ts-plugin/index.cjs"
-    }
+    },
+    "./tsconfig.json": "./tsconfig.base.json"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && bun scripts/build-ts-plugin.ts",
