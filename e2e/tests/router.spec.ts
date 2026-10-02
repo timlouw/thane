@@ -49,6 +49,18 @@ test.describe('1. Basic Rendering', () => {
 // ─────────────────────────────────────────────────────────────
 
 test.describe('2. Client-Side Navigation', () => {
+  test('markActiveLinks: the links to the current path have aria-current="page", and only they', async ({ page }) => {
+    await goto(page, '/');
+    await expect(page.getByTestId('nav-home')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('nav-about')).not.toHaveAttribute('aria-current', 'page');
+    await page.getByTestId('nav-about').click();
+    await expect(page.getByTestId('about-page')).toBeVisible();
+    await expect(page.getByTestId('nav-about')).toHaveAttribute('aria-current', 'page');
+    await expect(page.getByTestId('nav-home')).not.toHaveAttribute('aria-current', 'page');
+    await page.goBack();
+    await expect(page.getByTestId('nav-home')).toHaveAttribute('aria-current', 'page');
+  });
+
   test('clicking nav links navigates without full page reload', async ({ page }) => {
     await goto(page, '/');
     await expect(page.getByTestId('home-page')).toBeVisible();

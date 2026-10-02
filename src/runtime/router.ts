@@ -508,6 +508,27 @@ let _scrollConfig: NormalizedScrollRestorationConfig = normalizeScrollRestoratio
 
 const SCROLL_STATE_KEY = '__thaneScroll';
 
+/** Called once a route's page is on screen; set by markActiveLinks() */
+let _onRouteShown: (() => void) | undefined;
+
+/**
+ * Marks the links to the current path with `aria-current="page"`, from now on: each time a route's page is on screen,
+ * every `<a href>` of the document whose path is the current path gets it, and the others lose it. One CSS rule then
+ * styles the active link (`a[aria-current='page']`), and assistive technology announces it. Call it once, in the
+ * entry; an app that does not call it does not bundle it.
+ */
+export const markActiveLinks = (): void => {
+  const mark = (): void => {
+    for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+      const here = link.origin === location.origin && matchesPath(link.pathname, location.pathname);
+      if (here) link.setAttribute('aria-current', 'page');
+      else if (link.getAttribute('aria-current') === 'page') link.removeAttribute('aria-current');
+    }
+  };
+  _onRouteShown = mark;
+  if (_started) mark();
+};
+
 /** The current path, as a signal: `${currentPath()}` in a template follows it */
 export const currentPath: ReadonlySignal<string> = _currentPath;
 
@@ -891,6 +912,7 @@ const loadRoute = async (): Promise<void> => {
     // A page that navigates while it mounts (a redirect) has started a newer load, which owns the scroll
     if (component && navigationId === _navigationId) {
       applyScrollPosition(pathname, scrollAction, popScrollPosition);
+      _onRouteShown?.();
     }
     return;
   }

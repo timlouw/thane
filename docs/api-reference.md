@@ -63,6 +63,7 @@ A condition is not a function: pass a signal's value, `when(open())`, not the si
 | `searchString`, `searchNumber`, `searchFlag`, `searchOneOf` | `(…) => SearchParser<T>` | Parsers for a route's `search` schema ([Search Parameters](routing.md#search-parameters)) |
 | `navigateBack` | `() => void`                                            | Navigate back in browser history                                         |
 | `currentPath`  | `ReadonlySignal<string>`                                | The current pathname, as a signal                                        |
+| `markActiveLinks` | `() => void`                                         | From now on, each time a route is on screen, the links to the current path get `aria-current="page"` |
 | `isActive`     | `(pattern) => boolean`                                  | Whether the current path is a route's (`'/users/:id'`), or below one (`'/work/*'`); a template that calls it follows the path |
 | `setMeta`      | `(meta: AppRouteMeta) => void`                          | Set head fields of the page on screen, until the next route loads         |
 | `metaName`     | `(name: string) => CustomMetaField<string>`             | A custom head field for `<meta name="…">`                                |

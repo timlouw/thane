@@ -64,6 +64,7 @@ const KEPT: Record<string, EntrySurface> = {
       'href',
       'isActive',
       'linkTag',
+      'markActiveLinks',
       'metaName',
       'metaProperty',
       'navigate',

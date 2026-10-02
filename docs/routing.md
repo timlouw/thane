@@ -178,6 +178,29 @@ does not count. Patterns are typed from the routes, like `navigate()`'s.
 
 `navigate`, `navigateBack`, `currentPath` and `isActive` are imported from `thane/router`; none of them is a global.
 
+### `markActiveLinks()`
+
+Called once in the entry, `markActiveLinks()` marks the links to the current path with `aria-current="page"`: each time a
+route's page is on screen, every `<a href>` of the document whose path is the current path gets it, and the others
+lose it. One CSS rule then styles every active link, and assistive technology announces it:
+
+```typescript
+import { mount } from 'thane';
+import { markActiveLinks } from 'thane/router';
+
+markActiveLinks();
+mount(App, { routes: Routes });
+```
+
+```css
+nav a[aria-current='page'] {
+  font-weight: bold;
+}
+```
+
+It matches a link's path exactly (a trailing slash aside); for a link that is active for a whole section, use
+`class:active=${isActive('/work/*')}`. An app that does not call it does not bundle it.
+
 ## Redirects and Guards
 
 A route can send its path elsewhere with `redirectTo`, or decide with `canEnter` whether it may be entered.
