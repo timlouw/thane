@@ -62,9 +62,16 @@ describe('rewriteEventHandlers', () => {
     );
   });
 
-  test('left as written: an expression that runs on the event, other attributes, text, and other tags', () => {
-    expect(rewritten("<b @click=${navigate('/')}>x</b>")).toBeUndefined();
-    expect(rewritten('<b @click=${run(() => x)}>x</b>')).toBeUndefined();
+  test('an expression that runs on the event is checked not to be a function, which nothing would call', () => {
+    expect(rewritten("<b @click=${navigate('/')}>x</b>")).toBe(
+      inTemplate("<b @click=${__thaneEventCall(navigate('/'))}>x</b>"),
+    );
+    expect(rewritten('<b @click=${run(() => x)} @blur=${open() ? close : show}>x</b>')).toBe(
+      inTemplate('<b @click=${__thaneEventCall(run(() => x))} @blur=${__thaneEventCall(open() ? close : show)}>x</b>'),
+    );
+  });
+
+  test('left as written: other attributes, text, and other tags', () => {
     expect(rewritten('<b title=${onClick} data-x="@click=${onClick}">x</b>')).toBeUndefined();
     expect(rewritten('<p>mail @me=${name}</p>')).toBeUndefined();
     expect(rewritten('<b @click=${a}${b}>x</b>')).toBeUndefined();

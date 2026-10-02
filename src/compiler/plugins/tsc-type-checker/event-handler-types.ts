@@ -13,8 +13,10 @@
  * another one. Outside a list row the handler is the element's own listener, so its `currentTarget`
  * is typed as the element too (`ThaneEventListener<'input', 'input'>`: an `HTMLInputElement`); a
  * row's handler is delegated to the list container, and keeps `EventTarget | null`. An event that
- * lib.dom does not know, such as a custom event, is typed `any`, as before. Any other expression, such as `navigate('/')`, runs on the event and is checked as
- * written. The rewritten text is only ever read by the type checker, and its diagnostics are
+ * lib.dom does not know, such as a custom event, is typed `any`, as before. Any other expression, such as
+ * `navigate('/')`, runs on the event, and nothing reads its value: it is rewritten as `__thaneEventCall(expression)`,
+ * which rejects a value that is a function (`@click=${makeHandler(id)}`, `@click=${open() ? close : show}`): that
+ * handler would never be called. The rewritten text is only ever read by the type checker, and its diagnostics are
  * mapped back to the source as written.
  */
 
@@ -32,7 +34,13 @@ export const EVENT_TYPES_DECLARATION =
   '      : T extends keyof SVGElementTagNameMap\n' +
   '        ? { readonly currentTarget: SVGElementTagNameMap[T] }\n' +
   '        : unknown),\n' +
-  ') => unknown;\n';
+  ') => unknown;\n' +
+  '/** An `@event=${…}` that is not a handler runs on the event, and nothing reads its value: a function there is never called */\n' +
+  'declare function __thaneEventCall<T>(\n' +
+  '  value: T extends (...args: never[]) => unknown\n' +
+  "    ? 'this runs on the event and its value is a function, which nothing calls: pass the handler itself, @click=${handler}, or call it, @click=${(e) => handler(e)}'\n" +
+  '    : T,\n' +
+  '): void;\n';
 
 /** A source rewritten for the type check, and the way back from its positions to the source's. */
 export interface RewrittenSource {
@@ -51,6 +59,8 @@ export interface RewrittenSource {
 interface Insertion {
   at: number;
   text: string;
+  /** Whether it opens the handler's rewrite (it goes before the handler's first character) */
+  opens: boolean;
   /** The handler the insertion types, in the source as written */
   handler: { start: number; end: number };
 }
@@ -112,15 +122,21 @@ const eventHandlerInsertions = (sourceFile: ts.SourceFile): Insertion[] => {
         const rest = after.slice(quote.length);
         const ends = /^[\s/>]/.test(rest) || (rest === '' && ts.isTemplateTail(span.literal));
         if (!after.startsWith(quote) || !ends) return;
-        if (!isListenerValue(span.expression, sourceFile)) return;
         const handler = { start: span.expression.getStart(sourceFile), end: span.expression.end };
+        if (!isListenerValue(span.expression, sourceFile)) {
+          insertions.push(
+            { at: handler.start, text: '__thaneEventCall(', handler, opens: true },
+            { at: handler.end, text: ')', handler, opens: false },
+          );
+          return;
+        }
         // A row's handler is delegated to the list container, unless a modifier gives it its element's own listener
         const ownListener = !inRow || needsOwnListener(match[2]!.split('.').slice(1));
         const tag = ownListener ? openTagName(markup) : '';
         const type = tag ? `ThaneEventListener<'${match[1]!}', '${tag}'>` : `ThaneEventListener<'${match[1]!}'>`;
         insertions.push(
-          { at: handler.start, text: '(', handler },
-          { at: handler.end, text: `) satisfies ${type}`, handler },
+          { at: handler.start, text: '(', handler, opens: true },
+          { at: handler.end, text: `) satisfies ${type}`, handler, opens: false },
         );
       });
     }
@@ -171,7 +187,7 @@ export const rewriteEventHandlers = (fileName: string, text: string): RewrittenS
   const toRewritten = (position: number): number => {
     let shift = 0;
     for (const insertion of insertions) {
-      if (insertion.at > position || (insertion.at === position && insertion.text !== '(')) break;
+      if (insertion.at > position || (insertion.at === position && !insertion.opens)) break;
       shift += insertion.text.length;
     }
     return position + shift;

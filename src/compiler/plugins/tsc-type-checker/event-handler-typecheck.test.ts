@@ -1,7 +1,7 @@
 /**
  * Template event handlers in the project type check (`thane build`, `thane typecheck`): a handler
- * gets its event's type, a handler for another event is an error, and every diagnostic points at
- * the source as written.
+ * gets its event's type, a handler for another event is an error, an expression that runs on the event
+ * cannot be a function (nothing would call it), and every diagnostic points at the source as written.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { runProjectTypeCheck } from './tsc-type-checker.js';
@@ -63,6 +63,23 @@ const CASES: Record<string, string> = {
     '',
   ].join('\n'),
   'src/wrong-event.ts': component('WrongEvent', '', '<b @click=${(e: KeyboardEvent) => e.key}>x</b>'),
+  // A call that returns a handler, and a ternary of handlers: each runs on the event, and its value is dropped
+  'src/dropped-handler.ts': component(
+    'DroppedHandler',
+    'const makeHandler = (id: number) => () => count(id); const open = signal(false); const close = () => {}; const show = (e: Event) => e;',
+    '<b @click=${makeHandler(1)} @blur=${open() ? close : show}>x</b>',
+  ),
+  // A row: in a row, a click handler from a call is checked the same way
+  'src/row-dropped-handler.ts': [
+    "import { defineComponent, html, repeat, signal } from 'thane';",
+    '',
+    'export const RowDropped = defineComponent(() => {',
+    '  const rows = signal([1]);',
+    '  const select = (n: number) => () => n;',
+    '  return { template: html`<ul>${repeat(rows(), (n) => html`<li @click=${select(n)}>${n}</li>`)}</ul>` };',
+    '});',
+    '',
+  ].join('\n'),
   'src/wrong-reference.ts': component(
     'WrongReference',
     'const onKey = (e: KeyboardEvent) => e.key;',
@@ -137,8 +154,25 @@ describe('template event handlers in the type check', () => {
     expect(errors[0]).toContain(`src/wrong-reference.ts:${at('src/wrong-reference.ts', 'onKey}>')} - error TS1360`);
   });
 
+  test('an expression whose value is a function is an error, at the expression: nothing would call it', () => {
+    const errors = errorsIn('src/dropped-handler.ts');
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toContain(
+      `src/dropped-handler.ts:${at('src/dropped-handler.ts', 'makeHandler(1)')} - error TS2345`,
+    );
+    expect(errors[0]).toContain(
+      "Argument of type '() => number' is not assignable to parameter of type '\"this runs on the event and its value is a function, which nothing calls: pass the handler itself, @click=${handler}, or call it, @click=${(e) => handler(e)}\"'",
+    );
+    expect(errors[1]).toContain(
+      `src/dropped-handler.ts:${at('src/dropped-handler.ts', 'open() ? close')} - error TS2345`,
+    );
+    expect(errorsIn('src/row-dropped-handler.ts')).toHaveLength(1);
+  });
+
   test('the printed source is the source as written', () => {
     expect(output).toContain('<b @click=${(e: KeyboardEvent) => e.key}>x</b>');
     expect(output).not.toContain('satisfies ThaneEventListener');
+    expect(output).toContain('<b @click=${makeHandler(1)} @blur=${open() ? close : show}>x</b>');
+    expect(output).not.toContain('__thaneEventCall');
   });
 });

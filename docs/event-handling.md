@@ -16,6 +16,11 @@ A function (an arrow function or a function expression) or a reference (`handler
 listener: it receives the event. Any other expression, such as a call, runs on the event as written:
 `@click=${navigate('/')}` navigates on click, and `@click=${select(item.id)}` selects the item.
 
+Nothing reads the value of such an expression, so one whose value is a function is a type error: in
+`@click=${makeHandler(item.id)}` the call would run on every click and the handler it returns would never be
+called, and so would `@click=${open() ? close : show}`. Pass the handler itself, or call it in one:
+`@click=${(e) => (open() ? close : show)(e)}`.
+
 ## Inline Handlers
 
 Use inline arrow functions directly:
