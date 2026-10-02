@@ -314,8 +314,31 @@ describe('THANE411 diagnostics', () => {
 describe('THANE412 diagnostics', () => {
   const error = diag('error', ErrorCode.SINGLE_RETURN_OBJECT);
   const MESSAGE =
-    'A setup function with more than one return object is not supported. ' +
+    'A setup function with more than one return is not supported. ' +
     "The compiler builds one template per component, from the last return, so this one is never used. Use 'when()' in the template instead.";
+
+  test('a template returned alone counts as a return, before an object or another template', () => {
+    const src = [
+      'export const A = defineComponent(() => {',
+      '  if (loading()) return html`<p>Loading</p>`;',
+      '  if (failed()) return (html`<p>Failed</p>`);',
+      '  return { template: html`<p>a</p>`, styles };',
+      '});',
+      'export const B = defineComponent(() => {',
+      '  if (x) return { template: html`<p>b</p>` };',
+      '  return html`<p>c</p>`;',
+      '});',
+      'export const C = defineComponent(() => {',
+      '  const label = () => html`<i>nested</i>`;',
+      '  return html`<p>${label}</p>`;',
+      '});',
+    ];
+    expect(run(singleReturnObject, src)).toStrictEqual([
+      error(src, 2, 'return', MESSAGE),
+      error(src, 3, 'return', MESSAGE),
+      error(src, 7, 'return', MESSAGE),
+    ]);
+  });
 
   test('reports every return object but the last, at any depth, at its return', () => {
     const src = [

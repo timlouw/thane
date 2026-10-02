@@ -292,7 +292,7 @@ describe('setup shapes: several return statements and nested functions', () => {
   return { template: html\`<p>b</p>\` };
 });`),
     ).rejects.toThrow(
-      /main\.ts:6:4: ERROR: \[plugin: thane-linter\] A setup function with more than one return object is not supported/,
+      /main\.ts:6:4: ERROR: \[plugin: thane-linter\] A setup function with more than one return is not supported/,
     );
   });
 
@@ -304,7 +304,7 @@ describe('setup shapes: several return statements and nested functions', () => {
   }
   return { template: html\`<p>b</p>\`, styles: css\`p { color: red; }\` };
 });`),
-    ).rejects.toThrow(/\[plugin: thane-linter\] A setup function with more than one return object/);
+    ).rejects.toThrow(/\[plugin: thane-linter\] A setup function with more than one return/);
   });
 
   test('nested arrow, function expression and function declaration returns are skipped', async () => {
