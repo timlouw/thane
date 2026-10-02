@@ -7,7 +7,7 @@ src/
   compiler/                    # Build-time compiler (runs in Bun)
     cli/                       # CLI entry point, argument parsing, config resolution, runBuild
     plugins/                   # esbuild plugin pipeline
-      component-precompiler/   # Finds child component calls, runs the binding compiler, mount-call optimiser
+      component-precompiler/   # Resolves what a file can call and use, runs the binding compiler, mount-call optimiser
       global-css-bundler/      # Bundles .css file imports as string exports
       minification/            # Selector rename plan; HTML and CSS transforms and minifiers the compiler calls
       post-build-processor/    # Final output processing (assets, index.html, gzip, size report, dev server)
@@ -80,7 +80,7 @@ The build is then an **esbuild plugin pipeline**, registered in this order. esbu
 Inside the precompiler's `onLoad`, `transformDefineComponentSource` (`reactive-binding-compiler/index.ts`) compiles a component file from one parse of it. Each `const X = defineComponent(…)` in it is compiled on its own (steps 1 to 5), and so is each exported fragment (`` export const X = html`…` ``, into its `{ t, b }` value), with ids counted across the file; step 6 is the file's:
 
 1. Find the component's selector (explicit, or derived from the name it is declared under), and the initial values of the `const x = signal(literal)` declarations of its setup and of the module.
-2. Collect the templates of the setup's return objects (local `html` fragments inlined). A setup has one return object; THANE412 reports more.
+2. Collect the templates of the setup's return objects, read from the parse: local `html` fragments are inlined, and each child component call and imported fragment gets its placeholder comment (`<!--b0.-->`) as the text is read, from the components and fragments the precompiler resolved for the file. A setup has one return object; THANE412 reports more.
 3. Process each template (`template-processing.ts`, `repeat-analysis.ts`): parse it, find text, attribute, style and event bindings, and compile `when()`, `whenElse()` and `repeat()` content as sub-templates, at any depth, including directives inside list rows.
 4. Build the DOM model of each template as emitted (`dom-model.ts`, the browser's tree construction) and compute, for every bound node, the shortest path of DOM properties from its scope's starting nodes: the component template's elements, a branch's first node, a row element.
 5. Generate the code (`codegen.ts`): the `__b` binding function, branch initializers and row factories. Lists at every level are emitted by one generator, `emitRepeat`.

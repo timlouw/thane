@@ -1,8 +1,8 @@
 /**
  * Child component hosts in the template.
  *
- * The component precompiler leaves a placeholder comment where a child component call was written
- * (`${Card({…})}` → `<!--b3.-->`). The child's host element takes its place in the template
+ * The binding compiler writes a placeholder comment where a child component call was written, as it reads
+ * the template (`${Card({…})}` → `<!--b3.-->`). The child's host element takes its place in the template
  * (`<x-card data-thane-ref="b3"></x-card>`), so the clone creates it and compiled code reaches it by
  * path and mounts the child into it. Compiled code used to create that element when it bound the
  * template (`createElement` and `replaceWith`); now the clone creates it, in the same place.
@@ -15,7 +15,7 @@
  */
 
 import type { EmitOptions } from './types.js';
-import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
+import type { ChildMountInfo } from './types.js';
 import { buildDomModel, cookTemplateText, type DomModel, type DomNode } from './dom-model.js';
 import { walkDirectives, type DirectiveRoots } from './directive-tree.js';
 import { anchorMark, BOUND_MARK } from './template-utils.js';

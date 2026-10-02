@@ -67,7 +67,7 @@ describe('several components in one file', () => {
   test('a component mounts the ones its file declares, at the top level and in its rows', async () => {
     const js = await build();
     const board = js.slice(js.indexOf('var ScoreBoard'));
-    expect(board).toContain('__dc(ScoreBadge.__f(_cm0, { label: item.label }))');
+    expect(board).toMatch(/__dc\(ScoreBadge\.__f\(_cm\d+, \{ label: item\.label \}\)\)/);
     expect(board).toContain('__dc(ScoreBadge.__f(_ns[2], { label: "top" }))');
     expect(board).toContain('__dc(Tally.__f(_ns[3], {}))');
     // Only ScoreBoard has children and a list; the others bind their own text only

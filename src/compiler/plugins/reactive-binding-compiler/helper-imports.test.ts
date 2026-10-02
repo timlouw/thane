@@ -7,12 +7,14 @@
  */
 import { describe, expect, test } from 'bun:test';
 import { RUNTIME_HELPER } from '../../../contracts/index.js';
-import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
 import { transformDefineComponentSource } from './index.js';
 
 let fileId = 0;
 
-const compile = (setupBody: string, childMounts?: ChildMountInfo[]) => {
+/** The file's templates can call Card, a component of another file */
+const NAMES = { components: new Map([['Card', { selector: 'x-card' }]]), fragments: new Map() };
+
+const compile = (setupBody: string) => {
   const source = `import { defineComponent, signal } from 'thane';
 export const App = defineComponent(() => {
   const show = signal(false);
@@ -21,7 +23,7 @@ export const App = defineComponent(() => {
   ${setupBody}
 });
 `;
-  const out = transformDefineComponentSource(source, `/virtual/helper-imports-${fileId++}.ts`, childMounts);
+  const out = transformDefineComponentSource(source, `/virtual/helper-imports-${fileId++}.ts`, NAMES);
   if (out === null) throw new Error('not compiled');
   const importLine = out.split('\n').find((line) => line.includes("from 'thane/runtime'")) ?? '';
   const imported = (/\{([^}]*)\}/.exec(importLine)?.[1] ?? '').split(',').map((s) => s.trim());
@@ -30,13 +32,6 @@ export const App = defineComponent(() => {
   const called = Object.values(RUNTIME_HELPER).filter((name) => new RegExp(`\\b${name}\\b`).test(code));
   return { out, imported: [...imported].sort(), called: [...called].sort() };
 };
-
-const card = (anchorId: string): ChildMountInfo => ({
-  componentName: 'Card',
-  selector: 'x-card',
-  propsExpression: '{ n: 1 }',
-  anchorId,
-});
 
 describe('runtime helper imports follow the emitted code', () => {
   test('child-component rows inside a when() import __dc', () => {
@@ -55,7 +50,7 @@ describe('runtime helper imports follow the emitted code', () => {
     expect(r.imported).toEqual(r.called);
   });
 
-  const shapes: Array<[string, string, ChildMountInfo[]?]> = [
+  const shapes: Array<[string, string]> = [
     ['no bindings: the registration only', 'return { template: html`<p>a</p>` };'],
     ['a when() over a bare signal read', 'return { template: html`<p ${when(show())}>a</p>` };'],
     ['a when() over an expression', 'return { template: html`<p ${when(!show())}>a</p>` };'],
@@ -72,17 +67,13 @@ describe('runtime helper imports follow the emitted code', () => {
       'child-component rows at the top level',
       'return { template: html`<ul>${repeat(items(), (i) => Card({ i }))}</ul>` };',
     ],
-    ['a top-level child mount', 'return { template: html`<div><!--b0.--></div>` };', [card('b0')]],
-    [
-      'a child mount inside a when()',
-      'return { template: html`<div ${when(show())}><!--b0.--></div>` };',
-      [card('b0')],
-    ],
+    ['a top-level child mount', 'return { template: html`<div>${Card({ n: 1 })}</div>` };'],
+    ['a child mount inside a when()', 'return { template: html`<div ${when(show())}>${Card({ n: 1 })}</div>` };'],
     ['styles', 'return { template: html`<p>${n()}</p>`, styles: css`p { color: red; }` };'],
   ];
-  for (const [label, body, mounts] of shapes) {
+  for (const [label, body] of shapes) {
     test(label, () => {
-      const r = compile(body, mounts);
+      const r = compile(body);
       expect(r.imported).toEqual(r.called);
     });
   }

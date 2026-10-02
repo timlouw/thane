@@ -32,7 +32,7 @@ import { buildDomModel, cookTemplateText, type DomModel, type DomNode } from './
 import { BOUND_MARK, stripMarks } from './template-utils.js';
 import { ErrorCode } from '../../errors.js';
 import type { ImportInfo } from '../../types.js';
-import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
+import type { ChildMountInfo } from './types.js';
 import type { GeneratedInitBindingsArtifact, RuntimeHelperName } from '../../../contracts/index.js';
 import {
   DOM_RUNTIME_SPECIFIER,

@@ -3,7 +3,9 @@
  * of the source. Text that only mentions `defineComponent(` (a comment, a string,
  * template text) is left alone, and the call itself is renamed however it is written.
  */
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, spyOn, test } from 'bun:test';
+import ts from 'typescript';
+import { sourceCache } from '../../utils/index.js';
 import { transformDefineComponentSource } from './index.js';
 
 let fileId = 0;
@@ -71,5 +73,65 @@ export const Count = defineComponent(() => {
 `);
     expect(out).toContain('  return {\n  __b: (_ctx, _ns) => {\n  const _subs = [];\n');
     expect(out).toMatch(/_subs\[i\]\(\); \};\n {2}\},\n {2}\};\n\}, __tpl\);/);
+  });
+});
+
+describe("child placeholders come from the file's one parse", () => {
+  const NAMES = {
+    components: new Map([['Card', { selector: 'x-card' }]]),
+    fragments: new Map([
+      ['Spinner', { staticText: '<i class="spin"></i>' }],
+      ['Badge', { staticText: null }],
+    ]),
+  };
+  const source = [
+    "import { defineComponent, html, signal, whenElse } from 'thane';",
+    'export const App = defineComponent(() => {',
+    '  const open = signal(false);',
+    '  const unused = html`<p>${Card({ n: 2 })}</p>`;',
+    '  return {',
+    '    template: html`<div>${Card({ n: 1 })}${Spinner}${Badge}${whenElse(open(), Card({ n: 3 }), Spinner)}</div>`,',
+    '  };',
+    '});',
+    '',
+  ].join('\n');
+
+  test('a parse given with the source is the only one: the file is not parsed again', () => {
+    const parse = spyOn(sourceCache, 'parse');
+    try {
+      const parsed = ts.createSourceFile(
+        '/virtual/one-parse.ts',
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TS,
+      );
+      const out = transformDefineComponentSource(source, '/virtual/one-parse.ts', NAMES, {}, parsed)!;
+      expect(out).toContain('Card.__f(');
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  test('a child call and an imported fragment are mounted as a whole ${} and where a directive takes a template', () => {
+    const out = transformDefineComponentSource(source, '/virtual/placeholders.ts', NAMES)!;
+    // The children's hosts are in the template; the static fragment is written out; Badge is mounted
+    // (the whenElse() starts on its else-branch, pre-rendered between its anchors)
+    expect(out).toContain(
+      '<div><x-card></x-card><i class="spin"></i><!----><!----><!----><i class="spin"></i><!----></div>',
+    );
+    expect(out).toMatch(/__dc\(Card\.__f\([\w$\[\]]+, \{ n: 1 \}\)\)/);
+    expect(out).toMatch(/__mf\([\w$]+, Badge\)/);
+    // The whenElse() then-branch is a template of Card's host, the else-branch Spinner's markup
+    expect(out).toMatch(/__bindIfExpr\([^)]*\[open\], \(\) => open\(\), `<x-card><\/x-card>`/);
+    expect(out).toContain('() => !(open()), `<i class="spin"></i>`');
+    expect(out).toMatch(/__dc\(Card\.__f\([\w$]+, \{ n: 3 \}\)\)/);
+  });
+
+  test('a template the compiler does not compile is empty at run time, so a child call in it never runs', () => {
+    const out = transformDefineComponentSource(source, '/virtual/unused.ts', NAMES)!;
+    expect(out).toContain('const unused = ``;');
+    expect(out).not.toContain('{ n: 2 }');
   });
 });

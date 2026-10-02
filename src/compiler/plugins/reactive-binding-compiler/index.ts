@@ -17,7 +17,16 @@ import {
 } from '../../utils/index.js';
 import { getSetupFunction, unwrapParens } from '../../utils/component-ast.js';
 import { checkBindingNames } from './binding-names.js';
-import type { BindingInfo, ConditionalBlock, WhenElseBlock, RepeatBlock, EventBinding, EmitOptions } from './types.js';
+import type {
+  BindingInfo,
+  ChildMountInfo,
+  ConditionalBlock,
+  WhenElseBlock,
+  RepeatBlock,
+  EventBinding,
+  EmitOptions,
+  TemplateNames,
+} from './types.js';
 import { minifyHTML } from '../minification/template-minifier.js';
 import { compileCssTemplate, declaresOwnCssTag, isCssTaggedTemplate } from '../minification/css-transform.js';
 import type { SelectorMap } from '../minification/selector-minifier.js';
@@ -25,7 +34,6 @@ import { processHtmlTemplateWithConditionals } from './template-processing.js';
 import { anchorMark } from './template-utils.js';
 import { placeChildHosts } from './child-hosts.js';
 import { walkDirectives } from './directive-tree.js';
-import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
 import { setTemplateScope } from '../../utils/html-parser/index.js';
 import { templateScopeOf } from './template-scope.js';
 
@@ -202,22 +210,65 @@ export const TEMPLATE_ARGUMENTS: ReadonlyMap<string, readonly number[]> = new Ma
   [FN.REPEAT, [2]],
 ]);
 
-/** Where a component's templates find their fragments, and the uses of each fragment that were inlined */
+/** A child component or imported fragment of a template, and its index in the file, which names its variables */
+interface OwnMount {
+  cm: ChildMountInfo;
+  globalIndex: number;
+}
+
+/**
+ * Where a component's templates find their fragments, the uses of each fragment that were inlined, and the
+ * children and imported fragments the templates hold, each given its placeholder as the text is read
+ */
 interface InlineScope {
   sourceFile: ts.SourceFile;
   /** The component's setup function; the module is looked in after it */
   scopeRoot: ts.Node;
   /** Each fragment inlined, by its template, with the names that used it */
   inlined: Map<ts.TaggedTemplateExpression, Set<ts.Identifier>>;
+  file: FileCompilation;
+  /** The children and imported fragments found, in the order their placeholders were written */
+  mounts: OwnMount[];
 }
+
+/**
+ * The placeholder of a child component call (`Card({ … })`, to a component the file can call) or of an imported
+ * fragment named (`Spinner`), recorded in the scope's mounts; null for anything else. An imported fragment
+ * without `${}` is written out in its place instead.
+ */
+const placeholderOf = (node: ts.Expression, scope: InlineScope): string | null => {
+  const { file, sourceFile } = scope;
+  const add = (cm: Omit<ChildMountInfo, 'anchorId'>): string => {
+    const anchorId = `b${file.nextId++}`;
+    scope.mounts.push({ cm: { ...cm, anchorId }, globalIndex: file.mountCount++ });
+    return anchorMark(anchorId, '.');
+  };
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+    const component = file.names.components.get(node.expression.text);
+    if (!component) return null;
+    const props = node.arguments[0];
+    return add({
+      componentName: node.expression.text,
+      selector: component.selector,
+      propsExpression: props ? props.getText(sourceFile) : '{}',
+    });
+  }
+  if (ts.isIdentifier(node)) {
+    const fragment = file.names.fragments.get(node.text);
+    if (!fragment) return null;
+    return fragment.staticText ?? add({ componentName: node.text, selector: '', propsExpression: '', fragment: true });
+  }
+  return null;
+};
 
 /**
  * The text of an html template, with the fragments it uses inlined, at any depth: a `${name}` that names an
  * html`` const of the component or the module, an html template written as a whole `${}`, and, inside any
  * other `${}`, a fragment named where a directive takes a template (`whenElse(open(), details, summary)`)
- * and the html templates written in it. The text is taken as written (raw), like every directive template the
- * parser cuts from it: the escape sequences stay in place until the template is emitted. `path` holds the
- * fragments being inlined, so a fragment that uses itself is left as it is written.
+ * and the html templates written in it. A child component call and an imported fragment get their placeholder
+ * (placeholderOf), as a whole `${}` and where a directive takes a template. The text is taken as written (raw),
+ * like every directive template the parser cuts from it: the escape sequences stay in place until the template
+ * is emitted. `path` holds the fragments being inlined, so a fragment that uses itself is left as it is written.
  */
 const extractAndInlineFragment = (
   tplNode: ts.TaggedTemplateExpression,
@@ -248,11 +299,11 @@ const extractAndInlineFragment = (
   for (const span of templateLiteral.templateSpans) {
     const expr = span.expression;
     const inlined = ts.isIdentifier(expr)
-      ? fragment(expr)
+      ? (fragment(expr) ?? placeholderOf(expr, scope))
       : ts.isTaggedTemplateExpression(expr) && isHtmlTemplate(expr)
         ? template(expr)
-        : null;
-    content += inlined ?? '${' + inlineInExpression(expr, sourceFile, fragment, template) + '}';
+        : placeholderOf(expr, scope);
+    content += inlined ?? '${' + inlineInExpression(expr, sourceFile, fragment, template, scope) + '}';
     content += span.literal.rawText!;
   }
   return content;
@@ -260,13 +311,15 @@ const extractAndInlineFragment = (
 
 /**
  * The text of a `${}` expression, with the fragments named where a directive takes a template, and the html
- * templates written in it, inlined (see extractAndInlineFragment). A template left as it is keeps its text.
+ * templates written in it, inlined (see extractAndInlineFragment). A child component call or an imported fragment
+ * where a directive takes a template becomes a template of its placeholder. A template left as it is keeps its text.
  */
 const inlineInExpression = (
   expr: ts.Expression,
   sourceFile: ts.SourceFile,
   fragment: (name: ts.Identifier) => string | null,
   template: (node: ts.TaggedTemplateExpression) => string,
+  scope: InlineScope,
 ): string => {
   const start = expr.getStart(sourceFile);
   const edits: SourceEdit[] = [];
@@ -286,7 +339,7 @@ const inlineInExpression = (
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
       for (const at of TEMPLATE_ARGUMENTS.get(node.expression.text) ?? []) {
         const arg = node.arguments[at];
-        const text = arg && ts.isIdentifier(arg) ? fragment(arg) : null;
+        const text = !arg ? null : ((ts.isIdentifier(arg) ? fragment(arg) : null) ?? placeholderOf(arg, scope));
         if (arg && text !== null) {
           edits.push({
             start: arg.getStart(sourceFile) - start,
@@ -419,12 +472,12 @@ export interface CompileOptions {
 export const transformDefineComponentSource = (
   source: string,
   filePath: string,
-  childMounts?: ChildMountInfo[],
+  names?: TemplateNames,
   options: CompileOptions = {},
   parsed?: ts.SourceFile,
 ): string | null => {
   try {
-    return transformComponent(source, filePath, childMounts, options, parsed);
+    return transformComponent(source, filePath, names, options, parsed);
   } finally {
     // A component's scope is its own alone
     setTemplateScope(undefined);
@@ -439,8 +492,10 @@ interface FileCompilation {
   edits: SourceEdit[];
   emit: EmitOptions;
   options: CompileOptions;
-  /** The file's child placeholders, numbered by the precompiler */
-  childMounts: readonly ChildMountInfo[];
+  /** The components the file's templates can call, and the fragments it imports */
+  names: TemplateNames;
+  /** The children and imported fragments found so far, which number the next one's variables */
+  mountCount: number;
   /** Signals declared outside every component, with their initial values */
   moduleSignals: Map<string, string | number | boolean>;
   /** The next id. Ids are names inside the file: its components share one count. */
@@ -470,7 +525,7 @@ interface CompiledComponent {
 const transformComponent = (
   source: string,
   filePath: string,
-  childMounts: ChildMountInfo[] | undefined,
+  names: TemplateNames | undefined,
   options: CompileOptions,
   parsed: ts.SourceFile | undefined,
 ): string | null => {
@@ -489,10 +544,12 @@ const transformComponent = (
       selector: (name) => options.selectorMap?.get(name) ?? name,
     },
     options,
-    childMounts: childMounts ?? [],
+    // Without the build's names (a test), the file's own components
+    names: names ?? { components: new Map(components.map((c) => [c.name, c])), fragments: new Map() },
+    mountCount: 0,
     moduleSignals: findSignalInitializers(sourceFile, new Set(components.map((component) => component.call))),
-    // Ids count from 0, after the child placeholders' (b0…), and do not depend on where the file is
-    nextId: childMounts?.length ?? 0,
+    // Ids count from 0 and do not depend on where the file is
+    nextId: 0,
     inlined: new Map(),
   };
   const { edits } = file;
@@ -578,16 +635,18 @@ const transformComponent = (
     edits.push({ start: source.length, end: source.length, replacement: '\n__enableComponentStyles();\n' });
   }
 
-  // Every other html template of the file loses its tag: it is a plain template literal at run time
-  const stripTags = (node: ts.Node): void => {
+  // Every other html template of the file is empty at run time: nothing reads a template as a value, and its
+  // expressions (a child call among them) must not run
+  const emptyTemplates = (node: ts.Node): void => {
     if (ts.isTaggedTemplateExpression(node) && isHtmlTemplate(node)) {
       const start = node.tag.getStart(sourceFile);
-      const end = node.template.getStart(sourceFile);
-      if (!edits.some((edit) => edit.start < end && start < edit.end)) edits.push({ start, end, replacement: '' });
+      const end = node.getEnd();
+      if (!edits.some((edit) => edit.start < end && start < edit.end)) edits.push({ start, end, replacement: '``' });
+      return;
     }
-    ts.forEachChild(node, stripTags);
+    ts.forEachChild(node, emptyTemplates);
   };
-  stripTags(sourceFile);
+  emptyTemplates(sourceFile);
 
   return applyEdits(source, edits);
 };
@@ -630,52 +689,32 @@ const compileTemplates = (
   let allWhenElseBlocks: WhenElseBlock[] = [];
   let allRepeatBlocks: RepeatBlock[] = [];
   let allEventBindings: EventBinding[] = [];
-  let idCounter = file.nextId;
   let lastProcessedTemplateContent = '';
-  // The templates as written, with the child placeholders in them
-  const writtenTemplates: string[] = [];
-  // A fragment used twice brings its child placeholders twice: each later one is a child of its own,
-  // under a new id, and a copy of the child's mount
-  const seenAnchors = new Set<string>();
-  const copiedMounts: ChildMountInfo[] = [];
-  const ownAnchors = (template: string): string =>
-    template.replace(/<!--(b\d+)\.-->/g, (mark, id: string) => {
-      const mount = file.childMounts.find((cm) => cm.anchorId === id);
-      if (!mount || !seenAnchors.has(id)) {
-        seenAnchors.add(id);
-        return mark;
-      }
-      const copy = { ...mount, anchorId: `b${idCounter++}` };
-      copiedMounts.push(copy);
-      return anchorMark(copy.anchorId, '.');
-    });
+  // The children and imported fragments, each given its placeholder as the text is read: a fragment used twice
+  // brings its children twice, each a child of its own
+  const scope: InlineScope = { sourceFile, scopeRoot, inlined: file.inlined, file, mounts: [] };
 
   for (const node of templates) {
-    let templateContent = ownAnchors(extractAndInlineFragment(node, { sourceFile, scopeRoot, inlined: file.inlined }));
-    writtenTemplates.push(templateContent);
+    let templateContent = extractAndInlineFragment(node, scope);
 
-    const result = processHtmlTemplateWithConditionals(templateContent, signalInitializers, idCounter);
+    const result = processHtmlTemplateWithConditionals(templateContent, signalInitializers, file.nextId);
     templateContent = result.processedContent;
     allBindings = [...allBindings, ...result.bindings];
     allConditionals = [...allConditionals, ...result.conditionals];
     allWhenElseBlocks = [...allWhenElseBlocks, ...result.whenElseBlocks];
     allRepeatBlocks = [...allRepeatBlocks, ...result.repeatBlocks];
     allEventBindings = [...allEventBindings, ...result.eventBindings];
-    idCounter = result.nextId;
+    file.nextId = result.nextId;
 
     lastProcessedTemplateContent = templateContent;
   }
-  file.nextId = idCounter;
 
-  // The children: the ones whose placeholder is in these templates. Each keeps its index in the file,
-  // which names its variables.
-  const ownMounts = [...file.childMounts, ...copiedMounts]
-    .map((cm, globalIndex) => ({ cm, globalIndex }))
-    .filter(({ cm }) => writtenTemplates.some((template) => template.includes(anchorMark(cm.anchorId, '.'))));
+  // The children: each keeps its index in the file, which names its variables
+  const ownMounts = scope.mounts;
 
   // ── Partition child mounts by directive containment ──
-  const directiveChildMounts = new Map<string, { cm: ChildMountInfo; globalIndex: number }[]>();
-  const topLevelChildMounts: { cm: ChildMountInfo; globalIndex: number }[] = [];
+  const directiveChildMounts = new Map<string, OwnMount[]>();
+  const topLevelChildMounts: OwnMount[] = [];
 
   // A child is mounted by the innermost directive whose own template holds its placeholder: a
   // branch's initializer, or the row factory of a list, at any depth. The templates that

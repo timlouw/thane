@@ -67,11 +67,11 @@ describe('fragments are inlined wherever a template goes', () => {
     expect(js.match(/FragKid\.__f\(/g)).toHaveLength(2);
   });
 
-  test('a fragment whose every use is inlined is left empty; one also used as a value keeps its markup', async () => {
+  test('a fragment is inlined where a template uses it, and empty as a value: nothing reads a Fragment', async () => {
     const js = await build('const kept = html`<u>k</u>`;\n  console.log(kept);', '<div>${spinner}${kept}</div>');
     // Emptied, the module's fragment is dropped by esbuild
     expect(js).not.toContain('spinner');
-    expect(js).toContain('const kept = `<u>k</u>`;');
+    expect(js).toContain('const kept = ``;');
     expect(js).toContain('<div><span class="spin"></span><u>k</u></div>');
   });
 

@@ -19,7 +19,7 @@ import { processHtmlTemplateWithConditionals } from './template-processing.js';
 import { generateInitBindingsFunction, generateStaticTemplate } from './codegen.js';
 import { placeChildHosts } from './child-hosts.js';
 import type { ConditionalBlock, EmitOptions, WhenElseBlock } from './types.js';
-import type { ChildMountInfo } from '../component-precompiler/component-precompiler.js';
+import type { ChildMountInfo } from './types.js';
 import { minifyHTML } from '../minification/template-minifier.js';
 
 const GOLDEN = join(import.meta.dir, 'codegen-characterisation.golden.txt');

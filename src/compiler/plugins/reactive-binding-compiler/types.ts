@@ -4,6 +4,30 @@
 
 import type { ReactiveBindingKind, TextBindingMode } from '../../../contracts/index.js';
 
+/**
+ * A child component mounted where its template calls it (`${Card({…})}`), or a fragment imported from another
+ * module mounted where its template uses it. The binding compiler gives it a placeholder, `<!--b0.-->`, as
+ * it reads the template, and mounts it there.
+ */
+export interface ChildMountInfo {
+  /** The name the file calls the component by; for a fragment, the name the file imports it under */
+  componentName: string;
+  /** Kebab-case selector, e.g. "my-element-component" ('' for a fragment) */
+  selector: string;
+  /** Raw source text of the props argument, e.g. "{ color: myColor }" */
+  propsExpression: string;
+  /** Its placeholder's id ("b0", "b1", …): the placeholder is `<!--b0.-->` */
+  anchorId: string;
+  /** An imported fragment: mounted before its placeholder, which stays */
+  fragment?: true;
+}
+
+/** What a file's templates call and use by name: the components the file can call, and the fragments it imports */
+export interface TemplateNames {
+  components: ReadonlyMap<string, { selector: string }>;
+  fragments: ReadonlyMap<string, { staticText: string | null }>;
+}
+
 /** What the code generator emits differently in a production build. */
 export interface EmitOptions {
   /**
