@@ -238,9 +238,10 @@ const importOf = (sourceFile: ts.SourceFile, name: string): ImportInfo | null =>
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const namedBindings = statement.importClause?.namedBindings;
-    if (!namedBindings || !ts.isNamedImports(namedBindings)) continue;
-    const namedImports = namedBindings.elements.map((element) => element.name.text);
-    if (!namedImports.includes(name)) continue;
+    if (statement.importClause?.isTypeOnly || !namedBindings || !ts.isNamedImports(namedBindings)) continue;
+    if (!namedBindings.elements.some((element) => element.name.text === name)) continue;
+    // Each name as written, so that a type-only one (`type Fragment`) stays type-only
+    const namedImports = namedBindings.elements.map((element) => element.getText(sourceFile));
 
     const fullText = statement.moduleSpecifier.getFullText(sourceFile);
     return {
@@ -317,6 +318,10 @@ interface InlineScope {
   file: FileCompilation;
   /** The children and imported fragments found, in the order their placeholders were written */
   mounts: OwnMount[];
+  /** The component's props typed Fragment, which its template mounts (`${props.body}`) */
+  slotProps: ReadonlySet<string>;
+  /** Compiles a template passed to a child as a prop into the value the child mounts (`{ t, b }`) */
+  compileSlot: (template: ts.TaggedTemplateExpression) => string;
 }
 
 /**
@@ -338,8 +343,12 @@ const placeholderOf = (node: ts.Expression, scope: InlineScope): string | null =
     return add({
       componentName: node.expression.text,
       selector: component.selector,
-      propsExpression: props ? props.getText(sourceFile) : '{}',
+      propsExpression: props ? withSlots(props, scope) : '{}',
     });
+  }
+  // A prop of the component typed Fragment: the template the parent passed, mounted here
+  if (isSlotRead(node, scope)) {
+    return add({ componentName: node.getText(sourceFile), selector: '', propsExpression: '', fragment: true });
   }
   if (ts.isIdentifier(node)) {
     const fragment = file.names.fragments.get(node.text);
@@ -347,6 +356,85 @@ const placeholderOf = (node: ts.Expression, scope: InlineScope): string | null =
     return fragment.staticText ?? add({ componentName: node.text, selector: '', propsExpression: '', fragment: true });
   }
   return null;
+};
+
+/** `props.body`, where `body` is a prop of the component typed Fragment */
+const isSlotRead = (node: ts.Expression, scope: InlineScope): node is ts.PropertyAccessExpression =>
+  ts.isPropertyAccessExpression(node) &&
+  ts.isIdentifier(node.expression) &&
+  node.expression.text === 'props' &&
+  scope.slotProps.has(node.name.text);
+
+/**
+ * A child call's props as the parent's code passes them: each html template written as a prop's value (or a const
+ * of one, named), compiled into the value the child mounts, in the parent's scope.
+ */
+const withSlots = (props: ts.Expression, scope: InlineScope): string => {
+  const { sourceFile } = scope;
+  const text = props.getText(sourceFile);
+  if (!ts.isObjectLiteralExpression(props)) return text;
+  const start = props.getStart(sourceFile);
+  const edits: SourceEdit[] = [];
+  for (const property of props.properties) {
+    const value = ts.isPropertyAssignment(property)
+      ? property.initializer
+      : ts.isShorthandPropertyAssignment(property)
+        ? property.name
+        : undefined;
+    let template: ts.TaggedTemplateExpression | null = null;
+    if (value && ts.isTaggedTemplateExpression(value) && isHtmlTemplate(value)) template = value;
+    else if (value && ts.isIdentifier(value)) {
+      template = resolveTemplateIdentifier(sourceFile, scope.scopeRoot, value);
+      // Its template is compiled here: the const's own template is not needed for this use
+      if (template) scope.inlined.set(template, (scope.inlined.get(template) ?? new Set()).add(value));
+    }
+    if (!template) continue;
+    const compiled = scope.compileSlot(template);
+    const at = ts.isShorthandPropertyAssignment(property) ? property : value!;
+    edits.push({
+      start: at.getStart(sourceFile) - start,
+      end: at.getEnd() - start,
+      replacement: ts.isShorthandPropertyAssignment(property) ? `${property.name.text}: ${compiled}` : compiled,
+    });
+  }
+  return applyEdits(text, edits);
+};
+
+/**
+ * The props of a component typed Fragment, read from its props type as written in the file: `defineComponent<{
+ * title: string; body: Fragment }>`, or an interface or type alias of the file it names. A prop typed Fragment
+ * or `Fragment | undefined` is a slot.
+ */
+const slotPropsOf = (call: ts.CallExpression, sourceFile: ts.SourceFile): Set<string> => {
+  const slots = new Set<string>();
+  const isFragmentType = (type: ts.TypeNode | undefined): boolean =>
+    !!type &&
+    ((ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName) && type.typeName.text === 'Fragment') ||
+      (ts.isUnionTypeNode(type) && type.types.some(isFragmentType)) ||
+      (ts.isParenthesizedTypeNode(type) && isFragmentType(type.type)));
+  const visit = (type: ts.TypeNode | undefined, seen: Set<string>): void => {
+    if (!type) return;
+    if (ts.isTypeLiteralNode(type)) {
+      for (const member of type.members) {
+        if (ts.isPropertySignature(member) && ts.isIdentifier(member.name) && isFragmentType(member.type)) {
+          slots.add(member.name.text);
+        }
+      }
+    } else if (ts.isIntersectionTypeNode(type)) {
+      for (const part of type.types) visit(part, seen);
+    } else if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName) && !seen.has(type.typeName.text)) {
+      const name = type.typeName.text;
+      for (const statement of sourceFile.statements) {
+        if (ts.isTypeAliasDeclaration(statement) && statement.name.text === name)
+          visit(statement.type, new Set([...seen, name]));
+        if (ts.isInterfaceDeclaration(statement) && statement.name.text === name) {
+          visit(ts.factory.createTypeLiteralNode(statement.members), new Set([...seen, name]));
+        }
+      }
+    }
+  };
+  visit(call.typeArguments?.[0], new Set());
+  return slots;
 };
 
 /**
@@ -390,9 +478,10 @@ const extractAndInlineFragment = (
       (!path.has(name.text) && resolveTemplateIdentifier(sourceFile, scope.scopeRoot, name) !== null) ||
       scope.file.names.fragments.has(name.text),
     isComponent: (call) => ts.isIdentifier(call.expression) && scope.file.names.components.has(call.expression.text),
+    isSlot: (node) => isSlotRead(node, scope),
     template,
     name: (name) => fragment(name) ?? placeholderOf(name, scope)!,
-    call: (call) => placeholderOf(call, scope)!,
+    call: (node) => placeholderOf(node, scope)!,
   };
 
   let content = templateLiteral.head.rawText!;
@@ -815,8 +904,20 @@ const compileTemplates = (
   signalInitializers: Map<string, string | number | boolean>,
   templateName: string,
   fragment = false,
+  slotProps: ReadonlySet<string> = new Set(),
 ): CompiledTemplates => {
   const { sourceFile, emit } = file;
+  // The templates passed to children as props, each compiled here, in this scope, into the value the child mounts
+  const slots: CompiledTemplates[] = [];
+  const compileSlot = (template: ts.TaggedTemplateExpression): string => {
+    const name = `${templateName}_s${slots.length}`;
+    const slot = compileTemplates(file, [template], scopeRoot, signalInitializers, name, true, slotProps);
+    slots.push(slot);
+    const params = slot.elementList ? '_ctx, _ns' : '_ctx';
+    return slot.hasAnyBindings
+      ? `{ t: ${name}, b: (${params}) => {\n  ${slot.bindingsBody.trim()}\n  } }`
+      : `{ t: ${name} }`;
+  };
   let allBindings: BindingInfo[] = [];
   let allConditionals: ConditionalBlock[] = [];
   let allWhenElseBlocks: WhenElseBlock[] = [];
@@ -825,7 +926,7 @@ const compileTemplates = (
   let lastProcessedTemplateContent = '';
   // The children and imported fragments, each given its placeholder as the text is read: a fragment used twice
   // brings its children twice, each a child of its own
-  const scope: InlineScope = { sourceFile, scopeRoot, inlined: file.inlined, file, mounts: [] };
+  const scope: InlineScope = { sourceFile, scopeRoot, inlined: file.inlined, file, mounts: [], slotProps, compileSlot };
 
   for (const node of templates) {
     let templateContent = extractAndInlineFragment(node, scope);
@@ -950,13 +1051,14 @@ const compileTemplates = (
     allEventBindings.length > 0 ||
     ownMounts.length > 0;
 
+  // The slots' static templates go with this template's, and their helpers with its own
   return {
     template: lastProcessedTemplateContent,
-    staticTemplateCode,
+    staticTemplateCode: [staticTemplateCode, ...slots.map((slot) => slot.staticTemplateCode)].join('\n'),
     bindingsBody,
-    helpers,
+    helpers: new Set<string>([...helpers, ...slots.flatMap((slot) => [...slot.helpers])]),
     elementList,
-    domPrototype,
+    domPrototype: domPrototype || slots.some((slot) => slot.domPrototype),
     hasAnyBindings,
   };
 };
@@ -998,6 +1100,8 @@ const compileComponent = (
     setupArg!,
     signalInitializers,
     templateName,
+    false,
+    slotPropsOf(dcCall, sourceFile),
   );
   for (const templateInfo of htmlTemplates) {
     edits.push({ start: templateInfo.templateStart, end: templateInfo.templateEnd, replacement: '``' });

@@ -2,14 +2,16 @@
  * THANE404 — no-nested-html-tags
  *
  * An `html` tagged template inside another is compiled where it is the whole `${}` (it is inlined), an argument
- * of a directive (a branch, a row, an empty template), or a branch of JavaScript control flow in content (a
- * ternary, `&&`, a `.map()` row), which the compiler turns into the directive it means. Anywhere else in a `${}`
- * it would be a plain value, and it is reported:
+ * of a directive (a branch, a row, an empty template), a branch of JavaScript control flow in content (a
+ * ternary, `&&`, a `.map()` row), which the compiler turns into the directive it means, or a prop of a child
+ * component (a slot, compiled in this template's scope). Anywhere else in a `${}` it would be a plain value, and
+ * it is reported:
  *
  *   html`<div>${html`<span>${count()}</span>`}</div>`             // ✅ inlined
  *   html`<div>${when(show(), html`<p>Yes</p>`)}</div>`            // ✅ directive arguments
  *   html`<div>${show() ? html`<p>Yes</p>` : null}</div>`          // ✅ control flow in content
  *   html`<ul>${items().map((i) => html`<li>${i}</li>`)}</ul>`     // ✅
+ *   html`${Card({ body: html`<p>${note()}</p>` })}`               // ✅ a slot
  *
  *   html`<div title=${show() ? html`<b>a</b>` : ''}>x</div>`      // ❌ THANE404: in a tag
  *   html`<div>${label(html`<b>a</b>`)}</div>`                     // ❌ THANE404: a plain value
@@ -30,6 +32,16 @@ const isDirectiveCall = (node: ts.Node): boolean => {
   const callee = node.expression;
   return ts.isIdentifier(callee) && DIRECTIVE_CALLS.has(callee.text);
 };
+
+/** The value of a property of the props object of a child component call: `Card({ body: html`…` })` */
+const isSlotValue = (node: ts.Node): node is ts.PropertyAssignment =>
+  ts.isPropertyAssignment(node) &&
+  ts.isObjectLiteralExpression(node.parent) &&
+  ts.isCallExpression(node.parent.parent) &&
+  node.parent.parent.arguments[0] === node.parent &&
+  ts.isIdentifier(node.parent.parent.expression) &&
+  /^[A-Z]/.test(node.parent.parent.expression.text) &&
+  isTaggedWith(node.initializer, [FN.HTML]);
 
 const unwrap = (node: ts.Expression): ts.Expression => {
   while (ts.isParenthesizedExpression(node)) node = node.expression;
@@ -101,6 +113,12 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
     // their template arguments are processed independently by the compiler.
     if (insideHtmlTag && isDirectiveCall(node)) {
       ts.forEachChild(node, (child) => visit(child, false));
+      return;
+    }
+
+    // A child component's prop that is a template is a slot, compiled on its own
+    if (insideHtmlTag && isSlotValue(node)) {
+      visit(node.initializer, false);
       return;
     }
 

@@ -92,9 +92,10 @@ const styles = css`
 **Severity:** Error
 
 An `html` template inside another is compiled where it is the whole `${…}` (it is inlined), an argument of a
-directive (a `when()` branch, a `repeat()` row or its `empty` template), or a branch of a ternary, an `&&` or a
+directive (a `when()` branch, a `repeat()` row or its `empty` template), a branch of a ternary, an `&&` or a
 `.map()` row in content (each is compiled as the directive it means; see
-[JavaScript Control Flow](templates.md#javascript-control-flow)). Anywhere else, such as an argument of your own
+[JavaScript Control Flow](templates.md#javascript-control-flow)), or the value of a child component's prop (a slot,
+see [Slots](components.md#slots)). Anywhere else, such as an argument of your own
 function or an attribute's value, it would be a plain value, and it is reported. The compiler also stops at a
 ternary in content with a template on one side and text on the other.
 

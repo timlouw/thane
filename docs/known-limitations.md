@@ -6,8 +6,8 @@ This page documents current constraints, browser requirements, and by-design dec
 
 ### `html` Templates Inside Others
 
-An `html` template inside another is compiled where it is the whole `${…}`, a directive argument, or a branch of a
-ternary, an `&&` or a `.map()` row in content. Anywhere else, such as an argument of your own function, it would
+An `html` template inside another is compiled where it is the whole `${…}`, a directive argument, a branch of a
+ternary, an `&&` or a `.map()` row in content, or a child component's prop (a slot). Anywhere else, such as an argument of your own function, it would
 be a plain value (THANE404). A ternary with a template on one side and text on the other is a build error too.
 
 ### Unique Selectors

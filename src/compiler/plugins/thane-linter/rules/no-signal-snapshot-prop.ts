@@ -25,9 +25,9 @@ const isComponentCall = (node: ts.Node): node is ts.CallExpression & { expressio
 const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   const { diagnostics, report } = createReporter(sourceFile, filePath, ErrorCode.NO_SIGNAL_SNAPSHOT_PROP, 'warning');
 
-  /** The signal reads in a prop's value, but not inside a function */
+  /** The signal reads in a prop's value, but not inside a function or a template (a slot, whose bindings follow them) */
   const readsIn = (node: ts.Node, found: ts.CallExpression[]): ts.CallExpression[] => {
-    if (ts.isFunctionLike(node)) return found;
+    if (ts.isFunctionLike(node) || ts.isTaggedTemplateExpression(node)) return found;
     if (
       ts.isCallExpression(node) &&
       node.arguments.length === 0 &&

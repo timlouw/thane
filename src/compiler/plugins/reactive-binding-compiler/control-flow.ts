@@ -31,12 +31,14 @@ export interface BranchText {
   isFragment(node: ts.Identifier): boolean;
   /** Whether a call is a child component call */
   isComponent(node: ts.CallExpression): boolean;
+  /** Whether an expression reads a prop of the component typed Fragment (`props.body`) */
+  isSlot(node: ts.Expression): boolean;
   /** The inlined text of an html template */
   template(node: ts.TaggedTemplateExpression): string;
   /** The markup a fragment name stands for (its text, or its placeholder) */
   name(node: ts.Identifier): string;
-  /** The placeholder of a child component call */
-  call(node: ts.CallExpression): string;
+  /** The placeholder of a child component call, or of a slot read */
+  call(node: ts.Expression): string;
 }
 
 const unwrap = (node: ts.Expression): ts.Expression => {
@@ -83,7 +85,7 @@ export const desugar = (expr: ts.Expression, sourceFile: ts.SourceFile, text: Br
     if (ts.isIdentifier(n)) return text.isFragment(n) ? 'template' : 'text';
     if (ts.isConditionalExpression(n) || isAnd(n) || mapCall(n)) return isControlFlow(n) ? 'template' : 'text';
     if (ts.isCallExpression(n)) return text.isComponent(n) ? 'template' : 'text';
-    return 'text';
+    return text.isSlot(n) ? 'template' : 'text';
   };
 
   /** Whether an expression is template control flow; a ternary of a template and text is THANE404 */
@@ -111,7 +113,7 @@ export const desugar = (expr: ts.Expression, sourceFile: ts.SourceFile, text: Br
     if (isNothing(n)) return '';
     if (isHtml(n)) return `html\`${text.template(n)}\``;
     if (ts.isIdentifier(n)) return `html\`${text.name(n)}\``;
-    if (ts.isCallExpression(n) && !mapCall(n)) return `html\`${text.call(n)}\``;
+    if ((ts.isCallExpression(n) && !mapCall(n)) || text.isSlot(n)) return `html\`${text.call(n)}\``;
     return `html\`\${${build(n)}}\``;
   };
 

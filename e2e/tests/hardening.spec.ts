@@ -1791,3 +1791,48 @@ test.describe('element refs', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 });
+
+test.describe('slots', () => {
+  test("a template passed as a prop renders in the child, follows the parent's signals and calls its handlers", async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'slots');
+    const panel = page.locator('.slot-panel').first();
+    await expect(panel.locator('h3')).toHaveText('Panel');
+    await expect(panel.locator('.slot-body .slot-count')).toHaveText('count 1');
+    await expect(panel.locator('.slot-footer .slot-note')).toHaveText('few');
+    await panel.locator('.slot-bump').click();
+    await panel.locator('.slot-bump').click();
+    await expect(panel.locator('.slot-count')).toHaveText('count 3');
+    await expect(panel.locator('.slot-note')).toHaveText('many');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test("a slot in the child's when() branch goes and comes back with it; a slot left out renders nothing", async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'slots');
+    await page.evaluate(() => (window as any).__probe.slotPanelPanel.expanded(false));
+    await expect(page.locator('.slot-note')).toHaveCount(0);
+    await page.evaluate(() => (window as any).__probe.slotPanelPanel.expanded(true));
+    await expect(page.locator('.slot-note')).toHaveCount(1);
+    // The bare panel has no footer slot: its footer is empty
+    await expect(page.locator('.slot-bare .slot-body')).toHaveText('bare');
+    await expect(page.locator('.slot-bare .slot-footer')).toHaveText('');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test("the slots' bindings go with the child", async ({ page }) => {
+    const probe = await mountProbe(page, 'slots');
+    const subscribers = () => page.evaluate(() => (window as any).__probe.slots.subscribers());
+    const shown = await subscribers();
+    await setProbe(page, 'slots', 'shown', false);
+    await expect(page.locator('.slot-count')).toHaveCount(0);
+    // The body's and the footer's bindings on count are released
+    expect(await subscribers()).toBe(shown - 2);
+    await setProbe(page, 'slots', 'shown', true);
+    await expect(page.locator('.slot-count')).toHaveText('count 1');
+    expect(await subscribers()).toBe(shown);
+    expect(probe.pageErrors).toEqual([]);
+  });
+});

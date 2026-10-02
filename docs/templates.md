@@ -276,8 +276,8 @@ only they take: the tag form of `when()`, its narrowing form, and `repeat()`'s `
 
 A ternary whose branches are both text is a text binding, as before (`${n > 0 ? 'Positive' : 'None'}`). One
 with a template on one side and text on the other is a build error (THANE404): the template would never be
-compiled. An `html` template anywhere else in a `${…}`, such as an argument of your own function, is reported
-too.
+compiled. A template given to a child component as a prop is a slot ([Slots](components.md#slots)). An `html`
+template anywhere else in a `${…}`, such as an argument of your own function, is reported too.
 
 #### Fragments Shared Across Files
 

@@ -91,6 +91,53 @@ export const Parent = defineComponent(() => {
 });
 ```
 
+### Slots
+
+A prop typed `Fragment` is a slot: the parent passes markup, and the child places it. The parent writes the
+template as the prop's value; the child reads the prop where the markup goes:
+
+```typescript
+import { defineComponent, html, type Fragment } from 'thane';
+
+interface PanelProps {
+  title: string;
+  body: Fragment;
+  footer?: Fragment;
+}
+
+export const Panel = defineComponent<PanelProps>(({ props }) => ({
+  template: html`
+    <section>
+      <h3>${props.title}</h3>
+      ${props.body}
+      <footer>${props.footer}</footer>
+    </section>
+  `,
+}));
+```
+
+```typescript
+export const Cart = defineComponent(() => {
+  const count = signal(0);
+  return {
+    template: html`
+      ${Panel({
+        title: 'Cart',
+        body: html`<p>${count()} items</p>
+          <button @click=${() => count(count() + 1)}>Add</button>`,
+      })}
+    `,
+  };
+});
+```
+
+The template is compiled in the parent, where it is written: its bindings read the parent's signals and its handlers
+are the parent's, and it goes when the child goes. A component has as many slots as it has `Fragment` props; one the
+parent leaves out (`footer` here) renders nothing. A slot can be a `const` of the parent's (`Panel({ title, body })`)
+or a fragment another module exports. The compiler reads which props are slots from the child's props type as
+written in its file (a type literal, or an interface or type alias of that file); a child reads a slot as
+`${props.body}`, also as a `when()` branch or a branch of a ternary.
+
 ## Component Context
 
 The setup function receives a `ComponentContext` object:
