@@ -45,7 +45,7 @@ Complete API surface for the Thane framework, covering all public exports, the t
 | Export     | Signature                                                                                                                                                                         | Description                                  |
 | :--------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------- |
 | `html`     | `(strings: TemplateStringsArray, ...values: any[]) => Fragment`                                                                                                                   | Tagged template for HTML content             |
-| `css`      | `(strings: TemplateStringsArray, ...values: any[]) => any`                                                                                                                        | Tagged template for CSS content              |
+| `css`      | `(strings: TemplateStringsArray, ...values: any[]) => string`                                                                                                                     | Tagged template for CSS content              |
 | `when`     | `<T>(condition: T) => string`: in an element's tag, `<p ${when(open())}>`                                                                                                        | Show the element while the condition is truthy |
 | `when`     | `<T>(value: T, then: Fragment \| ((value: Truthy<T>) => Fragment), otherwise?: Fragment) => Fragment`: in content                                                                 | Show `then` while the value is truthy, `otherwise` (or nothing) while it is not |
 | `repeat`   | `<T>(items: readonly T[], row: (item: T, index: number) => Fragment, options?: { key?: keyof T \| ((item: T, index: number) => string \| number); empty?: Fragment }) => Fragment` | List rendering with keyed reconciliation     |
@@ -136,7 +136,8 @@ interface ComponentContext<P = {}, S extends string = string> {
 }
 
 // Calling a component in a template gives a Fragment
-type ComponentHTMLSelector<P> = (props: P) => Fragment;
+// Called without props when they are all optional: Nav()
+type ComponentHTMLSelector<P> = {} extends P ? (props?: P) => Fragment : (props: P) => Fragment;
 
 // An html template, a child component call or a directive: it has no members
 interface Fragment {}

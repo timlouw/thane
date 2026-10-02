@@ -56,8 +56,8 @@ Add it to `tsconfig.json`, and in VS Code choose "Use Workspace Version" of Type
 }
 ```
 
-The plugin keeps a second language service over the sources with the handlers typed, and answers from it for
-a file with handlers (its errors) and for a position inside a handler (hovers, completions, signature help);
+The plugin keeps a second language service over the sources with the template values typed, and answers from it
+for a file with templates (its errors) and for a position inside a `${…}` (hovers, completions, signature help);
 everything else is the editor's own. Without the plugin an untyped parameter is `any` in the editor, and the
 build's type check still reports a wrong one. A handler can also be typed explicitly:
 

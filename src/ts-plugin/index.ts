@@ -2,7 +2,7 @@
  * The Thane TypeScript plugin: template event handler types in the editor.
  *
  * The build's type check gives each `@event=${handler}` its event's type by rewriting the handler for the
- * checker only (compiler/plugins/tsc-type-checker/event-handler-types.ts). An editor reads the source as
+ * checker only (compiler/plugins/tsc-type-checker/template-types.ts). An editor reads the source as
  * written, where the handler's parameter is `any`. This plugin keeps a second language service over the
  * rewritten sources and answers from it for a file with handlers: its semantic errors, and hover,
  * completions and signature help at a position inside a handler. Every position is mapped back to the
@@ -14,17 +14,17 @@
 
 import type * as ts from 'typescript';
 import {
-  EVENT_TYPES_DECLARATION,
-  rewriteEventHandlers,
+  TEMPLATE_TYPES_DECLARATION,
+  rewriteTemplates,
   type RewrittenSource,
-} from '../compiler/plugins/tsc-type-checker/event-handler-types.js';
+} from '../compiler/plugins/tsc-type-checker/template-types.js';
 
 type Typescript = typeof ts;
 
 const create = (typescript: Typescript, info: ts.server.PluginCreateInfo): ts.LanguageService => {
   const host = info.languageServiceHost;
   const service = info.languageService;
-  const declarationFile = `${info.project.getCurrentDirectory().replace(/\\/g, '/')}/.thane/types/event-handlers.d.ts`;
+  const declarationFile = `${info.project.getCurrentDirectory().replace(/\\/g, '/')}/.thane/types/template-types.d.ts`;
 
   // One rewrite per file version
   const rewrites = new Map<string, { version: string; rewrite: RewrittenSource | null }>();
@@ -34,7 +34,7 @@ const create = (typescript: Typescript, info: ts.server.PluginCreateInfo): ts.La
     const cached = rewrites.get(fileName);
     if (cached?.version === version) return cached.rewrite;
     const snapshot = host.getScriptSnapshot(fileName);
-    const rewrite = snapshot ? rewriteEventHandlers(fileName, snapshot.getText(0, snapshot.getLength())) : null;
+    const rewrite = snapshot ? rewriteTemplates(fileName, snapshot.getText(0, snapshot.getLength())) : null;
     rewrites.set(fileName, { version, rewrite });
     return rewrite;
   };
@@ -44,7 +44,7 @@ const create = (typescript: Typescript, info: ts.server.PluginCreateInfo): ts.La
   shadowHost.getScriptFileNames = () => [...host.getScriptFileNames(), declarationFile];
   shadowHost.getScriptVersion = (fileName) => (fileName === declarationFile ? '1' : host.getScriptVersion(fileName));
   shadowHost.getScriptSnapshot = (fileName) => {
-    if (fileName === declarationFile) return typescript.ScriptSnapshot.fromString(EVENT_TYPES_DECLARATION);
+    if (fileName === declarationFile) return typescript.ScriptSnapshot.fromString(TEMPLATE_TYPES_DECLARATION);
     const rewrite = rewriteOf(fileName);
     return rewrite ? typescript.ScriptSnapshot.fromString(rewrite.text) : host.getScriptSnapshot(fileName);
   };
@@ -79,14 +79,14 @@ const create = (typescript: Typescript, info: ts.server.PluginCreateInfo): ts.La
 
   proxy.getQuickInfoAtPosition = (fileName, position, ...rest) => {
     const rewrite = rewriteOf(fileName);
-    if (!rewrite?.inHandler(position)) return service.getQuickInfoAtPosition(fileName, position, ...rest);
+    if (!rewrite?.inSlot(position)) return service.getQuickInfoAtPosition(fileName, position, ...rest);
     const quickInfo = shadow.getQuickInfoAtPosition(fileName, rewrite.toRewritten(position), ...rest);
     return quickInfo && { ...quickInfo, textSpan: mapSpan(rewrite, quickInfo.textSpan) };
   };
 
   proxy.getCompletionsAtPosition = (fileName, position, options, formatting) => {
     const rewrite = rewriteOf(fileName);
-    if (!rewrite?.inHandler(position)) return service.getCompletionsAtPosition(fileName, position, options, formatting);
+    if (!rewrite?.inSlot(position)) return service.getCompletionsAtPosition(fileName, position, options, formatting);
     const completions = shadow.getCompletionsAtPosition(fileName, rewrite.toRewritten(position), options, formatting);
     if (!completions) return completions;
     return {
@@ -102,13 +102,13 @@ const create = (typescript: Typescript, info: ts.server.PluginCreateInfo): ts.La
 
   proxy.getCompletionEntryDetails = (fileName, position, ...rest) => {
     const rewrite = rewriteOf(fileName);
-    if (!rewrite?.inHandler(position)) return service.getCompletionEntryDetails(fileName, position, ...rest);
+    if (!rewrite?.inSlot(position)) return service.getCompletionEntryDetails(fileName, position, ...rest);
     return shadow.getCompletionEntryDetails(fileName, rewrite.toRewritten(position), ...rest);
   };
 
   proxy.getSignatureHelpItems = (fileName, position, options) => {
     const rewrite = rewriteOf(fileName);
-    if (!rewrite?.inHandler(position)) return service.getSignatureHelpItems(fileName, position, options);
+    if (!rewrite?.inSlot(position)) return service.getSignatureHelpItems(fileName, position, options);
     const help = shadow.getSignatureHelpItems(fileName, rewrite.toRewritten(position), options);
     return help && { ...help, applicableSpan: mapSpan(rewrite, help.applicableSpan) };
   };

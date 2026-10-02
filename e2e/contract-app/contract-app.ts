@@ -907,10 +907,10 @@ export const ContractApp = defineComponent('contract-app', () => {
         <section data-testid="css-section">
           <div data-testid="css-parent-styled" class="parent-scoped">parent-green</div>
           <div data-testid="css-no-leak" class="leak-target">no-child-leak</div>
-          ${StyledChild({})}
+          ${StyledChild()}
         </section>
 
-        <section data-testid="css-import-section"> ${CssImportChild({})} </section>
+        <section data-testid="css-import-section"> ${CssImportChild()} </section>
 
         <section data-testid="global-styles-section">
           <div data-testid="global-styled">global-orange</div>

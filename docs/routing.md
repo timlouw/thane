@@ -61,7 +61,7 @@ The shell component (`App`) wraps the router. Its template must contain an eleme
 ```typescript
 export const App = defineComponent('store-app', () => ({
   template: html`
-    ${Navbar({})}
+    ${Navbar()}
     <div id="router-outlet"></div>
   `,
 }));
@@ -547,7 +547,7 @@ mount({ component: App, router: { routes: Routes } });
 // app.ts — shell component
 export const App = defineComponent('store-app', () => ({
   template: html`
-    ${Navbar({})}
+    ${Navbar()}
     <div id="router-outlet"></div>
   `,
   styles: appStyles,

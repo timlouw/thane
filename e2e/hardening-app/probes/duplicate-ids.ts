@@ -7,6 +7,6 @@ export const DuplicateIds = defineComponent('hardening-duplicate-ids', () => ({
   template: html`<div class="ids-page">
     <div class="ids-one">${IdsA({ n: 1 })}</div>
     <div class="ids-two">${IdsA({ n: 2 })}</div>
-    <div class="ids-three">${IdsB({})}</div>
+    <div class="ids-three">${IdsB()}</div>
   </div>`,
 }));

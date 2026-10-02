@@ -157,6 +157,26 @@ Templates are JavaScript template literals, and their escapes mean what they mea
 template: html`<code>\${price}</code>`; // renders "${price}"
 ```
 
+## What a `${…}` Takes
+
+The type check that `thane build`, `thane dev` and `thane typecheck` run (and the editor, with
+[the plugin](event-handling.md#in-the-editor)) checks each value against what its position takes:
+
+| Position | Takes |
+|:---------|:------|
+| Content, `<p>${value}</p>` | text, a number, `true` or `false`, nothing (`null`, `undefined`), or templates: an `html` template, a child component call, a directive, or a list of them (`.map()`) |
+| In a tag, `<p class=${value}>` | text, a number, `true` or `false`, or nothing |
+| An event attribute, `@click=${…}` | a handler for that event, or an expression that runs on it (see [Event Handling](event-handling.md)) |
+
+So an object, which would show as `[object Object]`, a promise, and a signal without its call are type errors where
+they are written:
+
+```typescript
+template: html`<p>${user()}</p>`;
+// error TS1360: Type '{ name: string; }' does not satisfy the expected type 'ThaneContent'.
+template: html`<p>${user().name}</p>`; // ✅
+```
+
 ## Child Components in Templates
 
 Embed child components using their function-call syntax:
@@ -165,12 +185,13 @@ Embed child components using their function-call syntax:
 import { Navbar } from './navbar.js';
 
 template: html`
-  ${Navbar({})}
+  ${Navbar()}
   <main>Page content</main>
 `;
 ```
 
-The compiler manages the child's lifecycle and binding initialization.
+A component whose props are all optional, or that has none, is called without them, `Navbar()`; one with a required prop
+takes its props, `Card({ title })`. The compiler manages the child's lifecycle and binding initialization.
 
 ---
 
@@ -207,7 +228,7 @@ template: html`
   ${open() ? html`<p>Open</p>` : html`<p>Closed</p>`}
   ${open() && html`<p>Open</p>`}
   ${error() ? html`<p class="error">${error()}</p>` : null}
-  ${role() === 'admin' ? AdminPanel({}) : role() === 'user' ? UserPanel({}) : html`<p>Sign in</p>`}
+  ${role() === 'admin' ? AdminPanel() : role() === 'user' ? UserPanel() : html`<p>Sign in</p>`}
   <ul>${items().map((item) => html`<li>${item.name}</li>`)}</ul>
   <div>${cards().map((card) => Card({ card }))}</div>
 `;

@@ -1,11 +1,19 @@
 /**
- * Event handler types for the type check.
+ * Template value types for the type check.
  *
- * To TypeScript, `@click=${handler}` in a template is one more substitution, and `html` takes any
- * value: a handler that expects a `KeyboardEvent` passed on a click, and the `e` of an untyped
- * `(e) => …` was `any`. For the type check only, each handler the compiler registers as the
- * listener (an arrow function, a function expression, or a reference such as `onClick` or
- * `menu.close`) is rewritten as
+ * To TypeScript, every `${…}` in a template is one more substitution, and `html` takes any value: a handler
+ * that expects a `KeyboardEvent` passed on a click, the `e` of an untyped `(e) => …` was `any`, and
+ * `${user()}` (an object, shown as `[object Object]`) or a promise type-checked. For the type check only, each
+ * substitution of an `html` template is rewritten with the type its position takes:
+ *
+ * - content, `<p>${value}</p>`: `(value) satisfies ThaneContent`, text, a number, true or false, nothing (null or
+ *   undefined), or templates (a Fragment, or a list of them);
+ * - in an element's tag, `<p class=${value}>`: `(value) satisfies ThaneAttribute`, text, a number, true or false,
+ *   or nothing;
+ * - an event attribute's handler, as follows.
+ *
+ * Each handler the compiler registers as the listener (an arrow function, a function expression, or a reference
+ * such as `onClick` or `menu.close`) is rewritten as
  *
  *   @click=${(handler) satisfies ThaneEventListener<'click'>}
  *
@@ -24,8 +32,12 @@ import ts from 'typescript';
 import { FN } from '../../utils/constants.js';
 import { needsOwnListener } from '../../utils/event-modifiers.js';
 
-/** The declaration of `ThaneEventListener`, a global type of the checked program only. */
-export const EVENT_TYPES_DECLARATION =
+/** The declaration of the types the rewrite names, globals of the checked program only. */
+export const TEMPLATE_TYPES_DECLARATION =
+  "/** What a `${…}` in a template's content shows: text, a number, true or false, nothing (null or undefined), or templates */\n" +
+  "type ThaneContent = string | number | boolean | null | undefined | import('thane').Fragment | ReadonlyArray<import('thane').Fragment>;\n" +
+  "/** What a `${…}` in an element's tag gives an attribute: text, a number, true or false, or nothing (null or undefined) */\n" +
+  'type ThaneAttribute = string | number | boolean | null | undefined;\n' +
   '/** The type of an `@event=${handler}` handler: the event lib.dom gives the name (or any), on the element of the tag `T` */\n' +
   "type ThaneEventListener<K extends string, T extends string = ''> = (\n" +
   '  event: (K extends keyof HTMLElementEventMap ? HTMLElementEventMap[K] : any) &\n' +
@@ -47,22 +59,24 @@ export interface RewrittenSource {
   text: string;
   /**
    * The span in the source as written of a span in `text`. One that starts in inserted text, such as
-   * an error reported on the inserted type, is the whole handler's.
+   * an error reported on the inserted type, is the whole substitution's.
    */
   toOriginal: (start: number, length: number) => { start: number; length: number };
-  /** The position in `text` of a position in the source as written (inside a handler: the same code) */
+  /** The position in `text` of a position in the source as written (inside a substitution: the same code) */
   toRewritten: (position: number) => number;
-  /** Whether a position in the source as written is inside a typed handler, its ends included */
-  inHandler: (position: number) => boolean;
+  /** Whether a position in the source as written is inside a typed substitution, its ends included */
+  inSlot: (position: number) => boolean;
 }
 
 interface Insertion {
   at: number;
   text: string;
-  /** Whether it opens the handler's rewrite (it goes before the handler's first character) */
+  /** Whether it opens the substitution's rewrite (it goes before the substitution's first character) */
   opens: boolean;
-  /** The handler the insertion types, in the source as written */
-  handler: { start: number; end: number };
+  /** The substitution the insertion types, in the source as written */
+  slot: { start: number; end: number };
+  /** How many html templates hold the substitution: at one position, an outer one opens first and closes last */
+  depth: number;
 }
 
 /** The attribute a substitution is the whole value of: `@click.prevent=` or `@click="`, at the end of the text before it. */
@@ -97,63 +111,69 @@ const isInRow = (node: ts.Node): boolean => {
   return false;
 };
 
-/** The insertions that type each event handler of every `html` template in the file. */
-const eventHandlerInsertions = (sourceFile: ts.SourceFile): Insertion[] => {
+/** Whether `markup` (a template's text so far) ends inside an element's tag */
+const inTag = (markup: string): boolean => /<[a-zA-Z][\w-]*[^<>]*$/.test(markup);
+
+const isHtmlTemplate = (node: ts.Node): node is ts.TaggedTemplateExpression & { template: ts.TemplateExpression } =>
+  ts.isTaggedTemplateExpression(node) &&
+  ts.isIdentifier(node.tag) &&
+  node.tag.text === FN.HTML &&
+  ts.isTemplateExpression(node.template);
+
+/** The insertions that type each substitution of every `html` template in the file. */
+const templateInsertions = (sourceFile: ts.SourceFile): Insertion[] => {
   const insertions: Insertion[] = [];
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isTaggedTemplateExpression(node) &&
-      ts.isIdentifier(node.tag) &&
-      node.tag.text === FN.HTML &&
-      ts.isTemplateExpression(node.template)
-    ) {
+  const visit = (node: ts.Node, depth: number): void => {
+    if (isHtmlTemplate(node)) {
       const { head, templateSpans } = node.template;
       const inRow = isInRow(node);
       // The template's text so far, each substitution standing as one character: where the open tag is
       let markup = rawText(head);
       templateSpans.forEach((span, i) => {
         if (i > 0) markup += '_' + rawText(templateSpans[i - 1]!.literal);
+        const slot = { start: span.expression.getStart(sourceFile), end: span.expression.end };
+        const wrap = (open: string, close: string): void => {
+          insertions.push(
+            { at: slot.start, text: open, slot, opens: true, depth },
+            { at: slot.end, text: close, slot, opens: false, depth },
+          );
+        };
         const before = rawText(i === 0 ? head : templateSpans[i - 1]!.literal);
         const match = EVENT_ATTRIBUTE.exec(before);
-        if (!match) return;
-        // The substitution is the attribute's whole value: a closing quote, if any, then the tag goes on
+        // An event attribute's whole value: a closing quote, if any, then the tag goes on
         const after = rawText(span.literal);
-        const quote = match[3]!;
+        const quote = match?.[3] ?? '';
         const rest = after.slice(quote.length);
-        const ends = /^[\s/>]/.test(rest) || (rest === '' && ts.isTemplateTail(span.literal));
-        if (!after.startsWith(quote) || !ends) return;
-        const handler = { start: span.expression.getStart(sourceFile), end: span.expression.end };
-        if (!isListenerValue(span.expression, sourceFile)) {
-          insertions.push(
-            { at: handler.start, text: '__thaneEventCall(', handler, opens: true },
-            { at: handler.end, text: ')', handler, opens: false },
-          );
-          return;
+        const whole =
+          !!match &&
+          after.startsWith(quote) &&
+          (/^[\s/>]/.test(rest) || (rest === '' && ts.isTemplateTail(span.literal)));
+        if (match && whole) {
+          if (!isListenerValue(span.expression, sourceFile)) return wrap('__thaneEventCall(', ')');
+          // A row's handler is delegated to the list container, unless a modifier gives it its element's own listener
+          const ownListener = !inRow || needsOwnListener(match[2]!.split('.').slice(1));
+          const tag = ownListener ? openTagName(markup) : '';
+          const type = tag ? `ThaneEventListener<'${match[1]!}', '${tag}'>` : `ThaneEventListener<'${match[1]!}'>`;
+          return wrap('(', `) satisfies ${type}`);
         }
-        // A row's handler is delegated to the list container, unless a modifier gives it its element's own listener
-        const ownListener = !inRow || needsOwnListener(match[2]!.split('.').slice(1));
-        const tag = ownListener ? openTagName(markup) : '';
-        const type = tag ? `ThaneEventListener<'${match[1]!}', '${tag}'>` : `ThaneEventListener<'${match[1]!}'>`;
-        insertions.push(
-          { at: handler.start, text: '(', handler, opens: true },
-          { at: handler.end, text: `) satisfies ${type}`, handler, opens: false },
-        );
+        wrap('(', inTag(markup) ? ') satisfies ThaneAttribute' : ') satisfies ThaneContent');
       });
     }
-    ts.forEachChild(node, visit);
+    ts.forEachChild(node, (child) => visit(child, isHtmlTemplate(node) ? depth + 1 : depth));
   };
-  visit(sourceFile);
-  return insertions.sort((a, b) => a.at - b.at);
+  visit(sourceFile, 0);
+  // At one position, an outer substitution opens before an inner one and closes after it
+  return insertions.sort((a, b) => a.at - b.at || (a.opens ? a.depth - b.depth : b.depth - a.depth));
 };
 
 /**
- * The file with each template event handler typed, or null when it has none. Only a file that
- * could hold one (an `@` and an `html` tag in it) is parsed.
+ * The file with each substitution of its `html` templates typed, or null when it has none. Only a file that
+ * could hold one (an `html` template with a `${`) is parsed.
  */
-export const rewriteEventHandlers = (fileName: string, text: string): RewrittenSource | null => {
-  if (!text.includes('@') || !text.includes(`${FN.HTML}\``)) return null;
+export const rewriteTemplates = (fileName: string, text: string): RewrittenSource | null => {
+  if (!text.includes(`${FN.HTML}\``) || !text.includes('${')) return null;
   const sourceFile = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const insertions = eventHandlerInsertions(sourceFile);
+  const insertions = templateInsertions(sourceFile);
   if (insertions.length === 0) return null;
 
   let rewritten = '';
@@ -178,12 +198,12 @@ export const rewriteEventHandlers = (fileName: string, text: string): RewrittenS
   const toOriginal = (start: number, length: number): { start: number; length: number } => {
     const from = locate(start);
     if (from.insertion) {
-      const { handler } = from.insertion;
-      return { start: handler.start, length: handler.end - handler.start };
+      const { slot } = from.insertion;
+      return { start: slot.start, length: slot.end - slot.start };
     }
     return { start: from.position, length: Math.max(0, locate(start + length).position - from.position) };
   };
-  // A handler's opening insertion is before the handler's first character, its closing one after its last
+  // A substitution's opening insertion is before its first character, its closing one after its last
   const toRewritten = (position: number): number => {
     let shift = 0;
     for (const insertion of insertions) {
@@ -192,7 +212,7 @@ export const rewriteEventHandlers = (fileName: string, text: string): RewrittenS
     }
     return position + shift;
   };
-  const inHandler = (position: number): boolean =>
-    insertions.some(({ handler }) => position >= handler.start && position <= handler.end);
-  return { text: rewritten, toOriginal, toRewritten, inHandler };
+  const inSlot = (position: number): boolean =>
+    insertions.some(({ slot }) => position >= slot.start && position <= slot.end);
+  return { text: rewritten, toOriginal, toRewritten, inSlot };
 };

@@ -3,7 +3,8 @@
  * directive, so each goes where a template goes. A component's `template` takes an html template only (the
  * compiler compiles nothing else there); a directive's templates take a plain template literal of markup
  * too, as the compiler does. A child call in a template is TypeScript like any other: a callback prop's
- * parameters are typed from the component's props, and a prop can be typed as a Fragment.
+ * parameters are typed from the component's props, and a prop can be typed as a Fragment. A component whose
+ * props are all optional is called without them, and `css` is a string, which `styles` takes.
  *
  * One program holds the runtime and a usage file with one case per function; a case's diagnostics are the
  * ones on its lines.
@@ -21,6 +22,10 @@ const VALID: Record<string, string> = {
   'a directive in a template': 'return html`<div>${when(true, spinner)}</div>`;',
   "a callback prop's parameters are typed at a child call site":
     'return html`<ul>${Picker({ onPick: (id) => id.toFixed(0), label: spinner })}</ul>`;',
+  'a component without props, or with optional ones only, is called without them':
+    'const Nav = defineComponent(() => ({ template: html`<nav></nav>` })); const Tip = defineComponent<{ text?: string }>(() => ({ template: html`<i></i>` })); return html`${Nav()}${Tip()}${Tip({ text: "t" })}`;',
+  'css is a string, which styles takes':
+    'const s: string = css`p { color: red; }`; return defineComponent(() => ({ template: html`<p></p>`, styles: s }));',
 };
 const INVALID: Record<string, [call: string, message: RegExp]> = {
   "a string as a component's template": [
@@ -34,6 +39,8 @@ const INVALID: Record<string, [call: string, message: RegExp]> = {
     'return html`${Picker({ onPick: (id) => id.toUpperCase(), label: spinner })}`;',
     /Property 'toUpperCase' does not exist on type 'number'/,
   ],
+  'a component with a required prop called without props': ['return Card();', /Expected 1 arguments, but got 0/],
+  'css is a string, not any': ['const n: number = css`p {}`; return n;', /not assignable to type 'number'/],
   'a string where a prop takes a Fragment': [
     "return html`${Picker({ onPick: () => {}, label: '<b>x</b>' })}`;",
     /not assignable to type 'Fragment'/,
@@ -47,7 +54,7 @@ const cases: [string, string][] = [
 ];
 const runtime = (file: string): string => join(import.meta.dir, file).replaceAll('\\', '/');
 const usage = [
-  `import { html, when, repeat, type Fragment } from '${runtime('markers.js')}';`,
+  `import { html, css, when, repeat, type Fragment } from '${runtime('markers.js')}';`,
   `import { defineComponent } from '${runtime('component.js')}';`,
   'const items = [{ id: 1 }];',
   'const spinner = html`<span></span>`;',

@@ -34,7 +34,10 @@ export default function ProductDetails() {
             <p className={styles.productPrice}>R{product.price}</p>
             <p className={styles.productDescription}>{product.description}</p>
             <p className={styles.productCategory}>Category: {product.category}</p>
-            <button className={`${styles.addToCartButton} ${product.cartCount > 0 ? styles.added : ''}`} onClick={addToCart}>
+            <button
+              className={`${styles.addToCartButton} ${product.cartCount > 0 ? styles.added : ''}`}
+              onClick={addToCart}
+            >
               {product.cartCount > 0 ? 'Added to Cart' : 'Add to Cart'}
               <img className={styles.addToCartIcon} src={addToCartIcon} alt="Add to cart icon" />
               {product.cartCount > 0 && <span className={styles.cartCounter}>{product.cartCount}</span>}

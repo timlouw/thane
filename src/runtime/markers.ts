@@ -44,7 +44,7 @@ export function html(_strings: TemplateStringsArray, ..._values: any[]): Fragmen
 }
 
 /** A CSS template: a component's scoped styles. */
-export function css(_strings: TemplateStringsArray, ..._values: any[]): any {
+export function css(_strings: TemplateStringsArray, ..._values: any[]): string {
   return compiledAway('css``');
 }
 

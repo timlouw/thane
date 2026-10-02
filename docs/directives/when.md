@@ -164,7 +164,7 @@ export const Parent = defineComponent(() => {
   return {
     template: html`
       <button @click=${() => showTimer(!showTimer())}>Toggle Timer</button>
-      ${when(showTimer(), Timer({}))}
+      ${when(showTimer(), Timer())}
     `,
   };
 });

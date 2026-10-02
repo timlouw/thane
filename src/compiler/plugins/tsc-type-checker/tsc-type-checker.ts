@@ -4,7 +4,7 @@ import type { OnStartResult, Plugin } from 'esbuild';
 import { syncProjectTypes } from '../router-typegen/router-typegen.js';
 import { collectFilesRecursively, logger, PLUGIN_NAME } from '../../utils/index.js';
 import { ErrorCode, createError } from '../../errors.js';
-import { EVENT_TYPES_DECLARATION, rewriteEventHandlers, type RewrittenSource } from './event-handler-types.js';
+import { TEMPLATE_TYPES_DECLARATION, rewriteTemplates, type RewrittenSource } from './template-types.js';
 
 const NAME = PLUGIN_NAME.TYPE_CHECK;
 
@@ -51,11 +51,21 @@ async function checkProject(strict: boolean, projectRoot: string): Promise<void>
     fileName.endsWith('.d.ts'),
   );
   const options: ts.CompilerOptions = { ...parsedConfig.options, noEmit: true };
-  const { host, rootNames: eventTypesRoots, mapDiagnostic } = eventTypedHost(options, generatedTypesRoot);
-  const rootNames = Array.from(new Set([...parsedConfig.fileNames, ...generatedTypeFiles, ...eventTypesRoots]));
+  const {
+    host,
+    rootNames: templateTypesRoots,
+    mapDiagnostic,
+    ownFile,
+  } = templateTypedHost(options, generatedTypesRoot);
+  const rootNames = Array.from(new Set([...parsedConfig.fileNames, ...generatedTypeFiles, ...templateTypesRoots]));
 
   const program = ts.createProgram({ rootNames, options, host });
-  const diagnostics = ts.getPreEmitDiagnostics(program).map(mapDiagnostic);
+  // The declaration of the template types is the check's own: in a project where `thane` does not resolve, its
+  // `Fragment` is `any`, and nothing there is the project's to fix
+  const diagnostics = ts
+    .getPreEmitDiagnostics(program)
+    .filter((d) => d.file?.fileName !== ownFile)
+    .map(mapDiagnostic);
 
   if (diagnostics.length === 0) {
     return;
@@ -83,29 +93,34 @@ async function checkProject(strict: boolean, projectRoot: string): Promise<void>
 }
 
 /**
- * A compiler host that serves each project source with its template event handlers typed
- * (event-handler-types.ts), the declaration of their type as one more root file, and the way to
- * map a diagnostic in a rewritten source back to the source as written. A program without the DOM
- * library has no event types, so nothing is rewritten.
+ * A compiler host that serves each project source with its template values typed (template-types.ts), the
+ * declaration of their types as one more root file (`ownFile`), and the way to map a diagnostic in a rewritten
+ * source back to the source as written. A program without the DOM library has no event types, so nothing is
+ * rewritten.
  */
-const eventTypedHost = (
+const templateTypedHost = (
   options: ts.CompilerOptions,
   generatedTypesRoot: string,
-): { host: ts.CompilerHost; rootNames: string[]; mapDiagnostic: (d: ts.Diagnostic) => ts.Diagnostic } => {
+): {
+  host: ts.CompilerHost;
+  rootNames: string[];
+  mapDiagnostic: (d: ts.Diagnostic) => ts.Diagnostic;
+  ownFile?: string;
+} => {
   const host = ts.createCompilerHost(options);
   const hasDom = !options.lib || options.lib.some((lib) => lib.toLowerCase().includes('dom'));
   if (!hasDom) return { host, rootNames: [], mapDiagnostic: (d) => d };
 
-  const declarationFile = path.join(generatedTypesRoot, 'event-handlers.d.ts').replace(/\\/g, '/');
+  const declarationFile = path.join(generatedTypesRoot, 'template-types.d.ts').replace(/\\/g, '/');
   const rewritten = new Map<string, { rewrite: RewrittenSource; text: string; original?: ts.SourceFile }>();
   const getSourceFile = host.getSourceFile;
   const fileExists = host.fileExists;
   host.fileExists = (fileName) => fileName === declarationFile || fileExists.call(host, fileName);
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
-    if (fileName === declarationFile) return ts.createSourceFile(fileName, EVENT_TYPES_DECLARATION, languageVersion);
+    if (fileName === declarationFile) return ts.createSourceFile(fileName, TEMPLATE_TYPES_DECLARATION, languageVersion);
     if (fileName.endsWith('.ts') && !fileName.endsWith('.d.ts') && !fileName.includes('/node_modules/')) {
       const text = host.readFile(fileName);
-      const rewrite = text === undefined ? null : rewriteEventHandlers(fileName, text);
+      const rewrite = text === undefined ? null : rewriteTemplates(fileName, text);
       if (rewrite) {
         rewritten.set(fileName, { rewrite, text: text! });
         return ts.createSourceFile(fileName, rewrite.text, languageVersion);
@@ -131,7 +146,7 @@ const eventTypedHost = (
       ? { ...mapped, relatedInformation: diagnostic.relatedInformation.map(mapLocation) }
       : mapped;
   };
-  return { host, rootNames: [declarationFile], mapDiagnostic };
+  return { host, rootNames: [declarationFile], mapDiagnostic, ownFile: declarationFile };
 };
 
 export const TSCTypeCheckerPlugin = (options?: { strict?: boolean; projectRoot?: string | undefined }): Plugin => {

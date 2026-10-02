@@ -17,7 +17,11 @@ import type { ComponentRoot } from './types.js';
 // ============================================================================
 
 type ComponentProps = Record<string, any>;
-export type ComponentHTMLSelector<T> = (props: T) => Fragment;
+/**
+ * A component, as a template calls it: `${Card({ title })}`. A component whose props are all optional (or that
+ * has none) can be called without them: `${Nav()}`.
+ */
+export type ComponentHTMLSelector<T> = {} extends T ? (props?: T) => Fragment : (props: T) => Fragment;
 
 /**
  * Context object passed to the defineComponent setup function.

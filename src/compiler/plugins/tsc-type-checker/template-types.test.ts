@@ -3,12 +3,12 @@
  * position in the rewritten text maps back to the source as written.
  */
 import { describe, expect, test } from 'bun:test';
-import { rewriteEventHandlers } from './event-handler-types.js';
+import { rewriteTemplates } from './template-types.js';
 
 const inTemplate = (markup: string): string => `const t = html\`${markup}\`;`;
-const rewritten = (markup: string): string | undefined => rewriteEventHandlers('x.ts', inTemplate(markup))?.text;
+const rewritten = (markup: string): string | undefined => rewriteTemplates('x.ts', inTemplate(markup))?.text;
 
-describe('rewriteEventHandlers', () => {
+describe('rewriteTemplates', () => {
   test('a listener is typed by its event: an arrow, a function, a reference, a member reference', () => {
     expect(rewritten('<b @click=${(e) => go(e)}>x</b>')).toBe(
       inTemplate("<b @click=${((e) => go(e)) satisfies ThaneEventListener<'click', 'b'>}>x</b>"),
@@ -57,7 +57,7 @@ describe('rewriteEventHandlers', () => {
 
   test('a handler in a nested template (a row) is typed too, without its element: rows are delegated', () => {
     const source = 'const t = html`<ul>${repeat(items(), (it) => html`<li @click=${() => pick(it)}>x</li>`)}</ul>`;';
-    expect(rewriteEventHandlers('x.ts', source)?.text).toContain(
+    expect(rewriteTemplates('x.ts', source)?.text).toContain(
       "@click=${(() => pick(it)) satisfies ThaneEventListener<'click'>}",
     );
   });
@@ -71,17 +71,41 @@ describe('rewriteEventHandlers', () => {
     );
   });
 
-  test('left as written: other attributes, text, and other tags', () => {
-    expect(rewritten('<b title=${onClick} data-x="@click=${onClick}">x</b>')).toBeUndefined();
-    expect(rewritten('<p>mail @me=${name}</p>')).toBeUndefined();
-    expect(rewritten('<b @click=${a}${b}>x</b>')).toBeUndefined();
-    expect(rewriteEventHandlers('x.ts', 'const s = css`@media (x) { a { b: ${c} } }`;')).toBeNull();
-    expect(rewriteEventHandlers('x.ts', 'const t = other`<b @click=${onClick}></b>`;')).toBeNull();
+  test("a value in content is typed as what content shows; one in a tag, or not an event's whole value, as an attribute's", () => {
+    expect(rewritten('<b title=${onClick} data-x="@click=${onClick}">${n}</b>')).toBe(
+      inTemplate(
+        '<b title=${(onClick) satisfies ThaneAttribute} data-x="@click=${(onClick) satisfies ThaneAttribute}">${(n) satisfies ThaneContent}</b>',
+      ),
+    );
+    expect(rewritten('<p>mail @me=${name}</p>')).toBe(inTemplate('<p>mail @me=${(name) satisfies ThaneContent}</p>'));
+    expect(rewritten('<b @click=${a}${b}>x</b><i ${when(on())}></i>')).toBe(
+      inTemplate(
+        '<b @click=${(a) satisfies ThaneAttribute}${(b) satisfies ThaneAttribute}>x</b><i ${(when(on())) satisfies ThaneAttribute}></i>',
+      ),
+    );
+  });
+
+  test('a value that holds a template is typed, and so are the values of the template', () => {
+    expect(rewritten('${when(on(), html`<b class=${c}>${n}</b>`)}')).toBe(
+      inTemplate(
+        '${(when(on(), html`<b class=${(c) satisfies ThaneAttribute}>${(n) satisfies ThaneContent}</b>`)) satisfies ThaneContent}',
+      ),
+    );
+    // A template that is a substitution's whole value: the inner one opens after the outer and closes before it
+    expect(rewritten('${html`${n}`}')).toBe(
+      inTemplate('${(html`${(n) satisfies ThaneContent}`) satisfies ThaneContent}'),
+    );
+  });
+
+  test('left as written: other tags, and css', () => {
+    expect(rewriteTemplates('x.ts', 'const s = css`@media (x) { a { b: ${c} } }`;')).toBeNull();
+    expect(rewriteTemplates('x.ts', 'const t = other`<b @click=${onClick}></b>`;')).toBeNull();
+    expect(rewriteTemplates('x.ts', 'const t = html`<b>static</b>`;')).toBeNull();
   });
 
   test('a span maps back to the source as written; one that starts in inserted text is the handler', () => {
     const source = inTemplate('<b @click=${onA} @blur=${onB}></b>');
-    const result = rewriteEventHandlers('x.ts', source)!;
+    const result = rewriteTemplates('x.ts', source)!;
     for (const name of ['onA', 'onB', '></b>', 'const']) {
       expect(result.toOriginal(result.text.indexOf(name), name.length)).toEqual({
         start: source.indexOf(name),
@@ -98,15 +122,15 @@ describe('rewriteEventHandlers', () => {
 });
 
 describe('from the source to the rewritten text', () => {
-  test('a position maps forward: before, inside and after a handler; inHandler covers its ends', () => {
+  test('a position maps forward: before, inside and after a handler; inSlot covers its ends', () => {
     const source = inTemplate('<b @click=${onA} @blur=${(e) => e.type}></b>');
-    const result = rewriteEventHandlers('x.ts', source)!;
+    const result = rewriteTemplates('x.ts', source)!;
     for (const name of ['onA', '(e) =>', 'e.type', '></b>', 'const']) {
       expect(result.text.slice(result.toRewritten(source.indexOf(name))).startsWith(name)).toBe(true);
     }
     const handler = source.indexOf('(e) => e.type');
-    expect(result.inHandler(handler)).toBe(true);
-    expect(result.inHandler(handler + '(e) => e.type'.length)).toBe(true);
-    expect(result.inHandler(source.indexOf('></b>') + 1)).toBe(false);
+    expect(result.inSlot(handler)).toBe(true);
+    expect(result.inSlot(handler + '(e) => e.type'.length)).toBe(true);
+    expect(result.inSlot(source.indexOf('></b>') + 1)).toBe(false);
   });
 });

@@ -1,7 +1,8 @@
 /**
- * Template event handlers in the project type check (`thane build`, `thane typecheck`): a handler
- * gets its event's type, a handler for another event is an error, an expression that runs on the event
- * cannot be a function (nothing would call it), and every diagnostic points at the source as written.
+ * Template values in the project type check (`thane build`, `thane typecheck`): a value in content is what
+ * content shows, a value in a tag an attribute's, a handler gets its event's type, a handler for another event is
+ * an error, an expression that runs on the event cannot be a function (nothing would call it), and every
+ * diagnostic points at the source as written.
  */
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { runProjectTypeCheck } from './tsc-type-checker.js';
@@ -63,6 +64,48 @@ const CASES: Record<string, string> = {
     '',
   ].join('\n'),
   'src/wrong-event.ts': component('WrongEvent', '', '<b @click=${(e: KeyboardEvent) => e.key}>x</b>'),
+  // What content shows and what a tag takes: text, numbers, booleans, nothing, templates and lists of them
+  'src/values.ts': [
+    "import { defineComponent, html, signal, when, repeat } from 'thane';",
+    "import { Card } from './card.js';",
+    '',
+    'export const Values = defineComponent(() => {',
+    "  const name = signal<string | null>('a');",
+    '  const n = signal(1);',
+    '  const on = signal(true);',
+    "  const items = signal([{ id: 1, label: 'x' }]);",
+    '  const badge = html`<b>new</b>`;',
+    '  return {',
+    '    template: html`<p class=${name()} data-n=${n()} hidden=${!on()} ${when(on())}>',
+    '      ${name()} ${n() + 1} ${on()} ${undefined} ${badge} ${Card({ label: "c" })}',
+    '      ${when(on(), html`<i>on</i>`)} ${on() ? html`<b>y</b>` : null}',
+    '      ${repeat(items(), (i) => html`<li>${i.label}</li>`)} ${items().map((i) => html`<li>${i.id}</li>`)}',
+    '    </p>`,',
+    '  };',
+    '});',
+    '',
+  ].join('\n'),
+  'src/card.ts': [
+    "import { defineComponent, html } from 'thane';",
+    '',
+    'export const Card = defineComponent<{ label: string }>(({ props }) => ({ template: html`<b>${props.label}</b>` }));',
+    '',
+  ].join('\n'),
+  // An object, a promise and an imported signal without its call in content; an object and a template in a tag
+  'src/store.ts': "import { signal } from 'thane';\nexport const count = signal(0);\n",
+  'src/wrong-values.ts': [
+    "import { defineComponent, html, signal } from 'thane';",
+    "import { count } from './store.js';",
+    '',
+    'export const WrongValues = defineComponent(() => {',
+    "  const user = signal({ name: 'a' });",
+    "  const load = async () => 'x';",
+    '  return {',
+    '    template: html`<p class=${user()} title=${html`<b>t</b>`}>${user()} ${load()} ${count}</p>`,',
+    '  };',
+    '});',
+    '',
+  ].join('\n'),
   // A call that returns a handler, and a ternary of handlers: each runs on the event, and its value is dropped
   'src/dropped-handler.ts': component(
     'DroppedHandler',
@@ -169,10 +212,36 @@ describe('template event handlers in the type check', () => {
     expect(errorsIn('src/row-dropped-handler.ts')).toHaveLength(1);
   });
 
+  test('the values content shows and a tag takes pass: text, numbers, booleans, nothing, templates and their lists', () => {
+    expect(errorsIn('src/values.ts')).toEqual([]);
+    expect(errorsIn('src/card.ts')).toEqual([]);
+  });
+
+  test('an object, a promise or a function in content, and an object or a template in a tag, are errors', () => {
+    const errors = errorsIn('src/wrong-values.ts');
+    const at = (needle: string) => {
+      const lines = CASES['src/wrong-values.ts']!.split('\n');
+      const line = lines.findIndex((l) => l.includes(needle));
+      return `${line + 1}:${lines[line]!.indexOf(needle) + 1}`;
+    };
+    expect(errors.map((e) => /:(\d+:\d+) - error (TS\d+)/.exec(e)!.slice(1).join(' '))).toEqual([
+      `${at('user()} title')} TS1360`,
+      `${at('html\`<b>t</b>\`')} TS1360`,
+      `${at('user()} ${load')} TS1360`,
+      `${at('load()}')} TS1360`,
+      `${at('count}<')} TS1360`,
+    ]);
+    expect(errors[0]).toContain("does not satisfy the expected type 'ThaneAttribute'");
+    expect(errors[2]).toContain("Type '{ name: string; }' does not satisfy the expected type 'ThaneContent'");
+    expect(errors[3]).toContain("Type 'Promise<string>' does not satisfy the expected type 'ThaneContent'");
+    expect(errors[4]).toContain("Type 'Signal<number>' does not satisfy the expected type 'ThaneContent'");
+  });
+
   test('the printed source is the source as written', () => {
     expect(output).toContain('<b @click=${(e: KeyboardEvent) => e.key}>x</b>');
     expect(output).not.toContain('satisfies ThaneEventListener');
     expect(output).toContain('<b @click=${makeHandler(1)} @blur=${open() ? close : show}>x</b>');
     expect(output).not.toContain('__thaneEventCall');
+    expect(output).not.toMatch(/satisfies Thane(Content|Attribute)/);
   });
 });

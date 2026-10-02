@@ -26,5 +26,5 @@ export const Ownership = defineComponent('hardening-ownership', () => {
   const open = signal(true);
   const subscribers = () => (products as unknown as { _s: unknown[] })._s.filter((s) => s !== null).length;
   expose('ownership', { open, products, subscribers });
-  return { template: html`<div>${when(open(), html`${CartPage({})}`)}</div>` };
+  return { template: html`<div>${when(open(), html`${CartPage()}`)}</div>` };
 });

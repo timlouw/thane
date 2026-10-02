@@ -221,9 +221,9 @@ import { Footer } from './footer.js';
 
 export const App = defineComponent(() => ({
   template: html`
-    ${Navbar({})}
+    ${Navbar()}
     <main>Content</main>
-    ${Footer({})}
+    ${Footer()}
   `,
 }));
 ```
@@ -235,7 +235,7 @@ The compiler automatically manages the child's lifecycle. When the parent is des
 Each component instance has independent state:
 
 ```typescript
-template: html` ${Counter({})} ${Counter({})} `;
+template: html` ${Counter()} ${Counter()} `;
 ```
 
 These two `Counter` instances maintain their own signal values.
