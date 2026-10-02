@@ -32,7 +32,7 @@ const change = (file: string, from: string, to: string): void => {
 const marker = (page: Page) => page.evaluate(() => (window as unknown as { __hotMarker?: string }).__hotMarker);
 
 test.describe('hot updates', () => {
-  test('a changed component is swapped in the open page with its state; another change reloads it', async ({
+  test('a changed component, store or stylesheet is swapped in the open page with its state; the entry reloads it', async ({
     browserName,
     page,
   }) => {
@@ -77,11 +77,11 @@ test.describe('hot updates', () => {
       await expect(page.locator('.hot-clicks')).toHaveText('2');
       for (let i = 0; i < 3; i++) await page.locator('.hot-tap').click();
       await page.locator('.hot-open').click();
-      const state = async (taps: string, total: string, opened: string): Promise<void> => {
+      const state = async (taps: string, total: string, opened: string, clicks = '2'): Promise<void> => {
         await expect(page.locator('.hot-taps')).toHaveText(taps);
         await expect(page.locator('.hot-total')).toHaveText(total);
         await expect(page.locator('.hot-opened')).toHaveText(opened);
-        await expect(page.locator('.hot-clicks')).toHaveText('2');
+        await expect(page.locator('.hot-clicks')).toHaveText(clicks);
       };
       await state('3', '3', '1');
 
@@ -106,12 +106,30 @@ test.describe('hot updates', () => {
       await page.locator('.hot-click').click();
       await expect(page.locator('.hot-clicks')).toHaveText('3');
 
-      // A module that is not a component file changes: the page reloads, and starts from the new code
-      change('store.ts', 'signal(0)', 'signal(10)');
-      await expect(page.locator('.hot-clicks')).toHaveText('10', { timeout: 15_000 });
+      // The store changes: it runs again, keeping its signals' values, and so does the component file that
+      // imports it, which reads the new step
+      change('store.ts', 'step = 1', 'step = 5');
+      await expect
+        .poll(() => output, { timeout: 15_000 })
+        .toContain('Updated .build/hot-src/store.ts, .build/hot-src/app.ts');
+      await state('4', '4', '1', '3');
+      await page.locator('.hot-click').click();
+      await state('4', '4', '1', '8');
+      expect(await marker(page)).toBe('kept');
+
+      // The app's stylesheet file changes: the app's sheet is replaced, and the app keeps its state
+      await expect(page.locator('.hot-title')).toHaveCSS('color', 'rgb(0, 128, 0)');
+      change('app.css', 'rgb(0, 128, 0)', 'rgb(128, 0, 128)');
+      await expect(page.locator('.hot-title')).toHaveCSS('color', 'rgb(128, 0, 128)', { timeout: 15_000 });
+      await state('4', '4', '1', '8');
+      expect(await marker(page)).toBe('kept');
+
+      // The entry changes: the page reloads, and starts from the new code
+      change('main.ts', "'hot 1'", "'hot 2'");
+      await expect(page).toHaveTitle('hot 2', { timeout: 15_000 });
       expect(await marker(page)).toBeUndefined();
       await expect(label).toHaveText('v2 1');
-      await expect(page.locator('.hot-taps')).toHaveText('0');
+      await state('0', '0', '0', '0');
       await expect(page.locator('.hot-title')).toHaveText('a2');
     } finally {
       await stopChild(child);

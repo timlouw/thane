@@ -39,7 +39,7 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     if (statement.moduleSpecifier.text !== 'thane') continue;
     const clause = statement.importClause;
-    if (!clause || clause.isTypeOnly) continue;
+    if (!clause || clause.phaseModifier === ts.SyntaxKind.TypeKeyword) continue;
     const bindings = clause.namedBindings;
     if (bindings && ts.isNamespaceImport(bindings)) namespaces.add(bindings.name.text);
     if (!bindings || !ts.isNamedImports(bindings)) continue;

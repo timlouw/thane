@@ -276,8 +276,9 @@ export class DevServer {
     const script = `<script>
 (() => {
   if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
-  // Components register for hot swapping (runtime/hot.ts); a hot update runs a changed file again, its
-  // imports read from the modules the page has loaded. False: the page reloads instead.
+  // Components register for hot swapping (runtime/hot.ts); a hot update runs changed modules again, in
+  // order, their imports read from the modules the page has loaded, and each one's new exports replace its
+  // old ones for the modules run after it. False: the page reloads instead.
   window.__thaneHot = {};
   const applyHotUpdates = (updates) => {
     const modules = window.__thaneModules;
@@ -293,6 +294,7 @@ export class DevServer {
         };
         const module = { exports: {} };
         new Function('require', 'module', 'exports', update.code)(require, module, module.exports);
+        modules.set(update.key, module.exports);
       }
       return true;
     } catch (error) {

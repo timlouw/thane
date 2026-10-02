@@ -24,12 +24,15 @@ A setup function returns one object (THANE412). The compiler builds one static t
 `thane dev` swaps a changed component file in the open page, and each swapped instance keeps its state by name: a
 signal its setup declares with `const` at the top level starts from the value of the old instance's signal of that
 name, and so does a signal the file declares at its top level. The children a swapped component mounts as it mounts take
-their old children's state, matched by selector in the order they were on the page.
+their old children's state, matched by selector in the order they were on the page. A store (any module) that runs again
+because it changed keeps its top-level `const` signals the same way.
 
 What starts again: a signal declared with `let`, or inside a function or a block; a signal whose value is now of
 another type (`signal(0)` changed to `signal('')`); and a child that is new, or that moved before another of its
-selector. A `computed()` computes again, an `effect()` runs again, and `onMount` is called again. To start a
-signal again, rename it, or reload the page. A change to any other module reloads the page.
+selector. A `computed()` computes again, an `effect()` runs again, and `onMount` is called again; so does
+whatever else a module that runs again does at its top level (a listener it adds to `window` is added again). To start
+a signal again, rename it, or reload the page. A change that reaches the entry reloads the page
+([CLI](cli.md#thane-dev)).
 
 ### `const` Required for Components and Templates
 

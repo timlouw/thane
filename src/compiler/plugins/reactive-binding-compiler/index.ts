@@ -9,7 +9,8 @@ import {
   findExportedFragments,
   type FragmentDeclaration,
   isHtmlTemplate,
-  isSignalCall,
+  constSignalDeclarations,
+  hotSignalEdits,
   applyEdits,
   type SourceEdit,
   sourceCache,
@@ -262,8 +263,9 @@ export const findServicesImport = (sourceFile: ts.SourceFile): ImportInfo | null
 const importOf = (sourceFile: ts.SourceFile, name: string): ImportInfo | null => {
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.importClause?.phaseModifier === ts.SyntaxKind.TypeKeyword) continue;
     const namedBindings = statement.importClause?.namedBindings;
-    if (statement.importClause?.isTypeOnly || !namedBindings || !ts.isNamedImports(namedBindings)) continue;
+    if (!namedBindings || !ts.isNamedImports(namedBindings)) continue;
     if (!namedBindings.elements.some((element) => element.name.text === name)) continue;
     // Each name as written, so that a type-only one (`type Fragment`) stays type-only
     const namedImports = namedBindings.elements.map((element) => element.getText(sourceFile));
@@ -933,17 +935,9 @@ const keepSignalsHot = (file: FileCompilation, components: readonly ComponentDec
   const { sourceFile, edits, options } = file;
   let kept = false;
   const keep = (statements: readonly ts.Statement[], module?: string): void => {
-    for (const statement of statements) {
-      if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
-      for (const { name, initializer } of statement.declarationList.declarations) {
-        if (!ts.isIdentifier(name) || !initializer || !ts.isCallExpression(initializer)) continue;
-        if (!isSignalCall(initializer)) continue;
-        const names = [name.text, ...(module === undefined ? [] : [module])].map((text) => JSON.stringify(text));
-        const start = initializer.getStart(sourceFile);
-        edits.push({ start, end: start, replacement: `${BIND_FN.HOT_SIGNAL}(` });
-        edits.push({ start: initializer.getEnd(), end: initializer.getEnd(), replacement: `, ${names.join(', ')})` });
-        kept = true;
-      }
+    for (const { name, call } of constSignalDeclarations(statements)) {
+      edits.push(...hotSignalEdits(sourceFile, call, name, module));
+      kept = true;
     }
   };
   keep(sourceFile.statements, options.hotModule);

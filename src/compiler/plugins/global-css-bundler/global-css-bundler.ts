@@ -16,7 +16,7 @@ export interface GlobalCSSBundlerOptions {
    * stylesheet imported from a package is never renamed in.
    */
   selectorMap?: () => SelectorMap | undefined;
-  /** `thane dev`: a changed stylesheet is recorded, and the page reloads (see hot-modules.ts) */
+  /** `thane dev`: a changed stylesheet is recorded, and the modules that import it run again (see hot-modules.ts) */
   hot?: HotState | undefined;
 }
 
@@ -30,7 +30,7 @@ export const GlobalCSSBundlerPlugin = (options: GlobalCSSBundlerOptions = {}): P
         const selectorMap = options.selectorMap?.();
         let keyframes = false;
         const text = await fs.promises.readFile(args.path, 'utf8');
-        if (options.hot) trackHotInput(options.hot, args.path, text, () => false);
+        if (options.hot) trackHotInput(options.hot, args.path, text);
         const cssContent = transformCss(text, {
           minify: shouldMinify,
           selectorMap: selectorMap?.hasStylesheet(args.path) ? selectorMap : undefined,

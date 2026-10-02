@@ -41,14 +41,20 @@ thane dev --host 0.0.0.0
 
 Default port: `4200`. Always a development build (`--prod` is ignored). Source maps are enabled. All 12 lint rules are active. `console.*` calls are preserved.
 
-The build reruns when a source file changes. When the files that changed are component files, the open pages swap
-those components in place: each instance of a changed component is mounted again with the new code and styles, in
-its place and with its props, and the rest of the page keeps its state (its other components, its stores, the
-route). Any other change reloads the pages: a module that is not a component file (a store, a helper), a component
-file that exports something else too, a stylesheet file, an asset or `index.html`, and a component the page has not
-loaded yet. A swapped component keeps its state: each `const` signal at the top level of its setup, or of its file,
-starts from the old one's value, and the children it mounts from the old children's (see
-[Known Limitations](known-limitations.md#hot-updates-keep-signals-by-name)).
+The build reruns when a source file changes, and the open pages update in place where they can:
+
+- A changed component file is swapped: each instance of its components is mounted again with the new code and styles,
+  in its place, with its props and its state. Each `const` signal at the top level of its setup, or of its file,
+  starts from the old one's value, and the children it mounts from the old children's (see
+  [Known Limitations](known-limitations.md#hot-updates-keep-signals-by-name)).
+- A changed store, helper or stylesheet file, or a component file that exports something else too, runs again with
+  every module that imports it, up to the component files, which are swapped. A store keeps the values of its `const`
+  signals; the modules that import it read its new code.
+- The rest of the page keeps its state: its other components, its stores, the route.
+
+The pages reload when a change reaches the entry (the entry itself, or a module it imports other than through a
+component file), when the module to run again is one the page has not loaded yet, and for an asset, `index.html`, or
+a file the compiler does not read (a JSON file).
 
 Errors in the browser (`console.error`, uncaught errors and unhandled promise rejections) are printed in the terminal, with their locations in the built files.
 

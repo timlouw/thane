@@ -2,7 +2,7 @@
 
 import ts from 'typescript';
 import type { ComponentDefinition, FragmentDefinition } from '../types.js';
-import { FN } from './constants.js';
+import { BIND_FN as RUNTIME_HELPER, FN } from './constants.js';
 
 // ============================================================================
 // Source File Creation
@@ -22,6 +22,38 @@ export const isFunctionCall = (node: ts.CallExpression, functionName: string): b
 
 export const isSignalCall = (node: ts.CallExpression): boolean => {
   return isFunctionCall(node, FN.SIGNAL);
+};
+
+/** The `const name = signal(…)` declarations among `statements` (not nested ones): each name with its call */
+export const constSignalDeclarations = (
+  statements: readonly ts.Statement[],
+): { name: string; call: ts.CallExpression }[] =>
+  statements.flatMap((statement) =>
+    ts.isVariableStatement(statement) && statement.declarationList.flags & ts.NodeFlags.Const
+      ? statement.declarationList.declarations.flatMap(({ name, initializer }) =>
+          ts.isIdentifier(name) && initializer && ts.isCallExpression(initializer) && isSignalCall(initializer)
+            ? [{ name: name.text, call: initializer }]
+            : [],
+        )
+      : [],
+  );
+
+/**
+ * `thane dev`: the edits that wrap a signal's call as `__hotSignal(signal(…), 'name')`, or with the module key
+ * too for one at a module's top level (runtime/hot.ts)
+ */
+export const hotSignalEdits = (
+  sourceFile: ts.SourceFile,
+  call: ts.CallExpression,
+  name: string,
+  module?: string,
+): { start: number; end: number; replacement: string }[] => {
+  const names = [name, ...(module === undefined ? [] : [module])].map((text) => JSON.stringify(text));
+  const start = call.getStart(sourceFile);
+  return [
+    { start, end: start, replacement: `${RUNTIME_HELPER.HOT_SIGNAL}(` },
+    { start: call.getEnd(), end: call.getEnd(), replacement: `, ${names.join(', ')})` },
+  ];
 };
 
 export const isDefineComponentCall = (node: ts.CallExpression): boolean => {

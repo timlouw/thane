@@ -24,6 +24,8 @@ export {
   isFunctionCall,
   isDefineComponentCall,
   isSignalCall,
+  constSignalDeclarations,
+  hotSignalEdits,
   extractComponentDefinitions,
   findComponentDeclarations,
   type ComponentDeclaration,

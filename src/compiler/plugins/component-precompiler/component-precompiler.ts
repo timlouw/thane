@@ -25,7 +25,8 @@ import {
   KEYFRAME_SCOPING,
 } from '../minification/css-transform.js';
 import { ErrorCode, createError, createWarning, withConfiguredSeverity } from '../../errors.js';
-import { hotModuleKey, hotRegistration, isSwappable, trackHotInput } from './hot-modules.js';
+import { hotModuleKey, hotRegistration, keepModuleSignals, recordHotModule, trackHotInput } from './hot-modules.js';
+import { createModuleResolver, type ModuleResolver } from '../../utils/module-graph.js';
 import { INTERNAL_RUNTIME_SPECIFIER, RUNTIME_HELPER } from '../../../contracts/index.js';
 
 const NAME = PLUGIN_NAME.COMPONENT;
@@ -70,9 +71,12 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
       }
     };
 
+    // `thane dev`: each build resolves the modules' imports afresh, so that a file added meanwhile is found
+    let resolveImport: ModuleResolver | undefined;
     build.onStart(async () => {
       selectorOwners = new Map();
       if (!mode.hotUpdate) ctx?.hot?.changed.clear();
+      if (ctx?.hot && !mode.hotUpdate) resolveImport = createModuleResolver(ctx.projectRoot);
       // A rebuild in watch mode scans again, so that a component file added meanwhile is found
       if (ctx && scanned) await refreshBuildContext(ctx);
       scanned = true;
@@ -329,13 +333,20 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
     build.onLoad({ filter: /\.ts$/ }, async (args) => {
       const result = await load(args);
       // `thane dev`: every project module registers itself in the page, for hot updates to import, and
-      // the build records whether it changed (see hot-modules.ts)
+      // the build records whether it changed, what it imports, and whether the page can swap it (see
+      // hot-modules.ts). A module the compiler leaves as it is keeps its signals through hot updates, as a
+      // component file does.
       const hot = ctx?.hot;
-      if (!hot || mode.hotUpdate || args.path.includes('node_modules') || result?.errors) return result;
+      if (!hot || args.path.includes('node_modules') || result?.errors) return result;
       const cached = await sourceCache.get(args.path);
       if (!cached) return result;
-      trackHotInput(hot, args.path, cached.source, () => isSwappable(cached.sourceFile));
-      const code = typeof result?.contents === 'string' ? result.contents : cached.source;
+      const code =
+        typeof result?.contents === 'string'
+          ? result.contents
+          : keepModuleSignals(cached.source, cached.sourceFile, hotModuleKey(args.path, ctx.projectRoot));
+      if (mode.hotUpdate) return code === cached.source ? result : createLoaderResult(code);
+      trackHotInput(hot, args.path, cached.source);
+      if (resolveImport) recordHotModule(hot, args.path, cached.sourceFile, resolveImport);
       return createLoaderResult(hotRegistration(args.path, code, cached.sourceFile, ctx.projectRoot));
     });
   },
