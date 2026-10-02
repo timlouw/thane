@@ -106,6 +106,21 @@ const CASES: Record<string, string> = {
     '});',
     '',
   ].join('\n'),
+  // Two-way bindings: a string signal for a value, a boolean one for checked; a computed, and a number, are errors
+  'src/binds.ts': [
+    "import { defineComponent, html, signal, computed } from 'thane';",
+    '',
+    'export const Binds = defineComponent(() => {',
+    "  const name = signal('');",
+    '  const agree = signal(false);',
+    '  const upper = computed(() => name().toUpperCase());',
+    '  const age = signal(1);',
+    '  return {',
+    '    template: html`<input bind:value=${name} /><input type="checkbox" bind:checked="${agree}" /><p class:on=${agree()}>x</p><input bind:value=${upper} /><input bind:value=${age} />`,',
+    '  };',
+    '});',
+    '',
+  ].join('\n'),
   // Refs: one for the tag's element, one for a wider type, one on a custom element; a canvas ref on an input
   'src/refs.ts': [
     "import { defineComponent, html, ref, signal, when } from 'thane';",
@@ -261,6 +276,15 @@ describe('template event handlers in the type check', () => {
     expect(errors[2]).toContain("Type '{ name: string; }' does not satisfy the expected type 'ThaneContent'");
     expect(errors[3]).toContain("Type 'Promise<string>' does not satisfy the expected type 'ThaneContent'");
     expect(errors[4]).toContain("Type 'Signal<number>' does not satisfy the expected type 'ThaneContent'");
+  });
+
+  test('bind:value takes a writable signal of a string, bind:checked one of a boolean', () => {
+    const errors = errorsIn('src/binds.ts');
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toContain(`src/binds.ts:${at('src/binds.ts', 'upper} />')} - error TS1360`);
+    expect(errors[0]).toContain('ReadonlySignal<string>');
+    expect(errors[1]).toContain(`src/binds.ts:${at('src/binds.ts', 'age} />')} - error TS1360`);
+    expect(errors[1]).toContain('Signal<number>');
   });
 
   test("a ref is checked against its tag's element; any other value alone in a tag is an error", () => {

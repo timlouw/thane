@@ -57,7 +57,8 @@ const check = (sourceFile: ts.SourceFile, filePath: string): Diagnostic[] => {
   const visit = (node: ts.Node): void => {
     if (isTaggedWith(node, [FN.HTML])) {
       for (const slot of slotsOf(node)) {
-        const name = signalName(slot.expression);
+        // A two-way binding takes the signal itself: bind:value=${name}
+        const name = /\sbind:(value|checked)=["']?$/.test(slot.before) ? undefined : signalName(slot.expression);
         const event = eventOfSlot(slot);
         if (name && event) {
           report(

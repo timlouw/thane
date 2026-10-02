@@ -693,6 +693,16 @@ export function findBindingsInAttributes(
   }
 
   for (const [name, attr] of element.attributes) {
+    if (name.startsWith('bind:')) {
+      throw new Error(
+        `${ErrorCode.DIRECTIVE_ATTRIBUTE}: ${name} on <${element.tagName}> — the two-way bindings are bind:value=\${signal} and bind:checked=\${signal}.`,
+      );
+    }
+    if (name.startsWith('class:') && !/^\$\{[\s\S]+\}$/.test(attr.value.trim())) {
+      throw new Error(
+        `${ErrorCode.DIRECTIVE_ATTRIBUTE}: ${name} on <${element.tagName}> — class:name takes a condition: ${name}=\${condition}.`,
+      );
+    }
     if (name.startsWith(':')) {
       throw new Error(
         `${ErrorCode.PREFIXED_ATTRIBUTE}: attribute "${name}" — the ":" prefix is not a binding syntax. Write ${name.slice(1)}=\${…} instead.`,

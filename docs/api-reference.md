@@ -95,7 +95,7 @@ The router installs these as globals when it starts, so a template calls them wi
 | Type                       | Use it for                                                                                  |
 | :------------------------- | :------------------------------------------------------------------------------------------ |
 | `Signal<T>`                | A read/write signal: component fields, signal props, service state                          |
-| `ReadonlySignal<T>`        | A signal that others may only read, such as state a service owns and exposes                |
+| `ReadonlySignal<T>`        | A signal that others may only read, such as state a service owns and exposes; a `computed()` is one, and is not a `Signal<T>` |
 | `ComponentContext<P>`      | The setup function's parameter, for example in a helper shared by several setup functions  |
 | `ComponentHTMLSelector<P>` | What `defineComponent()` returns: a parameter that receives a component to `mount()`        |
 | `Fragment`                 | An `html` template as a value: a fragment a module exports, a prop that holds one           |

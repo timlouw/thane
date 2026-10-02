@@ -50,6 +50,7 @@ import { EventModifiers } from './probes/event-modifiers.js';
 import { Ownership } from './probes/ownership.js';
 import { ElementRefs } from './probes/element-refs.js';
 import { Slots } from './probes/slots.js';
+import { BindAndClass } from './probes/bind-and-class.js';
 import { RowDirectives } from './probes/row-directives.js';
 import { RowMethodCall } from './probes/row-method-call.js';
 import { RowTextSpace } from './probes/row-text-space.js';
@@ -109,6 +110,7 @@ const probes: Record<string, ComponentHTMLSelector<any>> = {
   ownership: Ownership,
   elementRefs: ElementRefs,
   slots: Slots,
+  bindAndClass: BindAndClass,
   rowDirectives: RowDirectives,
   rowMethodCall: RowMethodCall,
   rowTextSpace: RowTextSpace,

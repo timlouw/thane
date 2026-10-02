@@ -310,17 +310,19 @@ const branchScope = (model: DomModel, indent: string): NavScope =>
     : createScope(model, indent, []);
 
 /**
- * The write for a dynamic attribute: through a DOM property when the analysis found one with
- * identical semantics (`class` → `className` on HTML elements), otherwise `setAttribute`.
+ * The write for a dynamic attribute: `class:name` toggles its class; through a DOM property when the analysis
+ * found one with identical semantics (`class` → `className` on HTML elements), otherwise `setAttribute`.
  */
 const attributeWrite = (
   target: string,
   binding: { property?: string | undefined; domProperty?: string | undefined },
   value: string,
 ): string =>
-  binding.domProperty
-    ? `${target}.${binding.domProperty} = ${value}`
-    : `${target}.setAttribute('${binding.property}', ${value})`;
+  binding.property?.startsWith('class:')
+    ? `${target}.classList.toggle('${binding.property.slice(6)}', !!(${value}))`
+    : binding.domProperty
+      ? `${target}.${binding.domProperty} = ${value}`
+      : `${target}.setAttribute('${binding.property}', ${value})`;
 
 // ============================================================================
 // Redundancy-guarded writes

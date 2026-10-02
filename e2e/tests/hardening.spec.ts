@@ -1836,3 +1836,33 @@ test.describe('slots', () => {
     expect(probe.pageErrors).toEqual([]);
   });
 });
+
+test.describe('bind: and class:', () => {
+  test('a field shows its signal, and what is typed, ticked or chosen writes it', async ({ page }) => {
+    const probe = await mountProbe(page, 'bindAndClass');
+    await expect(page.locator('.bc-name')).toHaveValue('ada');
+    await expect(page.locator('.bc-size')).toHaveValue('m');
+    await page.locator('.bc-name').fill('grace');
+    await page.locator('.bc-agree').check();
+    await page.locator('.bc-size').selectOption('l');
+    await expect(page.locator('.bc-out')).toHaveText('grace agreed l');
+    // The signals written from code show in the fields
+    await setProbe(page, 'bindAndClass', 'name', 'lin');
+    await setProbe(page, 'bindAndClass', 'agree', false);
+    await setProbe(page, 'bindAndClass', 'size', 's');
+    await expect(page.locator('.bc-name')).toHaveValue('lin');
+    await expect(page.locator('.bc-agree')).not.toBeChecked();
+    await expect(page.locator('.bc-size')).toHaveValue('s');
+    expect(probe.pageErrors).toEqual([]);
+  });
+
+  test('class:name toggles one class, next to the static ones', async ({ page }) => {
+    await mountProbe(page, 'bindAndClass');
+    const field = page.locator('.bc-name');
+    await expect(field).toHaveClass('bc-name field');
+    await field.fill('');
+    await expect(field).toHaveClass('bc-name field empty');
+    await field.fill('margaret');
+    await expect(field).toHaveClass('bc-name field long');
+  });
+});

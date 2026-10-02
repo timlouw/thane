@@ -12,6 +12,8 @@
  *   or nothing;
  * - alone in an element's tag, `<input ${value}>`: `__thaneTag<'input'>()(value)`, a `when()` or an element ref
  *   for that kind of element;
+ * - a two-way binding, `<input bind:value=${name}>`: `(name) satisfies ThaneBind<'value'>`, a writable signal of a
+ *   string (of a boolean for `bind:checked`);
  * - an event attribute's handler, as follows.
  *
  * Each handler the compiler registers as the listener (an arrow function, a function expression, or a reference
@@ -51,6 +53,8 @@ export const TEMPLATE_TYPES_DECLARATION =
   "      : 'this ref is for another kind of element than the tag it is in'\n" +
   '    : "a ${…} alone in an element\'s tag is when(condition) or an element ref";\n' +
   'declare function __thaneTag<K extends string>(): <V>(value: V & ThaneTagCheck<K, V>) => void;\n' +
+  "/** What bind:value and bind:checked take: a signal they write, of the property's type */\n" +
+  "type ThaneBind<P extends string> = import('thane').Signal<P extends 'checked' ? boolean : string>;\n" +
   '/** The type of an `@event=${handler}` handler: the event lib.dom gives the name (or any), on the element of the tag `T` */\n' +
   "type ThaneEventListener<K extends string, T extends string = ''> = (\n" +
   '  event: (K extends keyof HTMLElementEventMap ? HTMLElementEventMap[K] : any) &\n' +
@@ -178,6 +182,9 @@ const templateInsertions = (sourceFile: ts.SourceFile): Insertion[] => {
           return wrap('(', `) satisfies ${type}`);
         }
         if (!inTag(markup)) return wrap('(', ') satisfies ThaneContent');
+        // bind:value=${name}: a signal the binding writes, of the property's type
+        const bound = /\sbind:(value|checked)=["']?$/.exec(before);
+        if (bound) return wrap('(', `) satisfies ThaneBind<'${bound[1]!}'>`);
         if (inAttributeValue(markup)) return wrap('(', ') satisfies ThaneAttribute');
         wrap(`__thaneTag<'${openTagName(markup)}'>()(`, ')');
       });

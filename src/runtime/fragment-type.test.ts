@@ -24,6 +24,8 @@ const VALID: Record<string, string> = {
     'return html`<ul>${Picker({ onPick: (id) => id.toFixed(0), label: spinner })}</ul>`;',
   'a component without props, or with optional ones only, is called without them':
     'const Nav = defineComponent(() => ({ template: html`<nav></nav>` })); const Tip = defineComponent<{ text?: string }>(() => ({ template: html`<i></i>` })); return html`${Nav()}${Tip()}${Tip({ text: "t" })}`;',
+  'a signal is a Signal, and a ReadonlySignal':
+    'const s: Signal<number> = signal(1); const r: ReturnType<typeof computed<number>> = computed(() => s()); return [s, r];',
   'css is a string, which styles takes':
     'const s: string = css`p { color: red; }`; return defineComponent(() => ({ template: html`<p></p>`, styles: s }));',
 };
@@ -40,6 +42,10 @@ const INVALID: Record<string, [call: string, message: RegExp]> = {
     /Property 'toUpperCase' does not exist on type 'number'/,
   ],
   'a component with a required prop called without props': ['return Card();', /Expected 1 arguments, but got 0/],
+  'a computed where a signal is written': [
+    'const s: Signal<number> = computed(() => 1); return s;',
+    /is not assignable to type 'Signal<number>'/,
+  ],
   'css is a string, not any': ['const n: number = css`p {}`; return n;', /not assignable to type 'number'/],
   'a string where a prop takes a Fragment': [
     "return html`${Picker({ onPick: () => {}, label: '<b>x</b>' })}`;",
@@ -56,6 +62,8 @@ const runtime = (file: string): string => join(import.meta.dir, file).replaceAll
 const usage = [
   `import { html, css, when, repeat, type Fragment } from '${runtime('markers.js')}';`,
   `import { defineComponent } from '${runtime('component.js')}';`,
+  `import { computed, signal } from '${runtime('signal.js')}';`,
+  `import type { Signal } from '${runtime('types.js')}';`,
   'const items = [{ id: 1 }];',
   'const spinner = html`<span></span>`;',
   'const Card = defineComponent<{ n: number }>(({ props }) => ({ template: html`<b>${props.n}</b>` }));',

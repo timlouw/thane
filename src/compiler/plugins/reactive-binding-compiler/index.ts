@@ -358,6 +358,9 @@ const placeholderOf = (node: ts.Expression, scope: InlineScope): string | null =
   return null;
 };
 
+/** `bind:value=` or `bind:checked="` at the end of a template's text: the two-way bindings */
+const BIND_ATTRIBUTE = /\sbind:(value|checked)=(["']?)$/;
+
 /** `props.body`, where `body` is a prop of the component typed Fragment */
 const isSlotRead = (node: ts.Expression, scope: InlineScope): node is ts.PropertyAccessExpression =>
   ts.isPropertyAccessExpression(node) &&
@@ -490,7 +493,21 @@ const extractAndInlineFragment = (
   for (const span of templateLiteral.templateSpans) {
     const expr = span.expression;
     const inTag = /<[A-Za-z][^<>]*$/.test(markup);
+    const tag = inTag ? /<([A-Za-z][\w-]*)[^<>]*$/.exec(markup)![1]!.toLowerCase() : '';
     markup += '_' + span.literal.rawText!;
+    // bind:value=${name} / bind:checked=${on}: the property's binding, and the listener that writes the signal
+    const bound = inTag ? BIND_ATTRIBUTE.exec(content) : null;
+    if (bound) {
+      const [written, property, quote] = bound as unknown as [string, 'value' | 'checked', string];
+      const signal = expr.getText(sourceFile);
+      const event = property === 'checked' || tag === 'select' ? 'change' : 'input';
+      const rest = span.literal.rawText!;
+      content =
+        content.slice(0, content.length - written.length) +
+        ` ${property}=\${${signal}()} @${event}=\${(_e) => ${signal}(_e.target.${property})}` +
+        (quote && rest.startsWith(quote) ? rest.slice(1) : rest);
+      continue;
+    }
     const flow = inTag ? null : desugar(expr, sourceFile, branches);
     if (flow !== null) {
       content += '${' + flow + '}' + span.literal.rawText!;

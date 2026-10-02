@@ -467,7 +467,7 @@ export const buildWhenElseEdits = (whenElseBlocks: WhenElseBlock[]): TemplateEdi
  * the static markup of their element. The property is set when the element is bound; an
  * attribute left in the template would mean "present" for a boolean, or a stale default for
  * `value`. `class` stays: an empty class attribute is harmless and lets the first write be
- * skipped when the value is empty.
+ * skipped when the value is empty. A `class:name` toggle is not an attribute at all, and goes too.
  */
 export const stripPropertyBoundAttributes = (
   html: string,
@@ -476,7 +476,8 @@ export const stripPropertyBoundAttributes = (
   let out = html;
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   for (const b of bindings) {
-    if (!b.domProperty || b.domProperty === 'className' || !b.property) continue;
+    const toggle = !!b.property?.startsWith('class:');
+    if (!b.property || (!toggle && (!b.domProperty || b.domProperty === 'className'))) continue;
     const id = b.id ?? b.elementId;
     if (!id) continue;
     const attr = `\\s${esc(b.property)}(?:="[^"]*"|='[^']*'|(?=[\\s/>]))`;

@@ -67,6 +67,12 @@ describe('THANE414 — a signal in a template without its call', () => {
     ]);
   });
 
+  test('a two-way binding takes the signal itself', () => {
+    expect(
+      messages(noUncalledSignal, '<input bind:value=${query} /><input type="checkbox" bind:checked="${show}" />'),
+    ).toEqual([]);
+  });
+
   test('a call, and a name that is not a signal where the template reads it, pass', () => {
     expect(
       messages(noUncalledSignal, '<p class=${total()}>${count()}</p><input @input=${(e) => query(e.type)} />'),

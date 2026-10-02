@@ -353,6 +353,7 @@ These are reported by the compiler while it compiles a template, as build errors
 | THANE014 | A content `when()` that is not a conditional: a condition alone (`when(cond)` goes in an element's tag), more than three arguments, or a branch that is not a template |
 | THANE015 | An event modifier the compiler does not know (`@click.prevnet`), or `.passive` with `.prevent` |
 | THANE016 | A `${…}` alone in a tag that is not `when()` or an element ref, or a ref in a list row |
+| THANE017 | A `bind:` other than `bind:value` and `bind:checked`, or a `class:name` without a condition |
 
 ### THANE007 — one root element per row
 
@@ -454,5 +455,15 @@ template: html`<input disabled=${disabled()} ${input} ${when(open())} />`;
 
 A `${…}` alone in a tag used to stay in the template as written. In a row, read the element in a handler
 (`e.currentTarget`), or give the row a component of its own that holds the ref.
+
+### THANE017 — `bind:` and `class:`
+
+```typescript
+// ❌ BAD — there is no bind:text; class:name needs its condition
+template: html`<p bind:text=${label} class:active>…</p>`;
+
+// ✅ GOOD
+template: html`<input bind:value=${label} /><p class:active=${selected()}>…</p>`;
+```
 
 ← [Back to Docs](README.md)

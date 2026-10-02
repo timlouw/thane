@@ -81,13 +81,43 @@ properties, so their values keep their JavaScript meaning: `value`, `checked`, `
 (`checked=${false}` unchecks; `value=${name()}` moves the field's live value). A `:`-prefixed
 attribute name is rejected at build time (THANE006).
 
-### Dynamic Classes
+### Class Toggles
 
-Bind `class` using an expression:
+`class:name=${condition}` adds the class while the condition is truthy and removes it while it is not, next to the
+element's static classes:
 
 ```typescript
-template: html` <button class=${isActive() ? 'btn active' : 'btn'}>Click</button> `;
+template: html`<input class="field" class:invalid=${errors().email !== ''} class:filled=${email() !== ''} />`;
 ```
+
+Each toggle writes its own class (`classList.toggle`), so the classes do not need to be assembled into one string. A whole
+`class=${…}` binding replaces every class of the element, toggled ones included: use one form or the other on an
+element. A `class:` without a condition is a build error (THANE017).
+
+### Two-Way Bindings
+
+`bind:value=${signal}` shows a signal in a field and writes what is typed back into it; `bind:checked=${signal}` does the
+same for a checkbox:
+
+```typescript
+const email = signal('');
+const subscribe = signal(false);
+const plan = signal('basic');
+
+template: html`
+  <input type="email" bind:value=${email} />
+  <input type="checkbox" bind:checked=${subscribe} />
+  <select bind:value=${plan}>
+    <option value="basic">Basic</option>
+    <option value="pro">Pro</option>
+  </select>
+`;
+```
+
+Each is the property's binding (`value=${email()}`) and the listener that writes the signal: `input` for an input or a
+textarea, `change` for a select and a checkbox. The type check takes a writable signal of a string for `bind:value` and
+of a boolean for `bind:checked`: a `computed()` or a `Signal<number>` there is a type error. Any other `bind:` is a
+build error (THANE017).
 
 ## Style Bindings
 

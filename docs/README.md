@@ -169,7 +169,7 @@ How the build pipeline works — esbuild plugins, template compilation, binding 
 
 ## Lint Rules
 
-12 compile-time lint rules (THANE400–THANE416) and the compiler errors (THANE006–THANE015) that catch silent failures before they reach the browser.
+12 compile-time lint rules (THANE400–THANE416) and the compiler errors (THANE006–THANE017) that catch silent failures before they reach the browser.
 
 **→ [Lint Rules](lint-rules.md)**
 
