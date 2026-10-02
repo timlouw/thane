@@ -6,10 +6,8 @@ import { expose } from '../shared/expose.js';
 export const ReorderBeforeAnchor = defineComponent('hardening-reorder-before-anchor', () => {
   const items = signal([{ id: 'A' }, { id: 'B' }, { id: 'C' }]);
   expose('reorderBeforeAnchor', { items });
-  return {
-    template: html`<ul class="reorder">
-      ${repeat(items(), (item) => html`<li class="reorder-item">${item.id}</li>`, { key: 'id' })}
-      <li class="reorder-tail">T</li>
-    </ul>`,
-  };
+  return html`<ul class="reorder">
+    ${repeat(items(), (item) => html`<li class="reorder-item">${item.id}</li>`, { key: 'id' })}
+    <li class="reorder-tail">T</li>
+  </ul>`;
 });

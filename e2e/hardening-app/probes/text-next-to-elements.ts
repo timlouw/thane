@@ -10,9 +10,8 @@ export const TextNextToElements = defineComponent('hardening-text-next-to-elemen
   const b = signal('B');
   const on = signal(true);
   expose('textNextToElements', { items, a, b, on });
-  return {
-    // prettier-ignore
-    template: html`<div class="next-to">
+  // prettier-ignore
+  return html`<div class="next-to">
       <ul class="next-to-label">${repeat(items(), (it) => html`<li><b>Name:</b> ${it.first}</li>`)}</ul>
       <ul class="next-to-check">${repeat(items(), (it) => html`<li><input type="checkbox"> ${it.first}</li>`)}</ul>
       <ul class="next-to-before">${repeat(items(), (it) => html`<li>${it.first} <b>x</b></li>`)}</ul>
@@ -25,6 +24,5 @@ export const TextNextToElements = defineComponent('hardening-text-next-to-elemen
       <p class="next-to-elements"><b>x</b> <i>y</i></p>
       <p class="next-to-lines"><b>x</b>
         <i>y</i></p>
-    </div>`,
-  };
+    </div>`;
 });

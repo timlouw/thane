@@ -7,13 +7,11 @@ export const ComponentRowsInWhen = defineComponent('hardening-component-rows-in-
   const show = signal(false);
   const items = signal(['x', 'y']);
   expose('componentRowsInWhen', { show });
-  return {
-    template: html`<section>
-      <div class="component-rows-when" ${when(show())}>
-        <ul>
-          ${repeat(items(), (i) => ProbeCard({ label: i }))}
-        </ul>
-      </div>
-    </section>`,
-  };
+  return html`<section>
+    <div class="component-rows-when" ${when(show())}>
+      <ul>
+        ${repeat(items(), (i) => ProbeCard({ label: i }))}
+      </ul>
+    </div>
+  </section>`;
 });

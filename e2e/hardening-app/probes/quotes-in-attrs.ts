@@ -11,12 +11,10 @@ export const QuotesInAttrs = defineComponent('hardening-quotes-in-attrs', () => 
   const sel = signal(1);
   const flag = signal(true);
   expose('quotesInAttrs', { items, sel, flag });
-  return {
-    // The double quotes are what the probe is about: Prettier would turn them into single quotes
-    // prettier-ignore
-    template: html`<div>
+  // The double quotes are what the probe is about: Prettier would turn them into single quotes
+  // prettier-ignore
+  return html`<div>
       <p class="quotes-top" title=${flag() ? "one" : "two"}>top</p>
       <ul>${repeat(items(), (it) => html`<li class=${sel() === it.id ? "on" : ""} title=${it.on ? "yes" : "no"} data-x="${it.label + "!"}">${it.label}</li>`, { key: "id" })}</ul>
-    </div>`,
-  };
+    </div>`;
 });

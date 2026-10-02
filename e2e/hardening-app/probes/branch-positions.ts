@@ -15,9 +15,8 @@ export const BranchPositions = defineComponent('hardening-branch-positions', () 
   const clicks = signal(0);
   const inc = () => clicks(clicks() + 1);
   expose('branchPositions', { t, only, text, l1, l2, l3, clicks });
-  return {
-    // prettier-ignore
-    template: html`<div class="branches">
+  // prettier-ignore
+  return html`<div class="branches">
       <section class="branches-only"><div class="branches-only-w" ${when(only())} title=${t()}>${t()}<button class="branches-only-btn" @click=${inc}>+</button>${CountingKid({ label: 'only' })}</div></section>
       <section class="branches-text">before ${when(text(), html`<i class="branches-then" title=${t()}>${t()}<button class="branches-then-btn" @click=${inc}>+</button>${CountingKid({ label: 'then' })}</i>`, html`<u class="branches-else" title=${t()}>${t()}</u>`)} after</section>
       <section class="branches-deep">
@@ -27,6 +26,5 @@ export const BranchPositions = defineComponent('hardening-branch-positions', () 
         </div>
       </section>
       <b class="branches-clicks">${clicks()}</b>
-    </div>`,
-  };
+    </div>`;
 });

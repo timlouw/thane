@@ -130,63 +130,61 @@ export const Nested = defineComponent('bench-nested', () => {
     rows([]);
   };
 
-  return {
-    template: html`
-      <div class="container">
-        <div class="jumbotron">
-          <div class="row">
-            <div class="col-md-6">
-              <h1>Thane Nested Benchmark</h1>
-            </div>
-            <div class="col-md-6">
-              <div class="row">
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="run" @click=${run}
-                    >Create 1,000 rows</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="toggle" @click=${toggle}
-                    >Toggle every 10th row</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="inner" @click=${replaceInner}
-                    >Replace every 10th inner list</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="swaprows" @click=${swapRows}
-                    >Swap Rows</button
-                  >
-                </div>
-                <div class="col-sm-6 smallpad">
-                  <button type="button" class="btn btn-primary btn-block" id="clear" @click=${clear}>Clear</button>
-                </div>
+  return html`
+    <div class="container">
+      <div class="jumbotron">
+        <div class="row">
+          <div class="col-md-6">
+            <h1>Thane Nested Benchmark</h1>
+          </div>
+          <div class="col-md-6">
+            <div class="row">
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="run" @click=${run}
+                  >Create 1,000 rows</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="toggle" @click=${toggle}
+                  >Toggle every 10th row</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="inner" @click=${replaceInner}
+                  >Replace every 10th inner list</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="swaprows" @click=${swapRows}
+                  >Swap Rows</button
+                >
+              </div>
+              <div class="col-sm-6 smallpad">
+                <button type="button" class="btn btn-primary btn-block" id="clear" @click=${clear}>Clear</button>
               </div>
             </div>
           </div>
         </div>
-        <table class="table table-hover table-striped test-data">
-          <tbody id="tbody">
-            ${repeat(
-              rows(),
-              (row) => html`
-                <tr>
-                  <td class="col-md-1">${row.id}</td>
-                  <td class="col-md-4"><span ${when(row.show)}>${row.label}</span></td>
-                  <td class="col-md-7">
-                    <div class="inner">
-                      ${repeat(row.children, (child) => html`<span>${child.label}</span>`, { key: 'id' })}
-                    </div>
-                  </td>
-                </tr>
-              `,
-              { key: 'id' },
-            )}
-          </tbody>
-        </table>
       </div>
-    `,
-  };
+      <table class="table table-hover table-striped test-data">
+        <tbody id="tbody">
+          ${repeat(
+            rows(),
+            (row) => html`
+              <tr>
+                <td class="col-md-1">${row.id}</td>
+                <td class="col-md-4"><span ${when(row.show)}>${row.label}</span></td>
+                <td class="col-md-7">
+                  <div class="inner">
+                    ${repeat(row.children, (child) => html`<span>${child.label}</span>`, { key: 'id' })}
+                  </div>
+                </td>
+              </tr>
+            `,
+            { key: 'id' },
+          )}
+        </tbody>
+      </table>
+    </div>
+  `;
 });

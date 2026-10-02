@@ -5,9 +5,7 @@ import { defineComponent, html, repeat, signal } from 'thane';
 export const exportedTone = signal('calm');
 export const exportedTags = signal(['a', 'b']);
 
-const ExportedKid = defineComponent<{ n: number }>(({ props }) => ({
-  template: html`<em class="exported-kid-n">${props.n}</em>`,
-}));
+const ExportedKid = defineComponent<{ n: number }>(({ props }) => html`<em class="exported-kid-n">${props.n}</em>`);
 
 export const ExportedStatic = html`<span class="exported-static">static</span>`;
 

@@ -6,16 +6,14 @@ export const UserPage = defineComponent('user-page', ({ route }) => {
 
   const userId = signal(route!.params.id);
 
-  return {
-    template: html`
-      <section data-testid="user-page">
-        <h2 data-testid="page-title">User Profile</h2>
-        <div data-testid="user-id">${userId()}</div>
-        <div data-testid="user-visit-count">${visitCount()}</div>
-        <div data-testid="user-tab">${route!.search.tab}</div>
-      </section>
-    `,
-  };
+  return html`
+    <section data-testid="user-page">
+      <h2 data-testid="page-title">User Profile</h2>
+      <div data-testid="user-id">${userId()}</div>
+      <div data-testid="user-visit-count">${visitCount()}</div>
+      <div data-testid="user-tab">${route!.search.tab}</div>
+    </section>
+  `;
 });
 
 export default UserPage;

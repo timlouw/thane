@@ -9,9 +9,7 @@ export const ComponentRowTemplate = defineComponent('hardening-component-row-tem
     { id: 2, label: 'b' },
   ]);
   expose('componentRowTemplate', { rows });
-  return {
-    template: html`<div class="component-row">
-      ${repeat(rows(), (item) => ProbeCard({ label: `x-${item.label}` }), { key: 'id' })}
-    </div>`,
-  };
+  return html`<div class="component-row">
+    ${repeat(rows(), (item) => ProbeCard({ label: `x-${item.label}` }), { key: 'id' })}
+  </div>`;
 });

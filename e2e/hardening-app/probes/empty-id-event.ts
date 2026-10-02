@@ -6,8 +6,6 @@ import { expose } from '../shared/expose.js';
 export const EmptyIdEvent = defineComponent('hardening-empty-id-event', () => {
   const clicks = signal(0);
   expose('emptyIdEvent', { clicks });
-  return {
-    // prettier-ignore
-    template: html`<div class="empty-id"><button id="" class="empty-id-btn" @click=${() => clicks(clicks() + 1)}>${clicks()}</button></div>`,
-  };
+  // prettier-ignore
+  return html`<div class="empty-id"><button id="" class="empty-id-btn" @click=${() => clicks(clicks() + 1)}>${clicks()}</button></div>`;
 });

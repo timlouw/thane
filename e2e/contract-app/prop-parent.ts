@@ -10,13 +10,11 @@ export const PropParent = defineComponent<PropParentProps>('prop-parent', ({ pro
   const valueA = props.valueA;
   const valueB = props.valueB;
 
-  return {
-    template: html`
-      <div data-testid="prop-parent-root">
-        <span data-testid="prop-parent-a">${valueA()}</span>
-        <span data-testid="prop-parent-static">parent-static</span>
-        ${PropChild({ valueA: valueA, valueB: valueB })}
-      </div>
-    `,
-  };
+  return html`
+    <div data-testid="prop-parent-root">
+      <span data-testid="prop-parent-a">${valueA()}</span>
+      <span data-testid="prop-parent-static">parent-static</span>
+      ${PropChild({ valueA: valueA, valueB: valueB })}
+    </div>
+  `;
 });

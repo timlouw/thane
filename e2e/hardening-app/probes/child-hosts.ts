@@ -11,8 +11,6 @@ export const ChildHosts = defineComponent('hardening-child-hosts', () => {
     { id: 2, g: 'g2' },
   ]);
   expose('childHosts', { rows });
-  return {
-    // prettier-ignore
-    template: html`<div class="hosts"><p class="hosts-p">${ProbeCard({ label: 'p' })}</p><table><tbody class="hosts-tbody">${repeat(rows(), (r) => html`<tr><td>${r.g}</td>${ProbeCard({ label: `tr-${r.g}` })}</tr>`, { key: "id" })}</tbody></table><div class="hosts-list">${repeat(rows(), (r) => html`${ProbeCard({ label: `row-${r.g}` })}`, { key: "id" })}</div><svg class="hosts-svg">${ProbeCard({ label: 'svg' })}</svg></div>`,
-  };
+  // prettier-ignore
+  return html`<div class="hosts"><p class="hosts-p">${ProbeCard({ label: 'p' })}</p><table><tbody class="hosts-tbody">${repeat(rows(), (r) => html`<tr><td>${r.g}</td>${ProbeCard({ label: `tr-${r.g}` })}</tr>`, { key: "id" })}</tbody></table><div class="hosts-list">${repeat(rows(), (r) => html`${ProbeCard({ label: `row-${r.g}` })}`, { key: "id" })}</div><svg class="hosts-svg">${ProbeCard({ label: 'svg' })}</svg></div>`;
 });

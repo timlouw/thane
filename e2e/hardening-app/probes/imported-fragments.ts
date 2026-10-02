@@ -14,13 +14,11 @@ export const ImportedFragments = defineComponent('hardening-imported-fragments',
   const open = signal(true);
   const rows = signal([1, 2]);
   expose('importedFragments', { open, rows, tone: exportedTone, tags: exportedTags });
-  return {
-    template: html`<div class="imported">
-      <p class="imported-top">${ExportedStatic}${ExportedBadge}</p>
-      <div class="imported-branch">${when(open(), ExportedTags)}</div>
-      <ol class="imported-rows">
-        ${repeat(rows(), (row) => html`<li class="imported-row">${row}${ExportedBadge}</li>`, { key: (row) => row })}
-      </ol>
-    </div>`,
-  };
+  return html`<div class="imported">
+    <p class="imported-top">${ExportedStatic}${ExportedBadge}</p>
+    <div class="imported-branch">${when(open(), ExportedTags)}</div>
+    <ol class="imported-rows">
+      ${repeat(rows(), (row) => html`<li class="imported-row">${row}${ExportedBadge}</li>`, { key: (row) => row })}
+    </ol>
+  </div>`;
 });

@@ -8,8 +8,6 @@ export const TopLevelBranches = defineComponent('hardening-top-level-branches', 
   const a = signal(true);
   const b = signal(false);
   expose('topLevelBranches', { t, a, b });
-  return {
-    // prettier-ignore
-    template: html`<b class="top-w" ${when(a())} title=${t()}>${t()}</b>${when(b(), html`<i class="top-then" title=${t()}>${t()}</i>`, html`<u class="top-else" title=${t()}>${t()}</u>`)}<span class="top-static">S</span>`,
-  };
+  // prettier-ignore
+  return html`<b class="top-w" ${when(a())} title=${t()}>${t()}</b>${when(b(), html`<i class="top-then" title=${t()}>${t()}</i>`, html`<u class="top-else" title=${t()}>${t()}</u>`)}<span class="top-static">S</span>`;
 });

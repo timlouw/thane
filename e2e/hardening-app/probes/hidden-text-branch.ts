@@ -7,8 +7,6 @@ export const HiddenTextBranch = defineComponent('hardening-hidden-text-branch', 
   const on = signal(false);
   const n = signal(1);
   expose('hiddenTextBranch', { on, n });
-  return {
-    // prettier-ignore
-    template: html`<section class="hidden-text">${when(on(), html`text-${n()}`, html`<u class="hidden-text-else">else</u>`)}</section>`,
-  };
+  // prettier-ignore
+  return html`<section class="hidden-text">${when(on(), html`text-${n()}`, html`<u class="hidden-text-else">else</u>`)}</section>`;
 });

@@ -14,9 +14,8 @@ export const RowWhenAttribute = defineComponent('hardening-row-when-attribute', 
   const tag = signal('t0');
   const toggle = (id: number) => rows(rows().map((r) => (r.id === id ? { ...r, on: !r.on } : r)));
   expose('rowWhenAttribute', { rows, tag, toggle });
-  return {
-    // prettier-ignore
-    template: html`<div>
+  // prettier-ignore
+  return html`<div>
       <ul class="when-attr-a-list">
         ${repeat(
           rows(),
@@ -44,6 +43,5 @@ export const RowWhenAttribute = defineComponent('hardening-row-when-attribute', 
             </li>`, { key: "id" },
         )}
       </ul>
-    </div>`,
-  };
+    </div>`;
 });

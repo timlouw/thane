@@ -7,16 +7,14 @@ export const BindAndClass = defineComponent('hardening-bind-and-class', () => {
   const agree = signal(false);
   const size = signal('m');
   expose('bindAndClass', { name, agree, size });
-  return {
-    template: html`<form>
-      <input class="bc-name field" bind:value=${name} class:empty=${name() === ''} class:long=${name().length > 5} />
-      <input class="bc-agree" type="checkbox" bind:checked=${agree} />
-      <select class="bc-size" bind:value=${size}>
-        <option value="s">S</option>
-        <option value="m">M</option>
-        <option value="l">L</option>
-      </select>
-      <p class="bc-out">${name()} ${agree() ? 'agreed' : 'not yet'} ${size()}</p>
-    </form>`,
-  };
+  return html`<form>
+    <input class="bc-name field" bind:value=${name} class:empty=${name() === ''} class:long=${name().length > 5} />
+    <input class="bc-agree" type="checkbox" bind:checked=${agree} />
+    <select class="bc-size" bind:value=${size}>
+      <option value="s">S</option>
+      <option value="m">M</option>
+      <option value="l">L</option>
+    </select>
+    <p class="bc-out">${name()} ${agree() ? 'agreed' : 'not yet'} ${size()}</p>
+  </form>`;
 });

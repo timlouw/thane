@@ -11,14 +11,12 @@ export const RebuiltMarkup = defineComponent('hardening-rebuilt-markup', () => {
   const opts = signal(['o1', 'o2']);
   const picks = signal(0);
   expose('rebuiltMarkup', { t, x, opts, picks });
-  return {
-    // prettier-ignore
-    template: html`<div class="rebuilt">
+  // prettier-ignore
+  return html`<div class="rebuilt">
       <table class="rebuilt-table"><tr class="rebuilt-tr" title=${t()}><td class="rebuilt-td">${x()}</td><td class="rebuilt-td2" title=${t()} @click=${() => picks(picks() + 1)}>c</td></tr></table>
       <div class="rebuilt-pwrap"><p class="rebuilt-p">intro<div class="rebuilt-div" title=${t()}>${x()}</div></p><span class="rebuilt-after" title=${t()}>${x()}</span></div>
       <ul class="rebuilt-list"><li class="rebuilt-li" title=${t()}>one<li class="rebuilt-li2" title=${t()}>${x()}</ul>
       <select class="rebuilt-select"><option value="">Choose</option>${repeat(opts(), (o) => html`<option class="rebuilt-opt" value=${o}>${o}</option>`)}</select>
       <b class="rebuilt-picks">${picks()}</b>
-    </div>`,
-  };
+    </div>`;
 });

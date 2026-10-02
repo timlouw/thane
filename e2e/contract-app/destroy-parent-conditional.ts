@@ -10,15 +10,11 @@ export const DestroyParentConditional = defineComponent('destroy-parent-conditio
   const showChild = signal(true);
   const toggle = () => showChild(!showChild());
 
-  return {
-    template: html`
-      <div data-testid="destroy-conditional-root">
-        <button data-testid="destroy-cond-toggle" @click=${toggle}>Toggle</button>
-        <div data-testid="destroy-cond-status">${showChild() ? 'visible' : 'hidden'}</div>
-        <div data-testid="destroy-cond-branch" ${when(showChild())}>
-          ${DestroyTracker({ trackerId: 'cond-child' })}
-        </div>
-      </div>
-    `,
-  };
+  return html`
+    <div data-testid="destroy-conditional-root">
+      <button data-testid="destroy-cond-toggle" @click=${toggle}>Toggle</button>
+      <div data-testid="destroy-cond-status">${showChild() ? 'visible' : 'hidden'}</div>
+      <div data-testid="destroy-cond-branch" ${when(showChild())}> ${DestroyTracker({ trackerId: 'cond-child' })} </div>
+    </div>
+  `;
 });

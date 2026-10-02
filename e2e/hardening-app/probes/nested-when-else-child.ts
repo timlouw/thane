@@ -7,11 +7,9 @@ export const NestedWhenElseChild = defineComponent('hardening-nested-when-else-c
   const show = signal(true);
   const flag = signal(true);
   expose('nestedWhenElseChild', { show, flag });
-  return {
-    template: html`<section>
-      <div class="nested-branch-when" ${when(show())}>
-        ${when(flag(), html`<p class="nested-branch-then">${ProbeCard({ label: 'branch-card' })}</p>`, html`<p class="nested-branch-else">no</p>`)}
-      </div>
-    </section>`,
-  };
+  return html`<section>
+    <div class="nested-branch-when" ${when(show())}>
+      ${when(flag(), html`<p class="nested-branch-then">${ProbeCard({ label: 'branch-card' })}</p>`, html`<p class="nested-branch-else">no</p>`)}
+    </div>
+  </section>`;
 });

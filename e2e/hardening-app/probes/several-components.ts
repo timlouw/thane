@@ -19,7 +19,7 @@ const LocalPill = defineComponent<{ label: string }>(({ props }) => {
 export const ExportedCount = defineComponent(() => {
   const count = signal(3);
   expose('exportedCount', { count });
-  return { template: html`<b class="exported-count-value">${count()}</b>` };
+  return html`<b class="exported-count-value">${count()}</b>`;
 });
 
 export const SeveralComponents = defineComponent('hardening-several-components', () => {
@@ -29,14 +29,12 @@ export const SeveralComponents = defineComponent('hardening-several-components',
     { id: 2, label: 'b' },
   ]);
   expose('severalComponents', { count, items });
-  return {
-    template: html`<div class="several">
-      <p class="several-own">${count()}</p>
-      <span class="several-plain">plain</span>
-      ${LocalPill({ label: 'top' })} ${ExportedCount()}
-      <ul class="several-rows">
-        ${repeat(items(), (item) => html`<li>${LocalPill({ label: item.label })}</li>`, { key: 'id' })}
-      </ul>
-    </div>`,
-  };
+  return html`<div class="several">
+    <p class="several-own">${count()}</p>
+    <span class="several-plain">plain</span>
+    ${LocalPill({ label: 'top' })} ${ExportedCount()}
+    <ul class="several-rows">
+      ${repeat(items(), (item) => html`<li>${LocalPill({ label: item.label })}</li>`, { key: 'id' })}
+    </ul>
+  </div>`;
 });

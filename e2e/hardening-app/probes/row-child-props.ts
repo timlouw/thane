@@ -11,14 +11,12 @@ export const RowChildProps = defineComponent('hardening-row-child-props', () => 
     { id: 2, label: 'b' },
   ]);
   expose('rowChildProps', { rows });
-  return {
-    template: html`<div>
-      <ul class="child-props-in-row">
-        ${repeat(rows(), (r) => html`<li>${CountingKid({ label: r.label })}</li>`, { key: 'id' })}
-      </ul>
-      <div class="child-props-as-row"
-        >${repeat(rows(), (r) => CountingKid({ label: 'row-' + r.label }), { key: 'id' })}</div
-      >
-    </div>`,
-  };
+  return html`<div>
+    <ul class="child-props-in-row">
+      ${repeat(rows(), (r) => html`<li>${CountingKid({ label: r.label })}</li>`, { key: 'id' })}
+    </ul>
+    <div class="child-props-as-row"
+      >${repeat(rows(), (r) => CountingKid({ label: 'row-' + r.label }), { key: 'id' })}</div
+    >
+  </div>`;
 });

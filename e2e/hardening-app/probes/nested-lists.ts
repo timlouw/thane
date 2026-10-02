@@ -53,9 +53,8 @@ export const NestedLists = defineComponent('hardening-nested-lists', () => {
   ]);
   const bump = (what: string) => log([...log(), what]);
   expose('nestedLists', { tops, show, log, sigRows });
-  return {
-    // prettier-ignore
-    template: html`<div class="lists">
+  // prettier-ignore
+  return html`<div class="lists">
       <ul class="lists-three">${repeat(tops(), (t) => html`<li class="lists-top" @click=${() => bump('top' + t.id)}><b class="lists-top-title">${t.title}</b><ol>${repeat(t.mids, (m) => html`<li class="lists-mid" @click=${() => bump('mid' + m.id)}><i class="lists-mid-name">${t.title}/${m.name}</i><ul>${repeat(m.leaves, (l) => html`<li class="lists-leaf"><button class="lists-leaf-btn" @click=${() => bump('leaf' + l.id)}>${t.title}/${m.name}/${l.n}</button><button class="lists-leaf-stop" @click.stop=${() => bump('stop' + l.id)}>s</button></li>`, { key: "id" })}</ul></li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
       <ul class="lists-idx">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m, j) => html`<li class="lists-idx-row">${j}:${m.name}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
       <ul class="lists-kids">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-kid-row">${CountingKid({ label: t.title + '/' + m.name })}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
@@ -66,6 +65,5 @@ export const NestedLists = defineComponent('hardening-nested-lists', () => {
       <ul class="lists-after">${repeat(tops(), (t) => html`<li><ol>${repeat(t.mids, (m) => html`<li class="lists-af-row">${m.name}</li>`, { key: "id" })}<li class="lists-af-btn" @click=${() => bump('after' + t.id)}>after</li></ol></li>`, { key: "id" })}</ul>
       <ul class="lists-oitem">${repeat(tops(), (item) => html`<li><ol>${repeat(item.mids, (m) => html`<li class="lists-oi-row">${ProbeCard({ label: item.title + ':' + m.name })}</li>`, { key: "id" })}</ol></li>`, { key: "id" })}</ul>
       <ul class="lists-sigitem">${repeat(sigRows(), (item) => html`<li><ol>${repeat(item().tags, (tag) => html`<li class="lists-si-row">${item().name}/${tag}</li>`)}</ol></li>`)}</ul>
-    </div>`,
-  };
+    </div>`;
 });

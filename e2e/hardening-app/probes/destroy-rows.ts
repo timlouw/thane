@@ -9,16 +9,14 @@ export const DestroyRows = defineComponent('hardening-destroy-rows', () => {
     { id: 1, n: 'a' },
     { id: 2, n: 'b' },
   ]);
-  return {
-    template: html`<ul>
-      ${repeat(
-        items(),
-        (it) =>
-          html`<li class="destroy-row"
-            ><span class="destroy-m">${it.n}-${destroyRowsTick()}</span>${Kid({ label: it.n })}</li
-          >`,
-        { key: 'id' },
-      )}
-    </ul>`,
-  };
+  return html`<ul>
+    ${repeat(
+      items(),
+      (it) =>
+        html`<li class="destroy-row"
+          ><span class="destroy-m">${it.n}-${destroyRowsTick()}</span>${Kid({ label: it.n })}</li
+        >`,
+      { key: 'id' },
+    )}
+  </ul>`;
 });

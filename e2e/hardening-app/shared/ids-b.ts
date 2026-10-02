@@ -5,10 +5,8 @@ import { expose } from './expose.js';
 export const IdsB = defineComponent('hardening-ids-b', () => {
   const t = signal('b');
   expose('idsB', { t });
-  return {
-    template: html`<div class="ids-b">
-      <p id="dev-attr" class="ids-b-attr" title=${t()}>P</p>
-      <span id="dev-inner" class="ids-b-inner" title=${t()}>I</span>
-    </div>`,
-  };
+  return html`<div class="ids-b">
+    <p id="dev-attr" class="ids-b-attr" title=${t()}>P</p>
+    <span id="dev-inner" class="ids-b-inner" title=${t()}>I</span>
+  </div>`;
 });

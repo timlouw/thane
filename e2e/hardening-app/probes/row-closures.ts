@@ -17,39 +17,37 @@ export const RowClosures = defineComponent('hardening-row-closures', () => {
   const picked = signal('');
   const pick = (what: string) => picked(what);
   expose('rowClosures', { rows, suffix, picked });
-  return {
-    template: html`<div>
-      <ul class="rc-mixed">
-        ${repeat(rows(), (r) => html`<li>${r.label + suffix()}</li>`, { key: 'id' })}
-      </ul>
-      <ul class="rc-self">
-        ${repeat(rows(), (r) => html`<li @click.self=${() => pick('self ' + r.label)}>${r.label}</li>`, { key: 'id' })}
-      </ul>
-      <ul class="rc-index">
-        ${repeat(rows(), (r, i) => html`<li @click=${() => pick('index ' + i)}>${r.label}</li>`, { key: 'id' })}
-      </ul>
-      <ul class="rc-self-index">
-        ${repeat(rows(), (r, i) => html`<li @click.self=${() => pick('self index ' + i)}>${r.label}</li>`, {
-          key: 'id',
-        })}
-      </ul>
-      <ul class="rc-branch-kid">
-        ${repeat(rows(), (r) => html`<li>${when(r.on, html`${CountingKid({ label: 'branch ' + r.label })}`)}</li>`, {
-          key: 'id',
-        })}
-      </ul>
-      <ul class="rc-inner-kid">
-        ${repeat(
-          rows(),
-          (r) =>
-            html`<li
-              ><ol
-                >${repeat(r.kids, (k) => html`<li>${CountingKid({ label: r.label + '/' + k.n })}</li>`, { key: 'id' })}</ol
-              ></li
-            >`,
-          { key: 'id' },
-        )}
-      </ul>
-    </div>`,
-  };
+  return html`<div>
+    <ul class="rc-mixed">
+      ${repeat(rows(), (r) => html`<li>${r.label + suffix()}</li>`, { key: 'id' })}
+    </ul>
+    <ul class="rc-self">
+      ${repeat(rows(), (r) => html`<li @click.self=${() => pick('self ' + r.label)}>${r.label}</li>`, { key: 'id' })}
+    </ul>
+    <ul class="rc-index">
+      ${repeat(rows(), (r, i) => html`<li @click=${() => pick('index ' + i)}>${r.label}</li>`, { key: 'id' })}
+    </ul>
+    <ul class="rc-self-index">
+      ${repeat(rows(), (r, i) => html`<li @click.self=${() => pick('self index ' + i)}>${r.label}</li>`, {
+        key: 'id',
+      })}
+    </ul>
+    <ul class="rc-branch-kid">
+      ${repeat(rows(), (r) => html`<li>${when(r.on, html`${CountingKid({ label: 'branch ' + r.label })}`)}</li>`, {
+        key: 'id',
+      })}
+    </ul>
+    <ul class="rc-inner-kid">
+      ${repeat(
+        rows(),
+        (r) =>
+          html`<li
+            ><ol
+              >${repeat(r.kids, (k) => html`<li>${CountingKid({ label: r.label + '/' + k.n })}</li>`, { key: 'id' })}</ol
+            ></li
+          >`,
+        { key: 'id' },
+      )}
+    </ul>
+  </div>`;
 });

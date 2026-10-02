@@ -9,20 +9,18 @@ export const ControlFlow = defineComponent('hardening-control-flow', () => {
   const n = signal(0);
   const items = signal(['a', 'b']);
   expose('controlFlow', { open, n, items });
-  return {
-    template: html`<div>
-      <section class="flow-ternary">
-        ${open() ? html`<b class="flow-on">on ${n()}</b>` : html`<i class="flow-off">off</i>`}
-      </section>
-      <section class="flow-and">${open() && html`<b class="flow-and-on">shown</b>`}</section>
-      <section class="flow-chain">
-        ${n() > 2 ? html`<b>many</b>` : n() > 0 ? html`<i>some</i>` : html`<u>none</u>`}
-      </section>
-      <ul class="flow-map">
-        ${items().map((item, i) => html`<li class="flow-row">${i}:${item}</li>`)}
-      </ul>
-      <div class="flow-cards">${items().map((item) => ProbeCard({ label: item }))}</div>
-      <p class="flow-text">${open() ? 'yes' : 'no'}</p>
-    </div>`,
-  };
+  return html`<div>
+    <section class="flow-ternary">
+      ${open() ? html`<b class="flow-on">on ${n()}</b>` : html`<i class="flow-off">off</i>`}
+    </section>
+    <section class="flow-and">${open() && html`<b class="flow-and-on">shown</b>`}</section>
+    <section class="flow-chain">
+      ${n() > 2 ? html`<b>many</b>` : n() > 0 ? html`<i>some</i>` : html`<u>none</u>`}
+    </section>
+    <ul class="flow-map">
+      ${items().map((item, i) => html`<li class="flow-row">${i}:${item}</li>`)}
+    </ul>
+    <div class="flow-cards">${items().map((item) => ProbeCard({ label: item }))}</div>
+    <p class="flow-text">${open() ? 'yes' : 'no'}</p>
+  </div>`;
 });

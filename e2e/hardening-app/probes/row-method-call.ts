@@ -8,9 +8,7 @@ export const RowMethodCall = defineComponent('hardening-row-method-call', () => 
     { id: 2, name: 'beta' },
   ]);
   expose('rowMethodCall', { items });
-  return {
-    template: html`<ul>
-      ${repeat(items(), (it) => html`<li class="method-row">${it.name.toUpperCase()}</li>`, { key: 'id' })}
-    </ul>`,
-  };
+  return html`<ul>
+    ${repeat(items(), (it) => html`<li class="method-row">${it.name.toUpperCase()}</li>`, { key: 'id' })}
+  </ul>`;
 });
