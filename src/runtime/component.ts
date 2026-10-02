@@ -76,9 +76,6 @@ interface ComponentRef {
 }
 
 /** @internal */
-interface SetupWithSelector<P = {}, S extends string = string> extends SetupFunction<P, S> {
-  __selector: string;
-}
 
 /** @internal — A `<template>` holding `markup`: every compiled template (component, list row, empty list) is one. */
 export const __T = (markup: string): HTMLTemplateElement => {
@@ -309,8 +306,8 @@ export function __enableKeyframeScoping(): void {
 // ============================================================================
 
 /**
- * Define a component using the function-based API.
- * Selector is auto-derived from the export name at compile time.
+ * Define a component: its setup function, and its selector when it is not the one derived from the name it is
+ * declared under. The compiler turns each call into the component's code; run uncompiled, it throws.
  *
  * @example
  * export const MyCounter = defineComponent(() => ({
@@ -322,89 +319,12 @@ export function defineComponent<P extends ComponentProps = {}, const S extends s
   selector: S,
   setup: SetupFunction<P, S>,
 ): ComponentHTMLSelector<P>;
-export function defineComponent<P extends ComponentProps = {}>(
-  selectorOrSetup: string | SetupFunction<P, any>,
-  maybeSetup?: SetupFunction<P, any> | any,
-): ComponentHTMLSelector<P> {
-  let selector: string;
-  let setup: SetupFunction<P, any>;
-
-  if (typeof selectorOrSetup === 'string') {
-    selector = selectorOrSetup;
-    setup = maybeSetup as SetupFunction<P, any>;
-  } else {
-    // Auto-derived selector should have been injected by the compiler
-    selector = (selectorOrSetup as SetupWithSelector<P, any>).__selector;
-    setup = selectorOrSetup;
-    if (!selector) {
-      throw new Error(
-        'defineComponent: could not resolve selector. ' +
-          'Either pass an explicit selector string or ensure the compiler auto-derives it from the export name.',
-      );
-    }
-  }
-
-  // Register styles once (before factory runs)
-  let stylesRegistered = false;
-
-  // Create factory function for component instantiation
-  const factory = (
-    target?: HTMLElement,
-    props?: P,
-    extras?: { route?: UntypedRouteContext | undefined },
-  ): ComponentInstance => {
-    if (!target) {
-      throw new Error(`[thane] Component "${selector}" requires a target element to mount into.`);
-    }
-    target.classList.add(selector);
-    const root = target as unknown as ComponentRoot;
-    const ctx: ComponentContext<P, any> = {
-      root,
-      props: (props || {}) as Readonly<P>,
-      route: (extras?.route ?? _getRouteContext?.()) as RouteContextForSelector<any>,
-    };
-
-    const result = setup(ctx) as InternalComponentResult;
-
-    // Register styles (once) — only runs when __enableComponentStyles was called
-    if (_onStyles && !stylesRegistered && result.styles) {
-      _onStyles(selector, result.styles);
-      stylesRegistered = true;
-    }
-
-    // Apply template: uncompiled, it is the markup string the caller passed
-    if (result.template) {
-      root.innerHTML = result.template as unknown as string;
-    }
-
-    // Initialize reactive bindings (injected by the compiler into the return object)
-    let bindingsCleanup: (() => void) | void | undefined;
-    if (result.__b) {
-      bindingsCleanup = result.__b(ctx, root.querySelectorAll('*'));
-    }
-
-    // Lifecycle: onMount
-    if (result.onMount) {
-      result.onMount();
-    }
-
-    const instance: ComponentInstance = { root };
-    if (bindingsCleanup) {
-      instance.__bindingsCleanup = bindingsCleanup;
-    }
-    if (result.onDestroy) {
-      instance.__onDestroy = result.onDestroy;
-    }
-
-    return instance;
-  };
-
-  // Return a ref object compatible with mount().
-  // The cast is necessary: ComponentRef is the runtime shape, but the public
-  // type includes the (props: P) => string call-signature that the compiler
-  // generates at compile time — there is no way to satisfy it at runtime.
-  const ref: ComponentRef = { __f: factory };
-  return ref as unknown as ComponentHTMLSelector<P>;
+export function defineComponent(): never {
+  throw new Error(
+    "[thane] defineComponent() ran uncompiled. The compiler turns each component's defineComponent() call into the " +
+      "component's code: declare it as a const (const Card = defineComponent(...)), import defineComponent from " +
+      "'thane' under its own name, and build with thane (thane dev, thane build).",
+  );
 }
 
 /**

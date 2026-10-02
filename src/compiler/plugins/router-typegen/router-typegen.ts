@@ -420,11 +420,10 @@ const collectRouteTyping = async (
  * generated types into another.
  */
 export const syncProjectTypes = async (projectRoot: string = process.cwd()): Promise<number> => {
-  const isTsSource = (fileName: string): boolean => fileName.endsWith('.ts') && !fileName.endsWith('.d.ts');
-  const isLegacy = (filePath: string): boolean => path.basename(filePath) === '__thane-router.generated.d.ts';
-  const projectFiles = await collectFilesRecursively(projectRoot, (name) => isTsSource(name) || isLegacy(name));
-  const tsFiles = projectFiles.filter(isTsSource);
-  const legacyGeneratedFiles = projectFiles.filter(isLegacy);
+  const tsFiles = await collectFilesRecursively(
+    projectRoot,
+    (fileName) => fileName.endsWith('.ts') && !fileName.endsWith('.d.ts'),
+  );
   const generatedRoot = path.join(projectRoot, GENERATED_ROOT_DIR);
   const generatedFiles = (await fs
     .stat(generatedRoot)
@@ -481,15 +480,6 @@ export const syncProjectTypes = async (projectRoot: string = process.cwd()): Pro
       await fs.rm(staleFile, { force: true });
     }
   }
-
-  for (const legacyFile of legacyGeneratedFiles) {
-    await fs.rm(legacyFile, { force: true });
-  }
-
-  const legacyGeneratedRouterDir = path.join(projectRoot, GENERATED_ROOT_DIR, 'router-types');
-  await fs.rm(legacyGeneratedRouterDir, { recursive: true, force: true }).catch(() => {
-    /* ignore missing legacy dir */
-  });
 
   return generatedCount;
 };

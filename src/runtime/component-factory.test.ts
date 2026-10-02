@@ -3,11 +3,9 @@
  *
  * component.ts has little other unit coverage: its behaviour is covered by the
  * e2e contract and destroy suites. These tests pin, with an operation log over a fake DOM, what
- * each factory does and in which order, so that a change to defineComponent, __registerComponent or
- * mountComponent().destroy can be checked without a browser.
- *
- * Not pinned on purpose: undeclared third and further arguments of defineComponent, and extra
- * name/template pairs passed to __registerComponent: neither is used. The route-context provider is pinned in router-lifecycle.test.ts, because it is
+ * each factory does and in which order, so that a change to __registerComponent, __registerComponentLean or
+ * mountComponent().destroy can be checked without a browser. defineComponent itself only throws: the compiler
+ * replaces each call. The route-context provider is pinned in router-lifecycle.test.ts, because it is
  * installed by the router module.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -187,31 +185,6 @@ describe('__registerComponent', () => {
     instance.__onDestroy();
     expect(log).toEqual(['onDestroy']);
   });
-
-  test('extra arguments do not change what the factory does', () => {
-    const ref = (__registerComponent as any)(
-      'x-a',
-      loggingSetup(fullResult),
-      fakeTemplate('tpl'),
-      '__tpl_b1',
-      fakeTemplate('extra'),
-    );
-    ref.__f(el());
-    expect(log).toEqual([
-      'classList.add x-a',
-      'setup',
-      'tpl.content.cloneNode true',
-      'tpl-clone.querySelectorAll *',
-      'target.append tpl-clone',
-      '__b sameCtx=true elements=tpl-clone-elements',
-      'onMount',
-    ]);
-  });
-
-  test('extra name/template pairs (from older compilers) are not stored on the ref', () => {
-    const ref = (__registerComponent as any)('x-a', () => ({}), fakeTemplate('tpl'), '__tpl_b1', fakeTemplate('extra'));
-    expect(Object.keys(ref)).toEqual(['__f']);
-  });
 });
 
 describe('__registerComponent owns what its setup and onMount create', () => {
@@ -328,86 +301,16 @@ describe('__registerComponentLean', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-//  defineComponent (the uncompiled path)
+//  defineComponent, which the compiler replaces
 // ─────────────────────────────────────────────────────────────
 
-describe('defineComponent (uncompiled)', () => {
-  test('explicit selector: class, setup, innerHTML = template, __b, onMount', () => {
-    const ref = defineComponent(
-      'x-d',
-      loggingSetup((ctx) => fullResult(ctx, { template: '<p>hi</p>' })),
-    ) as any;
-    expect(Object.keys(ref)).toEqual(['__f']);
-    const target = el();
-    const instance = ref.__f(target, { a: 1 });
-    expect(log).toEqual([
-      'classList.add x-d',
-      'setup',
-      'target.innerHTML = "<p>hi</p>"',
-      'target.querySelectorAll *',
-      '__b sameCtx=true elements=target-elements',
-      'onMount',
-    ]);
-    expect(instance.root).toBe(target);
-    expect(Object.keys(instance)).toEqual(['root', '__bindingsCleanup', '__onDestroy']);
-  });
-
-  test('no template (or an empty one): innerHTML is not written', () => {
-    for (const template of [undefined, '']) {
-      log = [];
-      const ref = defineComponent('x-d', loggingSetup(() => ({ template })) as any) as any;
-      ref.__f(el());
-      expect(log).toEqual(['classList.add x-d', 'setup']);
-    }
-  });
-
-  test('context: root, props (default {}), explicit route', () => {
-    const seen: { ctx?: any } = {};
-    const ref = defineComponent('x-d', loggingSetup(() => ({}), seen) as any) as any;
-    const target = el();
-    const props = { a: 1 };
-    const route = { path: '/r' } as any;
-    ref.__f(target, props, { route });
-    expect(seen.ctx.root).toBe(target);
-    expect(seen.ctx.props).toBe(props);
-    expect(seen.ctx.route).toBe(route);
-    expect(Object.keys(seen.ctx)).toEqual(['root', 'props', 'route']);
-    ref.__f(el());
-    expect(seen.ctx.props).toEqual({});
-  });
-
-  test('a setup carrying __selector (injected by the compiler) supplies the selector', () => {
-    const setup = Object.assign(() => ({}), { __selector: 'x-auto' });
-    const ref = defineComponent(setup) as any;
-    ref.__f(el());
-    expect(log).toEqual(['classList.add x-auto']);
-  });
-
-  test('no selector: throws at definition', () => {
-    expect(() => defineComponent(() => ({}))).toThrow(
-      'defineComponent: could not resolve selector. ' +
-        'Either pass an explicit selector string or ensure the compiler auto-derives it from the export name.',
-    );
-  });
-
-  test('factory without a target throws before running setup', () => {
-    const ref = defineComponent('x-d', loggingSetup(() => ({})) as any) as any;
-    expect(() => ref.__f()).toThrow('[thane] Component "x-d" requires a target element to mount into.');
-    expect(log).toEqual([]);
-  });
-
-  test('instance keys follow what the setup returns', () => {
-    const cases: Array<[Record<string, unknown>, string[]]> = [
-      [{}, ['root']],
-      [{ __b: () => undefined }, ['root']],
-      [{ __b: () => () => {} }, ['root', '__bindingsCleanup']],
-      [{ onDestroy: () => {} }, ['root', '__onDestroy']],
-    ];
-    for (const [result, keys] of cases) {
-      const ref = defineComponent('x-d', () => result as any) as any;
-      expect(Object.keys(ref.__f(el()))).toEqual(keys);
-    }
-  });
+test('defineComponent run uncompiled throws, saying how a component is compiled', () => {
+  expect(() => (defineComponent as any)('x-d', () => ({ template: '<p>hi</p>' }))).toThrow(
+    "[thane] defineComponent() ran uncompiled. The compiler turns each component's defineComponent() call into the " +
+      "component's code: declare it as a const (const Card = defineComponent(...)), import defineComponent from " +
+      "'thane' under its own name, and build with thane (thane dev, thane build).",
+  );
+  expect(() => (defineComponent as any)(() => ({}))).toThrow('[thane] defineComponent() ran uncompiled.');
 });
 
 // ─────────────────────────────────────────────────────────────
@@ -440,7 +343,6 @@ describe('component styles', () => {
   test('before __enableComponentStyles, styles are ignored by every factory', () => {
     const sheets = withStyleGlobals(() => {
       __registerComponent('s-before', () => ({ styles: ':host { a: b }' }), fakeTemplate('tpl')).__f(el());
-      (defineComponent('s-before-d', () => ({ styles: ':host { a: b }' })) as any).__f(el());
     });
     expect(sheets).toEqual([]);
   });
@@ -459,8 +361,8 @@ describe('component styles', () => {
       ref.__f(el());
       // another registration with the same selector does not adopt a second sheet
       __registerComponent('s-one', () => ({ styles: '.y { e: f }' }), fakeTemplate('tpl')).__f(el());
-      // defineComponent registers through the same hook
-      (defineComponent('s-two', () => ({ styles: '.z { g: h }' })) as any).__f(el());
+      // another selector adopts a sheet of its own
+      __registerComponent('s-two', () => ({ styles: '.z { g: h }' }), fakeTemplate('tpl')).__f(el());
       // the lean factory never registers styles
       __registerComponentLean('s-lean', () => ({ styles: '.w { i: j }' }) as any, fakeTemplate('tpl')).__f(el());
       // no styles: nothing
@@ -561,7 +463,7 @@ describe('__rc', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-//  mountComponent, unmount, mount (Mode A)
+//  mountComponent, unmount, mount(component)
 // ─────────────────────────────────────────────────────────────
 
 /** A component ref whose factory logs its arguments and returns the given instance fields. */
@@ -684,7 +586,7 @@ describe('mountComponent', () => {
   });
 });
 
-describe('mount (Mode A)', () => {
+describe('mount(component)', () => {
   test('mount(component, { target, props }) calls the factory with (target, props, undefined)', () => {
     const seen: { args?: unknown[] } = {};
     const target = el();

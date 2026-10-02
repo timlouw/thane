@@ -589,9 +589,9 @@ mount(App);
     expect(processorSource).toMatch(/config\.base/);
   });
 
-  test('non-router build tree-shakes route context factory', async () => {
-    // When routing is NOT used, the fallback route context factory (createFallbackRouteContext)
-    // and its window.location / document.title reads should NOT appear in the bundle.
+  test('non-router build leaves out the router and what it reads of the page', async () => {
+    // Without routes, nothing of the router is bundled: none of its reads of window.location, history or
+    // document.title.
     const source = `
 import { defineComponent, signal, mount } from 'thane';
 
@@ -607,7 +607,6 @@ mount(App);
 
     const js = await buildAndReadJs(source, { prod: true });
 
-    // Route context factory includes these patterns — none should be present
     expect(js).not.toContain('location.pathname');
     expect(js).not.toContain('location.search');
     expect(js).not.toContain('location.hash');

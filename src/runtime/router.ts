@@ -206,7 +206,10 @@ type ResolvedRouteContext<TPattern extends string> = TPattern extends 'notFound'
     : RouteContextBase<TPattern, RouteToPath<TPattern>, RouteParamsObject<TPattern>, RouteSearchValues<TPattern>>;
 
 export interface UntypedRouteContext extends RouteContextBase<string, string, Record<string, string>> {
-  /** @deprecated Run thane dev, thane build, or thane serve once to generate route-aware component types. */
+  /**
+   * The route's parameters, untyped: the component is no route's page, or its route types are not generated yet
+   * (every thane command generates them)
+   */
   readonly params: Record<string, string>;
   /** On the error route: what failed */
   readonly error?: unknown;
@@ -1008,15 +1011,6 @@ export function setMeta(meta: AppRouteMeta): void {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Initialise and start the router.
- *
- * @internal — called by `mount()` when the `router` option is provided.
- * Not part of the public API; use `mount(Shell, { routes })` or `mount(Routes)` instead.
- *
- * @param config - Router configuration with routes map and notFound.
- * @param target - The element to render pages into (outlet in Mode B, body/target in Mode C).
- */
-/**
  * A plain click on a link to one of the app's routes navigates in the app instead of loading the page
  * again, so `<a href="/about">` is a router link. The browser keeps a click that is already handled
  * (`@click.prevent`), a modified one (a new tab, a download), a link with a `target`, a `download` or
@@ -1046,6 +1040,12 @@ const followLink = (event: MouseEvent): void => {
   navigate((url.pathname + url.search + url.hash) as RoutePaths);
 };
 
+/**
+ * Start the router: it renders each route's page into `target`, the shell's `<router-outlet>` for
+ * `mount(Shell, { routes })`, or the mount's target for `mount(Routes)`. Only one router runs.
+ *
+ * @internal — called by `mount()`; an app mounts its routes instead.
+ */
 export function startRouter(
   config: { routes: RoutesMap; notFound: Route; error?: Route | undefined },
   target: HTMLElement,

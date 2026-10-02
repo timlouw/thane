@@ -957,7 +957,7 @@ describe('mount(Shell, { routes }) and mount(Routes)', () => {
       'notFound': { component: page('NF') },
     });
 
-  test('Mode C: pages render into the target; destroy stops the router', async () => {
+  test('mount(Routes): pages render into the target; destroy stops the router', async () => {
     install('http://app.test/a');
     const target = new FakeElement('body');
     const handle = mount(table(), { scrollRestoration: false, target: target as any });

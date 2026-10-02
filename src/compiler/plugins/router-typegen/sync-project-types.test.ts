@@ -58,9 +58,7 @@ export const B = defineRoutes({ '/b1': { component: () => import('./pages/lazy.j
   'nested/src/n.ts': page('NestedPage'),
   'nested/src/routes.ts': `import { defineRoutes } from 'thane/router';\nimport { NestedPage } from './n.js';\nexport default defineRoutes({ '/n': { component: NestedPage } });\n`,
   // Old files that a sync removes
-  'src/__thane-router.generated.d.ts': 'export {};\n',
   '.thane/types/router/src/old.generated.d.ts': 'export {};\n',
-  '.thane/router-types/x.d.ts': 'export {};\n',
 };
 
 /** The generated file of the table in `file`, whose paths are `paths` and whose components are `components` */
@@ -150,10 +148,8 @@ describe('syncProjectTypes', () => {
     expect(readFileSync(file, 'utf8')).toBe(`/// <reference path="${packaged}" />\n`);
   });
 
-  test('legacy and stale generated files are removed', () => {
-    expect(existsSync(generated('src', '__thane-router.generated.d.ts'))).toBe(false);
+  test('a generated file whose route table is gone is removed', () => {
     expect(existsSync(generated('.thane', 'types', 'router', 'src', 'old.generated.d.ts'))).toBe(false);
-    expect(existsSync(generated('.thane', 'router-types'))).toBe(false);
   });
 
   test('a second sync leaves unchanged files alone', async () => {
