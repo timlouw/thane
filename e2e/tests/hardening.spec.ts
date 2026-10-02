@@ -1714,3 +1714,43 @@ test.describe('event modifiers', () => {
     expect(await log(page)).toEqual(['enter once']);
   });
 });
+
+test.describe('ownership', () => {
+  const state = (page: Page) =>
+    page.evaluate(() => {
+      const w = window as any;
+      return { subscribers: w.__probe.ownership.subscribers(), counts: { ...(w.__counts?.ownership ?? {}) } };
+    });
+
+  test("a page's computed, effect and listener go with it: five visits leave nothing on the store", async ({
+    page,
+  }) => {
+    const probe = await mountProbe(page, 'ownership');
+    await expect(page.locator('.own-count')).toHaveText('3');
+    expect(await state(page)).toEqual({ subscribers: 1, counts: { 'effect 3': 1 } });
+
+    for (let visit = 0; visit < 5; visit++) {
+      await setProbe(page, 'ownership', 'open', false);
+      await expect(page.locator('.own-count')).toHaveCount(0);
+      await setProbe(page, 'ownership', 'open', true);
+      await expect(page.locator('.own-count')).toHaveText('3');
+    }
+    // The page on screen holds the one subscription; the five destroyed ones ran their effect's cleanup
+    expect(await state(page)).toEqual({ subscribers: 1, counts: { 'effect 3': 6, 'effect cleanup': 5 } });
+
+    // The store changes: only the page on screen follows it
+    await setProbe(page, 'ownership', 'products', [1, 2, 3, 4]);
+    await expect(page.locator('.own-count')).toHaveText('4');
+    expect((await state(page)).counts).toEqual({ 'effect 3': 6, 'effect cleanup': 6, 'effect 4': 1 });
+
+    // The listener onMount added is removed with the page
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+    await setProbe(page, 'ownership', 'open', false);
+    await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+    expect(await state(page)).toEqual({
+      subscribers: 0,
+      counts: { 'effect 3': 6, 'effect cleanup': 7, 'effect 4': 1, 'resize': 1 },
+    });
+    expect(probe.pageErrors).toEqual([]);
+  });
+});

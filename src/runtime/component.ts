@@ -3,6 +3,7 @@
  * Uses native DOM (no Shadow DOM). Scoped styles via adoptedStyleSheets.
  */
 
+import { __owning } from './signal.js';
 import type { RouteContextForSelector, UntypedRouteContext } from './router.js';
 import type { Fragment } from './markers.js';
 import { hotRegister, hotRuntime, hotStyles } from './hot.js';
@@ -435,7 +436,9 @@ export function __registerComponent(
       props: (props || {}) as Readonly<any>,
       route: (extras?.route ?? _getRouteContext?.()) as RouteContextForSelector<any>,
     };
-    const result = setup(ctx) as InternalComponentResult;
+    // What the setup and onMount create (computeds, effects, onCleanup functions) is destroyed with the component
+    const owned: (() => void)[] = [];
+    const result = __owning(owned, () => setup(ctx)) as InternalComponentResult;
 
     if (_onStyles && !stylesRegistered && result.styles) {
       _onStyles(selector, result.styles);
@@ -447,15 +450,17 @@ export function __registerComponent(
     const elements = clone.querySelectorAll('*');
     root.append(clone);
     const bindingsCleanup = result.__b?.(ctx, elements);
-    if (result.onMount) result.onMount();
+    if (result.onMount) __owning(owned, result.onMount);
 
     const instance: ComponentInstance = { root };
     if (bindingsCleanup) {
       instance.__bindingsCleanup = bindingsCleanup;
     }
-    if (result.onDestroy) {
-      instance.__onDestroy = result.onDestroy;
-    }
+    // Its destroy: onDestroy, then what the setup and onMount own, each once, in the order they were made
+    instance.__onDestroy = () => {
+      result.onDestroy?.();
+      for (const cleanup of owned.splice(0)) cleanup();
+    };
     return instance;
   };
 

@@ -22,6 +22,7 @@ import {
   mountComponent,
   unmount,
 } from './component.js';
+import { computed, effect, onCleanup, signal } from './signal.js';
 import type { ComponentHTMLSelector } from './component.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -167,21 +168,24 @@ describe('__registerComponent', () => {
     expect(seen.ctx.route).toBe(route);
   });
 
-  test('instance keys follow what the setup returns', () => {
+  test('instance keys follow what the setup returns; every instance has a destroy, for what it owns', () => {
     const cases: Array<[Record<string, unknown>, string[]]> = [
-      [{}, ['root']],
-      [{ __b: () => undefined }, ['root']],
-      [{ __b: () => () => {} }, ['root', '__bindingsCleanup']],
+      [{}, ['root', '__onDestroy']],
+      [{ __b: () => undefined }, ['root', '__onDestroy']],
+      [{ __b: () => () => {} }, ['root', '__bindingsCleanup', '__onDestroy']],
       [{ onDestroy: () => {} }, ['root', '__onDestroy']],
-      [{ onMount: () => {} }, ['root']],
+      [{ onMount: () => {} }, ['root', '__onDestroy']],
     ];
     for (const [result, keys] of cases) {
       const ref = __registerComponent('x-a', () => result as any, fakeTemplate('tpl'));
       expect(Object.keys(ref.__f(el()))).toEqual(keys);
     }
-    const onDestroy = () => {};
-    const ref = __registerComponent('x-a', () => ({ onDestroy }), fakeTemplate('tpl'));
-    expect(ref.__f(el()).__onDestroy).toBe(onDestroy);
+    // The destroy runs the setup's onDestroy
+    const ref = __registerComponent('x-a', () => ({ onDestroy: () => log.push('onDestroy') }), fakeTemplate('tpl'));
+    const instance = ref.__f(el());
+    log = [];
+    instance.__onDestroy();
+    expect(log).toEqual(['onDestroy']);
   });
 
   test('extra arguments do not change what the factory does', () => {
@@ -207,6 +211,74 @@ describe('__registerComponent', () => {
   test('extra name/template pairs (from older compilers) are not stored on the ref', () => {
     const ref = (__registerComponent as any)('x-a', () => ({}), fakeTemplate('tpl'), '__tpl_b1', fakeTemplate('extra'));
     expect(Object.keys(ref)).toEqual(['__f']);
+  });
+});
+
+describe('__registerComponent owns what its setup and onMount create', () => {
+  test("its destroy runs onDestroy, then the setup's and onMount's onCleanup functions, in order", () => {
+    const ref = __registerComponent(
+      'x-a',
+      () => {
+        onCleanup(() => log.push('setup cleanup'));
+        return {
+          onMount: () => onCleanup(() => log.push('onMount cleanup')),
+          onDestroy: () => log.push('onDestroy'),
+        };
+      },
+      fakeTemplate('tpl'),
+    );
+    const instance = ref.__f(el());
+    log = [];
+    instance.__onDestroy();
+    expect(log).toEqual(['onDestroy', 'setup cleanup', 'onMount cleanup']);
+  });
+
+  test('a computed and an effect of the setup stop following their source when it is destroyed', () => {
+    const source = signal(1);
+    const ref = __registerComponent(
+      'x-a',
+      () => {
+        const doubled = computed(() => source() * 2);
+        effect(() => void log.push(`effect ${doubled()}`));
+        return {};
+      },
+      fakeTemplate('tpl'),
+    );
+    const instances = [ref.__f(el()), ref.__f(el())];
+    source(2);
+    expect(log.filter((l) => l.startsWith('effect'))).toEqual(['effect 2', 'effect 2', 'effect 4', 'effect 4']);
+    for (const instance of instances) instance.__onDestroy();
+    log = [];
+    source(3);
+    expect(log).toEqual([]);
+    expect((source as unknown as { _s: unknown[] })._s.filter((s) => s !== null)).toHaveLength(0);
+  });
+
+  test('its destroy runs once: a second call does not run the cleanups again', () => {
+    const ref = __registerComponent(
+      'x-a',
+      () => {
+        onCleanup(() => log.push('cleanup'));
+        return {};
+      },
+      fakeTemplate('tpl'),
+    );
+    const instance = ref.__f(el());
+    instance.__onDestroy();
+    instance.__onDestroy();
+    expect(log.filter((l) => l === 'cleanup')).toEqual(['cleanup']);
+  });
+
+  test('the owner is restored after a setup that throws', () => {
+    const ref = __registerComponent(
+      'x-a',
+      () => {
+        throw new Error('setup failed');
+      },
+      fakeTemplate('tpl'),
+    );
+    expect(() => ref.__f(el())).toThrow('setup failed');
+    expect(() => onCleanup(() => {})).toThrow('[thane] onCleanup() is called');
   });
 });
 

@@ -37,6 +37,7 @@ const KEPT: Record<string, EntrySurface> = {
       'effect',
       'html',
       'mount',
+      'onCleanup',
       'registerGlobalStyles',
       'repeat',
       'signal',

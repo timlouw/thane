@@ -128,6 +128,35 @@ export const cartTotal = computed(() =>
 
 Computeds re-evaluate lazily — only when read after a dependency changes.
 
+## Who Disposes a Computed or an Effect
+
+A `computed()` or an `effect()` subscribes to the signals it reads. One created in a module, like `cartCount` above,
+lives as long as the page. One created in a component's setup (or `onMount`) belongs to the component, and is disposed
+when the component is destroyed, so a page that derives from a store leaves nothing subscribed to the store when
+the router leaves it:
+
+```typescript
+export const CartPage = defineComponent(() => {
+  const cartProducts = computed(() => products().filter((p) => p().cartCount > 0));
+  effect(() => (document.title = `Cart (${cartProducts().length})`));
+  return { template: html`…` };
+});
+```
+
+An effect owns what one of its runs creates in the same way: before it runs again, and when it is disposed, it runs
+the cleanup its function returned, the `onCleanup()` functions of the run, and disposes the computeds and effects the
+run created:
+
+```typescript
+effect(() => {
+  const id = setInterval(tick, delay());
+  return () => clearInterval(id);
+});
+```
+
+Anything created elsewhere (in an event handler, or after a `setTimeout`) belongs to nothing: dispose it yourself, with
+`.dispose()` on a computed and the function `effect()` returns.
+
 ## localStorage Persistence
 
 Persist state across page reloads by subscribing to signal changes:

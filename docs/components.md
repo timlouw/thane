@@ -142,10 +142,35 @@ export const Timer = defineComponent(() => {
 **Important:** `onDestroy` fires when:
 
 - `mount().destroy()` is called
-- A `when()` or `when()` directive hides the component
+- A `when()` hides the component
 - The `repeat()` row that holds it is removed, or the list itself goes away with its branch or component
 - The router navigates away from the route containing the component
 - A parent component is destroyed (destruction propagates to children)
+
+### `onCleanup`
+
+`onCleanup(fn)`, called in the setup or in `onMount`, runs `fn` when the component is destroyed. It keeps what is set up
+and what undoes it together, which `onMount` and `onDestroy` pull apart:
+
+```typescript
+import { defineComponent, html, onCleanup } from 'thane';
+
+export const Shell = defineComponent(() => {
+  const onScroll = () => document.body.classList.toggle('scrolled', window.scrollY > 0);
+  return {
+    template: html`<header>…</header>`,
+    onMount: () => {
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onCleanup(() => window.removeEventListener('scroll', onScroll));
+    },
+  };
+});
+```
+
+A component's `computed()`s and `effect()`s are disposed the same way (see
+[Who Disposes a Computed or an Effect](state-management.md#who-disposes-a-computed-or-an-effect)). When it is destroyed,
+`onDestroy` runs first, then the `onCleanup()` functions and disposals, in the order they were made. Called anywhere else
+(in an event handler, or a store module), `onCleanup()` throws in a development build: nothing would call `fn` there.
 
 ## Mounting
 

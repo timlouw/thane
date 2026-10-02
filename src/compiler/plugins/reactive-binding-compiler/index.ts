@@ -84,6 +84,54 @@ export const findReturnObjects = (setup: ts.ArrowFunction | ts.FunctionExpressio
   return objects;
 };
 
+/** Calls a setup makes that create nothing a component owns: thane's signals, components and template markers */
+const OWNERLESS_CALLS: ReadonlySet<string> = new Set([
+  'signal',
+  'batch',
+  'untrack',
+  'defineComponent',
+  FN.HTML,
+  FN.CSS,
+  FN.WHEN,
+  FN.REPEAT,
+]);
+
+/** Calls that create what the running setup or effect owns */
+const OWNED_CALLS: ReadonlySet<string> = new Set(['computed', 'effect', 'onCleanup']);
+
+/**
+ * Whether a component's setup may create what the component disposes when it is destroyed (a computed, an
+ * effect, an onCleanup function): it calls computed(), effect() or onCleanup(), or, while it runs, makes any call
+ * or `new` other than thane's signals and markers (a helper may create them). A call inside a function the setup
+ * declares, such as a handler, runs later, outside the setup, and owns nothing. (A component with `onMount` has
+ * the full factory anyway.)
+ */
+const createsOwned = (setup: ts.FunctionLikeDeclaration): boolean => {
+  let found = false;
+  const visit = (node: ts.Node, running: boolean): void => {
+    if (found) return;
+    // A template's expressions are compiled into the binding code, which runs after the setup
+    if (
+      ts.isTaggedTemplateExpression(node) &&
+      ts.isIdentifier(node.tag) &&
+      (node.tag.text === FN.HTML || node.tag.text === FN.CSS)
+    ) {
+      return;
+    }
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      const callee = ts.isIdentifier(node.expression) ? node.expression.text : undefined;
+      if ((callee && OWNED_CALLS.has(callee)) || (running && !(callee && OWNERLESS_CALLS.has(callee)))) {
+        found = true;
+        return;
+      }
+    }
+    const runsNow = running && !ts.isFunctionLike(node);
+    ts.forEachChild(node, (child) => visit(child, runsNow));
+  };
+  if (setup.body) ts.forEachChild(setup.body, (child) => visit(child, true));
+  return found;
+};
+
 /** Detect the styles/lifecycle feature flags of the defineComponent return object. */
 const detectFeatures = (
   returnObj: ts.ObjectLiteralExpression | undefined,
@@ -957,8 +1005,11 @@ const compileComponent = (
   // They decide the styles import and call, and the registration function: the lean variant when
   // the component has no styles and no lifecycle hooks, so esbuild can tree-shake the styles
   // subsystem entirely for style-free apps.
+  // The full variant also when the setup may create what the component owns (createsOwned): it disposes them
   const { hasStyles, hasLifecycle } = detectFeatures(returnObj);
-  const registerFnName = hasStyles || hasLifecycle ? BIND_FN.REGISTER_COMPONENT : BIND_FN.REGISTER_COMPONENT_LEAN;
+  const owns = !!setupArg && createsOwned(setupArg);
+  const registerFnName =
+    hasStyles || hasLifecycle || owns ? BIND_FN.REGISTER_COMPONENT : BIND_FN.REGISTER_COMPONENT_LEAN;
 
   // A template that reads one of the binding code's own names would read the compiler's value (THANE012)
   if (setupArg) checkBindingNames(setupArg, compiled.bindingsBody);

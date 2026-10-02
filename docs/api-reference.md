@@ -20,8 +20,9 @@ Complete API surface for the Thane framework, covering all public exports, the t
 | Export     | Signature                                                                 | Description                                                                      |
 | :--------- | :------------------------------------------------------------------------ | :------------------------------------------------------------------------------- |
 | `signal`   | `<T>(initialValue: T) => Signal<T>`                                       | Create a reactive signal                                                         |
-| `computed` | `<T>(derivation: () => T) => ReadonlySignal<T> & { dispose: () => void }` | Create a derived signal that auto-tracks dependencies                            |
-| `effect`   | `(fn: () => void) => () => void`                                          | Create a side-effect that re-runs on dependency change. Returns dispose function |
+| `computed` | `<T>(derivation: () => T) => ReadonlySignal<T> & { dispose: () => void }` | Create a derived signal that auto-tracks dependencies; one created in a setup is disposed with its component |
+| `effect`   | `(fn: () => void \| (() => void)) => () => void`                         | Create a side-effect that re-runs on dependency change. Returns dispose function; `fn` may return a cleanup, run before each re-run and on dispose |
+| `onCleanup` | `(fn: () => void) => void`                                               | Run `fn` when what is running ends: the component whose setup or `onMount` calls it, when it is destroyed; the effect whose run calls it, before its next run |
 | `batch`    | `(fn: () => void) => void`                                                | Batch multiple signal updates — each changed signal notifies once, after `fn`    |
 | `untrack`  | `<T>(fn: () => T) => T`                                                   | Read signals without creating dependencies                                       |
 

@@ -31,7 +31,7 @@ declare global {
 // type stays in the module declarations, so hovers and inference still show it. Compiler helpers
 // are in ./internal.ts ('thane/runtime'), the router values in ./router-exports.ts ('thane/router').
 export type { Signal, ReadonlySignal } from './types.js';
-export { signal, batch, computed, effect, untrack } from './signal.js';
+export { signal, batch, computed, effect, untrack, onCleanup } from './signal.js';
 export { html, css, when, repeat, type Fragment } from './markers.js';
 export {
   defineComponent,
