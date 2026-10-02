@@ -2,7 +2,7 @@ import ts from 'typescript';
 import path from 'node:path';
 import type { OnStartResult, Plugin } from 'esbuild';
 import { syncProjectTypes } from '../router-typegen/router-typegen.js';
-import { collectFilesRecursively, logger, PLUGIN_NAME } from '../../utils/index.js';
+import { collectFilesRecursively, logger, PLUGIN_NAME, sourceCache } from '../../utils/index.js';
 import { ErrorCode, createError } from '../../errors.js';
 import { TEMPLATE_TYPES_DECLARATION, rewriteTemplates, type RewrittenSource } from './template-types.js';
 
@@ -93,10 +93,60 @@ async function checkProject(strict: boolean, projectRoot: string): Promise<void>
 }
 
 /**
+ * The compiler options that change how a file is parsed or bound, as TypeScript's language service lists them
+ * when it shares one parse between programs, and `strict`, which sets `alwaysStrict`
+ */
+const PARSE_OPTIONS = [
+  'target',
+  'module',
+  'moduleResolution',
+  'moduleDetection',
+  'jsx',
+  'jsxImportSource',
+  'importHelpers',
+  'strict',
+  'alwaysStrict',
+  'allowUnusedLabels',
+  'allowUnreachableCode',
+  'noFallthroughCasesInSwitch',
+] as const;
+
+/** One key for the options a program parses a file with: a parse is shared only between requests of one key */
+const parseKey = (options: ts.CompilerOptions, request: ts.ScriptTarget | ts.CreateSourceFileOptions): string => {
+  const { languageVersion, impliedNodeFormat, jsDocParsingMode } =
+    typeof request === 'object'
+      ? request
+      : { languageVersion: request, impliedNodeFormat: undefined, jsDocParsingMode: undefined };
+  return JSON.stringify([
+    PARSE_OPTIONS.map((name) => options[name]),
+    languageVersion,
+    impliedNodeFormat,
+    jsDocParsingMode,
+  ]);
+};
+
+/**
+ * The parses the type check keeps from one run to the next (`thane dev` checks again on every rebuild), by file:
+ * the rewritten project sources, while their text is the same, and the declaration files (the libraries' and
+ * the packages'), while they are unchanged on disk. A program given a parse from an earlier one reuses its
+ * binding too. Project sources as written are kept in the build's source cache, which the build reads.
+ */
+const kept = new Map<string, { key: string; version: string; sourceFile: ts.SourceFile }>();
+const keptParse = (fileName: string, key: string, version: string, parse: () => ts.SourceFile | undefined) => {
+  const known = kept.get(fileName);
+  if (known && known.key === key && known.version === version) return known.sourceFile;
+  const sourceFile = parse();
+  if (sourceFile) kept.set(fileName, { key, version, sourceFile });
+  else kept.delete(fileName);
+  return sourceFile;
+};
+
+/**
  * A compiler host that serves each project source with its template values typed (template-types.ts), the
  * declaration of their types as one more root file (`ownFile`), and the way to map a diagnostic in a rewritten
  * source back to the source as written. A program without the DOM library has no event types, so nothing is
- * rewritten.
+ * rewritten. A project source as written is the build's parse when the options agree (sourceCache), so the
+ * build does not parse it again; every other parse is kept for the next check (`kept`).
  */
 const templateTypedHost = (
   options: ts.CompilerOptions,
@@ -109,25 +159,35 @@ const templateTypedHost = (
 } => {
   const host = ts.createCompilerHost(options);
   const hasDom = !options.lib || options.lib.some((lib) => lib.toLowerCase().includes('dom'));
-  if (!hasDom) return { host, rootNames: [], mapDiagnostic: (d) => d };
-
   const declarationFile = path.join(generatedTypesRoot, 'template-types.d.ts').replace(/\\/g, '/');
-  const rewritten = new Map<string, { rewrite: RewrittenSource; text: string; original?: ts.SourceFile }>();
+  const rewritten = new Map<string, { rewrite: RewrittenSource; original: ts.SourceFile }>();
   const getSourceFile = host.getSourceFile;
   const fileExists = host.fileExists;
-  host.fileExists = (fileName) => fileName === declarationFile || fileExists.call(host, fileName);
-  host.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => {
-    if (fileName === declarationFile) return ts.createSourceFile(fileName, TEMPLATE_TYPES_DECLARATION, languageVersion);
-    if (fileName.endsWith('.ts') && !fileName.endsWith('.d.ts') && !fileName.includes('/node_modules/')) {
-      const text = host.readFile(fileName);
-      const rewrite = text === undefined ? null : rewriteTemplates(fileName, text);
-      if (rewrite) {
-        rewritten.set(fileName, { rewrite, text: text! });
-        return ts.createSourceFile(fileName, rewrite.text, languageVersion);
-      }
+  if (hasDom) host.fileExists = (fileName) => fileName === declarationFile || fileExists.call(host, fileName);
+  host.getSourceFile = (fileName, request, onError, shouldCreateNewSourceFile) => {
+    const key = parseKey(options, request);
+    if (hasDom && fileName === declarationFile) {
+      return keptParse(fileName, key, TEMPLATE_TYPES_DECLARATION, () =>
+        ts.createSourceFile(fileName, TEMPLATE_TYPES_DECLARATION, request),
+      );
     }
-    return getSourceFile.call(host, fileName, languageVersion, onError, shouldCreateNewSourceFile);
+    if (fileName.endsWith('.ts') && !fileName.endsWith('.d.ts') && !fileName.includes('/node_modules/')) {
+      const shared = sourceCache.getSync(fileName, key, (text) =>
+        ts.createSourceFile(fileName, text, request, true, ts.ScriptKind.TS),
+      );
+      if (!shared) return getSourceFile.call(host, fileName, request, onError, shouldCreateNewSourceFile);
+      const rewrite = hasDom ? rewriteTemplates(fileName, shared.source, shared.sourceFile) : null;
+      if (!rewrite) return shared.sourceFile;
+      rewritten.set(fileName, { rewrite, original: shared.sourceFile });
+      return keptParse(fileName, key, rewrite.text, () => ts.createSourceFile(fileName, rewrite.text, request));
+    }
+    const modified = ts.sys.getModifiedTime?.(fileName)?.getTime();
+    if (modified === undefined) return getSourceFile.call(host, fileName, request, onError, shouldCreateNewSourceFile);
+    return keptParse(fileName, key, String(modified), () =>
+      getSourceFile.call(host, fileName, request, onError, shouldCreateNewSourceFile),
+    );
   };
+  if (!hasDom) return { host, rootNames: [], mapDiagnostic: (d) => d };
 
   /** A diagnostic's file and span, moved from a rewritten source to the source as written. */
   const mapLocation = <
@@ -137,7 +197,6 @@ const templateTypedHost = (
   ): T => {
     const entry = located.file && rewritten.get(located.file.fileName);
     if (!entry || located.start === undefined) return located;
-    entry.original ??= ts.createSourceFile(located.file!.fileName, entry.text, ts.ScriptTarget.Latest);
     return { ...located, file: entry.original, ...entry.rewrite.toOriginal(located.start, located.length ?? 0) };
   };
   const mapDiagnostic = (diagnostic: ts.Diagnostic): ts.Diagnostic => {

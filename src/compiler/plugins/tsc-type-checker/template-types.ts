@@ -198,11 +198,15 @@ const templateInsertions = (sourceFile: ts.SourceFile): Insertion[] => {
 
 /**
  * The file with each substitution of its `html` templates typed, or null when it has none. Only a file that
- * could hold one (an `html` template with a `${`) is parsed.
+ * could hold one (an `html` template with a `${`) is read, from `parsed` (a parse of `text` with its parent
+ * nodes set) or a parse of its own.
  */
-export const rewriteTemplates = (fileName: string, text: string): RewrittenSource | null => {
+export const rewriteTemplates = (fileName: string, text: string, parsed?: ts.SourceFile): RewrittenSource | null => {
   if (!text.includes(`${FN.HTML}\``) || !text.includes('${')) return null;
-  const sourceFile = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const sourceFile =
+    parsed?.text === text
+      ? parsed
+      : ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const insertions = templateInsertions(sourceFile);
   if (insertions.length === 0) return null;
 
