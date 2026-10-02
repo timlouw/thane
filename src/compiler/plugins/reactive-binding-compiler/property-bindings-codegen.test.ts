@@ -72,7 +72,7 @@ describe('Form attributes are written as DOM properties and left out of the stat
 describe('null and undefined render as empty text', () => {
   test('component text bindings coalesce the value', async () => {
     const js = await buildAndReadJs(componentApp('<p>${maybe()}</p><p>[${maybe()}]</p>'));
-    expect(js).toMatch(/\bb\d+\.data = maybe\(\) \?\? ""/);
+    expect(js).toMatch(/\b_b\d+\.data = maybe\(\) \?\? ""/);
   });
 
   test('row text bindings coalesce on fill and on update', async () => {

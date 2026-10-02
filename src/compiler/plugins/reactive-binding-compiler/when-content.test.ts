@@ -147,14 +147,14 @@ describe('generated initializer for when() content', () => {
     expect(code).toMatch(/__bindIf\(_ws_b0, _we_b0, show, /);
     // The initializer reaches the button by path from the content's root element
     expect(code).toMatch(
-      /\(_c\) => \{\s+const (b\d+) = _c\.firstElementChild;[\s\S]*\1\.addEventListener\('click', a\)/,
+      /\(_c\) => \{\s+const (_b\d+) = _c\.firstElementChild;[\s\S]*\1\.addEventListener\('click', a\)/,
     );
     // The nested whenElse() is bound over anchors the when() content's initializer reached from `_c`
     expect(code).toContain('__bindIfExpr(_ws_b1, _wm_b1, [inner], () => inner()');
     expect(code).toContain('__bindIfExpr(_wm_b1, _we_b1, [inner], () => !(inner())');
     // The text binding writes its text node, reached by path from the button
     expect(code).toMatch(
-      /const (b\d+) = b\d+\.nextSibling\.firstChild\.nextSibling;[\s\S]*count\.subscribe\(v => \{ \1\.data = v \?\? ''; \}, true\)/,
+      /const (_b\d+) = _b\d+\.nextSibling\.firstChild\.nextSibling;[\s\S]*count\.subscribe\(v => \{ \1\.data = v \?\? ''; \}, true\)/,
     );
     // Nothing from inside the block leaks into the top-level initializer
     expect(code.split('__bindIf(_ws_b0')[0]).not.toContain('addEventListener');

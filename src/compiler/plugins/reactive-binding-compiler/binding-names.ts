@@ -4,15 +4,14 @@
  * name would read the compiler's variable instead, so such a name is a build error (THANE012) rather than
  * a wrong value at runtime.
  *
- * The compiler's own names around user code are those that start with `_` (`_subs`, `_r`, a row's `_el`),
- * the element variables named after binding ids (`b3`, `i4`), the event parameter `e` of a delegated row
- * listener, and `item`, a row's name for an item the source leaves unnamed. Names the template declares
- * itself (a row's `(it) =>`, a handler's `(e) =>`) are the developer's, and are not counted.
+ * Every name the compiler declares around user code starts with `_`: `_subs`, `_r`, a bound element's
+ * `_b3`, a row's `_el`, the event parameter `_e`. Names the template declares itself (a row's `(it) =>`,
+ * a handler's `(e) =>`) are the developer's, and are not counted.
  */
 import ts from 'typescript';
 import { ErrorCode } from '../../errors.js';
 
-const COMPILER_NAME = /^(?:_|[bi]\d+$|e$|item$)/;
+const COMPILER_NAME = /^_/;
 
 const addBindingNames = (name: ts.BindingName, into: Set<string>): void => {
   if (ts.isIdentifier(name)) into.add(name.text);
@@ -81,7 +80,7 @@ export const checkBindingNames = (setup: ts.Node, bindingsBody: string): void =>
   if (clashes.length > 0) {
     const list = clashes.map((name) => `"${name}"`).join(', ');
     throw new Error(
-      `${ErrorCode.BINDING_NAME_COLLISION}: this component's template reads ${list}, a name the compiled bindings use for a variable of their own, so it would read the compiler's value. Rename it: names that start with "_", element names such as "b3", and "e" and "item" in rows are the compiler's.`,
+      `${ErrorCode.BINDING_NAME_COLLISION}: this component's template reads ${list}, a name the compiled bindings use for a variable of their own, so it would read the compiler's value. Rename it: names that start with "_" are the compiler's.`,
     );
   }
 };

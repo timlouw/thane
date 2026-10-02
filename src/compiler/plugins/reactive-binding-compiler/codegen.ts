@@ -449,12 +449,10 @@ const buildSelectionSubscription = (
 
 /**
  * The name a row factory gives the row's item: the source's own, so that an inner list's item shadows
- * an outer one exactly as the source's scoping does. `e` and names that start with `_` are the
- * compiler's own in row code (the event parameter, `_el`, `_ref`, guards), so such an item is called
- * `item` there.
+ * an outer one exactly as the source's scoping does. Names that start with `_` are the compiler's own
+ * in row code (the event parameter `_e`, `_el`, `_ref`, guards), so such an item is called `_item` there.
  */
-const rowItemName = (rep: RepeatBlock): string =>
-  rep.itemVar && rep.itemVar !== 'e' && !rep.itemVar.startsWith('_') ? rep.itemVar : 'item';
+const rowItemName = (rep: RepeatBlock): string => (rep.itemVar && !rep.itemVar.startsWith('_') ? rep.itemVar : '_item');
 
 /** A row expression as the row factory reads it: the item under the factory's name for it */
 const inRow = (rep: RepeatBlock, expr: string): string =>
@@ -479,22 +477,22 @@ interface PartitionedEvents {
 
 /**
  * Turn a row event attribute's expression into statements for the row listener body, where
- * the event is `e`. An arrow function is inlined (its parameter aliased to `e` when it has
- * another name); a function expression or a plain reference is called with the event; any
- * other expression, such as the call `select(item.id)`, runs as written.
+ * the event is `_e`. An arrow function is inlined (its parameter declared as `_e`); a function
+ * expression or a plain reference is called with the event; any other expression, such as the call
+ * `select(item.id)`, runs as written.
  */
 const inlineRowHandler = (handlerExpr: string): string => {
   const arrow = parseArrowFunction(handlerExpr);
   if (arrow) {
     const body = arrow.isBlockBody ? arrow.body.slice(1, -1).trim() : arrow.body;
     const param = arrow.params.replace(/^\(|\)$/g, '').trim();
-    if (param === '' || param === 'e') return body;
-    if (/^[A-Za-z_$][\w$]*$/.test(param)) return `{ const ${param} = e; ${body}; }`;
-    return `(${handlerExpr})(e)`;
+    if (param === '') return body;
+    if (/^[A-Za-z_$][\w$]*$/.test(param)) return `{ const ${param} = _e; ${body}; }`;
+    return `(${handlerExpr})(_e)`;
   }
-  if (isFunctionExpressionText(handlerExpr)) return `(${handlerExpr})(e)`;
+  if (isFunctionExpressionText(handlerExpr)) return `(${handlerExpr})(_e)`;
   const trimmed = handlerExpr.trim();
-  if (/^[A-Za-z_$][\w$.]*$/.test(trimmed)) return `${trimmed}(e)`;
+  if (/^[A-Za-z_$][\w$.]*$/.test(trimmed)) return `${trimmed}(_e)`;
   return handlerExpr;
 };
 
@@ -548,7 +546,7 @@ const partitionItemEvents = (
 
 /**
  * Build delegated listener statements — one addEventListener per event type on the container.
- * Each listener walks from e.target up to the item root, reads __d, and dispatches. `captured`
+ * Each listener walks from _e.target up to the item root, reads __d, and dispatches. `captured`
  * names, per event, the row property that holds its element (see emitRepeat): in a row whose
  * when()/whenElse() content comes and goes, an element's position is only known at creation.
  */
@@ -566,7 +564,7 @@ const buildDelegatedListenerStatements = (
     // one handler whose subtree the target is in runs a containment check, and only for
     // the part of its path below the cell.
     const finalBody = [
-      `let _row = e.target, _cell = null;`,
+      `let _row = _e.target, _cell = null;`,
       `while (_row && _row.parentNode !== ${containerVar}) { _cell = _row; _row = _row.parentNode; }`,
       `if (!_row || !_row.__d) return;`,
       `const ${itemName} = _row.__d;`,
@@ -574,8 +572,8 @@ const buildDelegatedListenerStatements = (
 
     for (const evt of events) {
       const modParts: string[] = [];
-      if (evt.modifiers.includes('prevent')) modParts.push('e.preventDefault()');
-      if (evt.modifiers.includes('stop')) modParts.push('e.stopPropagation()');
+      if (evt.modifiers.includes('prevent')) modParts.push('_e.preventDefault()');
+      if (evt.modifiers.includes('stop')) modParts.push('_e.stopPropagation()');
       const keyMods = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
       if (keyMods.length > 0) {
         const guard = compileKeyGuard(keyMods);
@@ -587,19 +585,19 @@ const buildDelegatedListenerStatements = (
       if (evt.path.length === 0) {
         finalBody.push(`${handlerBody};`);
       } else if (capturedAs) {
-        finalBody.push(`if (_row.${capturedAs}.contains(e.target)) { ${handlerBody}; return; }`);
+        finalBody.push(`if (_row.${capturedAs}.contains(_e.target)) { ${handlerBody}; return; }`);
       } else {
         const [cellIndex, ...rest] = evt.path;
         const cellExpr = pathToSiblingNav('_row', [cellIndex!]);
         const guard =
           rest.length === 0
             ? `_cell !== null && _cell === ${cellExpr}`
-            : `_cell !== null && _cell === ${cellExpr} && ${pathToSiblingNav('_cell', rest)}?.contains(e.target)`;
+            : `_cell !== null && _cell === ${cellExpr} && ${pathToSiblingNav('_cell', rest)}?.contains(_e.target)`;
         finalBody.push(`if (${guard}) { ${handlerBody}; return; }`);
       }
     }
 
-    statements.push(`${containerVar}.addEventListener('${eventName}', (e) => { ${finalBody.join(' ')} });`);
+    statements.push(`${containerVar}.addEventListener('${eventName}', (_e) => { ${finalBody.join(' ')} });`);
   }
 
   return statements;
@@ -663,16 +661,16 @@ const buildNonDelegatableEventStatements = (
     }
     handlerExpr = inlineRowHandler(handlerExpr);
     const bodyParts: string[] = [];
-    if (evt.modifiers.includes('prevent')) bodyParts.push('e.preventDefault()');
-    if (evt.modifiers.includes('stop')) bodyParts.push('e.stopPropagation()');
-    if (evt.modifiers.includes('self')) bodyParts.push('if (e.target !== e.currentTarget) return');
+    if (evt.modifiers.includes('prevent')) bodyParts.push('_e.preventDefault()');
+    if (evt.modifiers.includes('stop')) bodyParts.push('_e.stopPropagation()');
+    if (evt.modifiers.includes('self')) bodyParts.push('if (_e.target !== _e.currentTarget) return');
     const keyMods = evt.modifiers.filter((m) => m !== 'prevent' && m !== 'stop' && m !== 'self');
     if (keyMods.length > 0) {
       const guard = compileKeyGuard(keyMods);
       if (guard) bodyParts.push(`if (${guard}) return`);
     }
     bodyParts.push(handlerExpr);
-    addStatements.push(`${elVar}.addEventListener('${evt.eventName}', (e) => { ${bodyParts.join('; ')}; })`);
+    addStatements.push(`${elVar}.addEventListener('${evt.eventName}', (_e) => { ${bodyParts.join('; ')}; })`);
   }
 
   return { navStatements, addStatements };
@@ -704,18 +702,21 @@ const KEY_MAP: Record<string, string[]> = {
  * key matches **none** of the listed keys.  With `||` the condition was a
  * tautology (always true) whenever more than one key was listed.
  *
- * @example compileKeyGuard(['enter', 'tab']) => "e.key !== 'Enter' && e.key !== 'Tab'"
+ * @example compileKeyGuard(['enter', 'tab']) => "_e.key !== 'Enter' && _e.key !== 'Tab'"
  */
 const compileKeyGuard = (modifiers: string[]): string | null => {
   const checks = modifiers
     .map((mod) => {
       const keys = KEY_MAP[mod];
       if (!keys) return null;
-      return keys.length === 1 ? `e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(e.key)`;
+      return keys.length === 1 ? `_e.key !== '${keys[0]}'` : `!${JSON.stringify(keys)}.includes(_e.key)`;
     })
     .filter(Boolean);
   return checks.length > 0 ? checks.join(' && ') : null;
 };
+
+/** The variable that holds a bound node in compiled code: `_b3` for the binding id `b3`. */
+const nodeVar = (id: string): string => `_${id}`;
 
 /**
  * The DOM write of a simple binding, writing `value`: a camel-cased style property (a custom
@@ -723,7 +724,7 @@ const compileKeyGuard = (modifiers: string[]): string | null => {
  * bindings, the binding's text node (the one after its marker comment).
  */
 const simpleWrite = (binding: SimpleBinding, value: string): string => {
-  const elRef = binding.id;
+  const elRef = nodeVar(binding.id);
   if (binding.type === 'style' && binding.property!.startsWith('--'))
     return `${elRef}.style.setProperty('${binding.property}', ${value})`;
   if (binding.type === 'style') return `${elRef}.style.${toCamelCase(binding.property!)} = ${value}`;
@@ -744,10 +745,11 @@ const expressionWrite = (binding: {
   property?: string | undefined;
   domProperty?: string | undefined;
 }): ((value: string) => string) | undefined => {
-  if (binding.type === 'text') return (v) => `${binding.id}.data = (${v}) ?? ''`;
-  if (binding.type === 'attr' && binding.property) return (v) => attributeWrite(binding.id, binding, v);
+  const node = nodeVar(binding.id);
+  if (binding.type === 'text') return (v) => `${node}.data = (${v}) ?? ''`;
+  if (binding.type === 'attr' && binding.property) return (v) => attributeWrite(node, binding, v);
   if (binding.type === 'style' && binding.property)
-    return (v) => `${binding.id}.style.setProperty('${binding.property}', ${v})`;
+    return (v) => `${node}.style.setProperty('${binding.property}', ${v})`;
   return undefined;
 };
 
@@ -800,15 +802,15 @@ const compileEventHandler = (evt: EventBinding): string => {
 
   if (hasModifiers && (hasPrevent || hasStop || hasSelf || keyModifiers.length > 0)) {
     const bodyParts: string[] = [];
-    if (hasSelf) bodyParts.push('if (e.target !== e.currentTarget) return;');
+    if (hasSelf) bodyParts.push('if (_e.target !== _e.currentTarget) return;');
     if (keyModifiers.length > 0) {
       const guard = compileKeyGuard(keyModifiers);
       if (guard) bodyParts.push(`if (${guard}) return;`);
     }
-    if (hasPrevent) bodyParts.push('e.preventDefault();');
-    if (hasStop) bodyParts.push('e.stopPropagation();');
-    bodyParts.push(isFnCall ? `${handlerCode};` : `(${handlerCode})(e);`);
-    return `(e) => { ${bodyParts.join(' ')} }`;
+    if (hasPrevent) bodyParts.push('_e.preventDefault();');
+    if (hasStop) bodyParts.push('_e.stopPropagation();');
+    bodyParts.push(isFnCall ? `${handlerCode};` : `(${handlerCode})(_e);`);
+    return `(_e) => { ${bodyParts.join(' ')} }`;
   }
   return isFnCall ? `() => { ${handlerCode}; }` : handlerCode;
 };
@@ -900,7 +902,7 @@ export const generateInitBindingsFunction = (
   const buildEventListenerStatements = (events: EventBinding[], scope: NavScope): string[] =>
     events.map(
       (evt) =>
-        `${scope.at(evt.elementId, evt.elementId)}.addEventListener('${evt.eventName}', ${compileEventHandler(evt)});`,
+        `${scope.at(evt.elementId, nodeVar(evt.elementId))}.addEventListener('${evt.eventName}', ${compileEventHandler(evt)});`,
     );
   // Events inside when() content (and whenElse branches nested in it) are bound by the branch
   // initializer, not at the top level. Row events belong to the row generator.
@@ -1635,11 +1637,11 @@ export const generateInitBindingsFunction = (
     // Elements first: a text node's path can then start from one of them. An element the scope reaches
     // directly (the component's `_ns[i]`) is named by a statement.
     for (const id of ids.filter((id) => !isText(id))) {
-      const expr = scope.at(id, id);
-      if (expr !== id) sink.statement(`const ${id} = ${expr};`);
+      const expr = scope.at(id, nodeVar(id));
+      if (expr !== nodeVar(id)) sink.statement(`const ${nodeVar(id)} = ${expr};`);
     }
-    for (const evt of parts.events) scope.at(evt.elementId, evt.elementId);
-    for (const id of ids.filter(isText)) scope.text(id, id);
+    for (const evt of parts.events) scope.at(evt.elementId, nodeVar(evt.elementId));
+    for (const id of ids.filter(isText)) scope.text(id, nodeVar(id));
 
     // Simple bindings: the initial value, and one subscription per signal
     const simpleBindings = parts.bindings.filter(isSimpleBinding);

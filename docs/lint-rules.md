@@ -272,7 +272,7 @@ These are reported by the compiler while it compiles a template, as build errors
 | THANE009 | A template the compiler cannot bind reliably: markup the browser rebuilds (text directly in a table, an `<a>` inside an `<a>`, non-option content in a `<select>`), or a comment written like one of the compiler's own markers (`<!--b0-->`) |
 | THANE010 | A function as `repeat()`'s third argument, which is the empty template. Pass the key function fourth: `repeat(items, row, null, (it) => it.id)`                                                                                               |
 | THANE011 | A `repeat()` empty template that is not one static element: two roots, text outside an element, or a `${…}` in it. It is inserted as one element while the list is empty                                                                      |
-| THANE012 | A template reads a name that the compiled bindings declare for themselves (a name starting with `_`, an element name such as `b3`, or `e` and `item` in a row), so it would read the compiler's value. Rename the variable                    |
+| THANE012 | A template reads a name that starts with `_`, the prefix of every variable the compiled bindings declare for themselves, so it could read the compiler's value. Rename the variable                                                            |
 | THANE013 | Two components of the build with one selector (declared under one name, each with a derived selector). They share their host class, and the styles of the one registered first apply to both. Rename one, or give it an explicit selector     |
 
 ### THANE007 — one root element per row
@@ -307,7 +307,7 @@ ${repeat(items(), (item) => html`<li>${item.name}</li>`, null, (item) => item.id
 
 ### THANE012 — names the compiled bindings keep for themselves
 
-The binding code the compiler writes into each component declares variables of its own. Their names start with `_`, or are element names such as `b3`; in a list row the event parameter is `e`, and an item the source leaves unnamed is `item`. A template that reads a setup variable, import or global with one of those names would read the compiler's variable, so the build stops instead:
+The binding code the compiler writes into each component declares variables of its own, and every one of their names starts with `_` (`_subs`, a bound element's `_b3`, a row's `_el`, a listener's event `_e`). Any other name is yours: a template may read a setup variable named `e`, `item` or `b3`. A template that reads a setup variable, import or global whose name is one of the compiler's would read the compiler's variable, so the build stops instead:
 
 ```typescript
 // ❌ BAD — `_subs` is a name of the compiled bindings

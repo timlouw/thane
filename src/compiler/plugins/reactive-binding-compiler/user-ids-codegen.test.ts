@@ -27,14 +27,14 @@ describe('Developer ids are kept on bound elements and not used to find them', (
     expect(componentTemplate(js)).toMatch(/<p id="panel" title="[^"]*">x<\/p>/);
     expect(componentTemplate(js)).not.toMatch(/id="b\d+"|data-thane-ref/);
     // <div> is element 0, <p> element 1
-    expect(js).toMatch(/const (b\d+) = _ns\[1\];\s+\1\.setAttribute\("title", /);
+    expect(js).toMatch(/const (_b\d+) = _ns\[1\];\s+\1\.setAttribute\("title", /);
     expect(js).not.toMatch(/querySelector\("#|_gid|_u_panel/);
   });
 
   test('an id that is not a JavaScript identifier is left alone', async () => {
     const js = await buildAndReadJs(app('<p id="my-box" style="color: ${kind()}">x</p>'));
     expect(componentTemplate(js)).toMatch(/<p id="my-box" style="[^"]*">x<\/p>/);
-    expect(js).toMatch(/const (b\d+) = _ns\[1\];\s+\1\.style\.color = /);
+    expect(js).toMatch(/const (_b\d+) = _ns\[1\];\s+\1\.style\.color = /);
   });
 
   test('an id equal to a component variable does not shadow it', async () => {
@@ -47,7 +47,7 @@ describe('Developer ids are kept on bound elements and not used to find them', (
     const js = await buildAndReadJs(app('<label for="name">N</label><input id="name" value=${kind()} />'));
     // `value` is written as a property, so the static template ships no attribute for it
     expect(componentTemplate(js)).toMatch(/<input id="name" \/?>/);
-    expect(js).toMatch(/const (b\d+) = _ns\[2\];\s+\1\.value = /);
+    expect(js).toMatch(/const (_b\d+) = _ns\[2\];\s+\1\.value = /);
   });
 
   test('an empty id attribute is left alone and does not break the lookup', async () => {

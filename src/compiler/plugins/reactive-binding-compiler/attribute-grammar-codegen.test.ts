@@ -36,7 +36,7 @@ const rowTemplate = (js: string): string => js.match(/__tpl_b\d+ = __T\(`([^`]*)
 describe('One attribute grammar', () => {
   test('static text around an expression is kept, at component level', async () => {
     const js = await buildAndReadJs(componentApp('<p class="btn ${kind()} ${size()}">x</p>'));
-    expect(js).toMatch(/\(_pv_b\d+_0 = `btn \$\{kind\(\)\} \$\{size\(\)\}`\)\) b\d+\.className = _pv_b\d+_0/);
+    expect(js).toMatch(/\(_pv_b\d+_0 = `btn \$\{kind\(\)\} \$\{size\(\)\}`\)\) _b\d+\.className = _pv_b\d+_0/);
     // both signals drive the one binding
     expect(js).toMatch(/kind\.subscribe\(/);
     expect(js).toMatch(/size\.subscribe\(/);

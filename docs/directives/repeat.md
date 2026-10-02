@@ -176,8 +176,6 @@ ${repeat(
 )}
 ```
 
-When the items are signals, do not name the outer row's parameter `item` if an inner row calls it: see [Known Limitations](../known-limitations.md#signal-items-named-item-in-nested-lists).
-
 ## Fast-Path Optimizations
 
 The reconciler includes several fast paths for common operations:

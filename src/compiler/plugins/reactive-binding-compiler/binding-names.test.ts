@@ -1,8 +1,8 @@
 /**
- * The compiled binding function declares variables of its own and closes over the setup's scope. The
- * names a developer is likely to use (`r`, `ctx`, `items`, `i`, `v`) are never the compiler's, and a
- * template that reads one of the compiler's names (`_subs`, an element such as `b0`, `e` in a row
- * listener) is a build error (THANE012) instead of reading the compiler's value.
+ * The compiled binding function declares variables of its own and closes over the setup's scope. Every one
+ * of them starts with `_`, so any other name (`r`, `ctx`, `items`, `i`, `v`, `b0`, `e`, `item`) is the
+ * developer's, and a template that reads one of the compiler's names (`_subs`) is a build error (THANE012)
+ * instead of reading the compiler's value.
  */
 import { describe, expect, test } from 'bun:test';
 import { buildAndReadJs } from '../../testing/build-project.js';
@@ -41,15 +41,24 @@ describe('names in templates and the compiled bindings', () => {
     expect(js).toContain('pick(');
   });
 
+  test('a setup variable named like a bound element, b0, is read as the setup declares it', async () => {
+    const js = await build('  const b0 = signal(1);', '<p title=${b0()}>${b0()}</p>');
+    expect(js).toMatch(/\.data = b0\(\) \?\? ""/);
+    expect(js).toMatch(/_b\d+\.setAttribute\("title", b0\(\)\)/);
+  });
+
+  test("setup variables named e and item, read in row handlers, are the setup's", async () => {
+    const js = await build(
+      '  const rows = signal([{ id: 1 }]); const e = signal(0); const item = signal(5); const pick = (id: number) => id;',
+      '<ul>${repeat(rows(), (row) => html`<li @click=${() => pick(e() + item() + row.id)}>${row.id}</li>`, null, (row) => row.id)}</ul>',
+    );
+    expect(js).toMatch(/pick\(e\(\) \+ item\(\) \+ row\.id\)/);
+    expect(js).toMatch(/addEventListener\("click", \(_e\) =>/);
+  });
+
   for (const [what, setup, template, name] of [
     ['a setup variable named _subs', '  const _subs = signal(1);', '<p>${_subs()}</p>', '_subs'],
-    ['a setup variable named like an element, b0', '  const b0 = signal(1);', '<p>${b0()}</p>', 'b0'],
-    [
-      'a setup variable named e, read in a row handler',
-      '  const rows = signal([{ id: 1 }]); const e = signal(0); const pick = (id: number) => id;',
-      '<ul>${repeat(rows(), (row) => html`<li @click=${() => pick(e() + row.id)}>${row.id}</li>`, null, (row) => row.id)}</ul>',
-      'e',
-    ],
+    ['a setup variable named like a bound element, _b0', '  const _b0 = signal(1);', '<p title=${_b0()}>x</p>', '_b0'],
   ] as const) {
     test(`${what} is a build error`, () =>
       expect(build(setup, template)).rejects.toThrow(
