@@ -19,11 +19,17 @@ A component's selector is the class of its host element, which scopes its styles
 
 A setup function returns one object (THANE412). The compiler builds one static template per component, so an early `return { template: … }` in a branch cannot work. Choose in the template instead, with `when()` or a ternary.
 
-### Hot Updates Swap Whole Components
+### Hot Updates Keep Signals by Name
 
-`thane dev` swaps a changed component file in the open page, but a swapped component starts again: its own signals
-start from their initial values (its stores, and the rest of the page, keep theirs). A change to any other module
-reloads the page.
+`thane dev` swaps a changed component file in the open page, and each swapped instance keeps its state by name: a
+signal its setup declares with `const` at the top level starts from the value of the old instance's signal of that
+name, and so does a signal the file declares at its top level. The children a swapped component mounts as it mounts take
+their old children's state, matched by selector in the order they were on the page.
+
+What starts again: a signal declared with `let`, or inside a function or a block; a signal whose value is now of
+another type (`signal(0)` changed to `signal('')`); and a child that is new, or that moved before another of its
+selector. A `computed()` computes again, an `effect()` runs again, and `onMount` is called again. To start a
+signal again, rename it, or reload the page. A change to any other module reloads the page.
 
 ### `const` Required for Components and Templates
 

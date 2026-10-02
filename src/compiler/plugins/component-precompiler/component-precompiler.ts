@@ -25,7 +25,7 @@ import {
   KEYFRAME_SCOPING,
 } from '../minification/css-transform.js';
 import { ErrorCode, createError, createWarning, withConfiguredSeverity } from '../../errors.js';
-import { hotRegistration, isSwappable, trackHotInput } from './hot-modules.js';
+import { hotModuleKey, hotRegistration, isSwappable, trackHotInput } from './hot-modules.js';
 import { INTERNAL_RUNTIME_SPECIFIER, RUNTIME_HELPER } from '../../../contracts/index.js';
 
 const NAME = PLUGIN_NAME.COMPONENT;
@@ -244,7 +244,12 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
       parsed: ts.SourceFile,
     ): { contents: string; loader: 'ts' } => {
       let keyframes = false;
-      const options = { ...compileOptions(), onKeyframes: () => (keyframes = true) };
+      const options = {
+        ...compileOptions(),
+        onKeyframes: () => (keyframes = true),
+        // `thane dev`: the components' signals keep their values through hot updates
+        hotModule: ctx?.hot ? hotModuleKey(filePath, ctx.projectRoot) : undefined,
+      };
       // The binding compiler strips the templates' tags along with its other edits
       const transformed =
         extendsComponentQuick(source) || EXPORTED_FRAGMENT.test(source)

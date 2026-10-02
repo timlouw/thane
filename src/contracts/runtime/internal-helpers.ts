@@ -19,6 +19,8 @@ export const RUNTIME_HELPER = {
   MOUNT_FRAGMENT: '__mf',
   SIGNAL: '__sig',
   MOUNT_COMPONENT: 'mountComponent',
+  /** `thane dev` only: a setup's signal, kept through a hot update (runtime/hot.ts) */
+  HOT_SIGNAL: '__hotSignal',
 } as const;
 
 export type RuntimeHelperName = (typeof RUNTIME_HELPER)[keyof typeof RUNTIME_HELPER];

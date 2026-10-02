@@ -13,3 +13,4 @@ export {
 } from './component.js';
 export { __bindIf, __bindIfExpr, createKeyedReconciler, __batchRows, __nc } from './dom-binding.js';
 export { __mf } from './fragment.js';
+export { __hotSignal } from './hot.js';

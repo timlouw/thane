@@ -46,7 +46,9 @@ those components in place: each instance of a changed component is mounted again
 its place and with its props, and the rest of the page keeps its state (its other components, its stores, the
 route). Any other change reloads the pages: a module that is not a component file (a store, a helper), a component
 file that exports something else too, a stylesheet file, an asset or `index.html`, and a component the page has not
-loaded yet. A swapped component starts again, so its own signals start from their initial values.
+loaded yet. A swapped component keeps its state: each `const` signal at the top level of its setup, or of its file,
+starts from the old one's value, and the children it mounts from the old children's (see
+[Known Limitations](known-limitations.md#hot-updates-keep-signals-by-name)).
 
 Errors in the browser (`console.error`, uncaught errors and unhandled promise rejections) are printed in the terminal, with their locations in the built files.
 

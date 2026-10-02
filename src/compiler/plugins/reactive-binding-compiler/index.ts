@@ -9,6 +9,7 @@ import {
   findExportedFragments,
   type FragmentDeclaration,
   isHtmlTemplate,
+  isSignalCall,
   applyEdits,
   type SourceEdit,
   sourceCache,
@@ -723,6 +724,11 @@ export interface CompileOptions {
   selectorMap?: SelectorMap | undefined;
   /** Called when a compiled stylesheet defines `@keyframes` */
   onKeyframes?: (() => void) | undefined;
+  /**
+   * `thane dev`: the file's module key (hot-modules.ts). Each signal declared at the top level of a component's
+   * setup, or of the file, then keeps its value through a hot update (see keepSignalsHot)
+   */
+  hotModule?: string | undefined;
 }
 
 /**
@@ -865,6 +871,8 @@ const transformComponent = (
     }
   }
 
+  const keepsSignals = servicesImport !== null && options.hotModule !== undefined && keepSignalsHot(file, components);
+
   for (const { statement, declarations } of compiled) {
     const code = declarations.trim();
     if (!code) continue;
@@ -884,6 +892,7 @@ const transformComponent = (
     if (hasStyles) used.add(BIND_FN.ENABLE_STYLES);
     // The components' and the lists' templates are built by the runtime's __T
     if (hasTemplates) used.add(BIND_FN.TEMPLATE);
+    if (keepsSignals) used.add(BIND_FN.HOT_SIGNAL);
     const requiredFunctions = [...used].sort((a, b) => importRank(a) - importRank(b));
 
     const newImport = generateUpdatedImport(filteredImport, requiredFunctions, importsDomPrototype);
@@ -912,6 +921,37 @@ const transformComponent = (
   emptyTemplates(sourceFile);
 
   return applyEdits(source, edits);
+};
+
+/**
+ * `thane dev`: each `const name = signal(…)` at the top level of a component's setup becomes
+ * `const name = __hotSignal(signal(…), 'name')`, and one at the top level of the file passes the file's module
+ * key too. The page's hot runtime then starts the signal of an instance mounted again with new code from the
+ * old instance's signal of its name (runtime/hot.ts). Returns whether there was one.
+ */
+const keepSignalsHot = (file: FileCompilation, components: readonly ComponentDeclaration[]): boolean => {
+  const { sourceFile, edits, options } = file;
+  let kept = false;
+  const keep = (statements: readonly ts.Statement[], module?: string): void => {
+    for (const statement of statements) {
+      if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
+      for (const { name, initializer } of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(name) || !initializer || !ts.isCallExpression(initializer)) continue;
+        if (!isSignalCall(initializer)) continue;
+        const names = [name.text, ...(module === undefined ? [] : [module])].map((text) => JSON.stringify(text));
+        const start = initializer.getStart(sourceFile);
+        edits.push({ start, end: start, replacement: `${BIND_FN.HOT_SIGNAL}(` });
+        edits.push({ start: initializer.getEnd(), end: initializer.getEnd(), replacement: `, ${names.join(', ')})` });
+        kept = true;
+      }
+    }
+  };
+  keep(sourceFile.statements, options.hotModule);
+  for (const { call } of components) {
+    const body = getSetupFunction(call)?.body;
+    if (body && ts.isBlock(body)) keep(body.statements);
+  }
+  return kept;
 };
 
 /** A component's or an exported fragment's templates, compiled */

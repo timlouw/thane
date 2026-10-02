@@ -32,7 +32,10 @@ const change = (file: string, from: string, to: string): void => {
 const marker = (page: Page) => page.evaluate(() => (window as unknown as { __hotMarker?: string }).__hotMarker);
 
 test.describe('hot updates', () => {
-  test('a changed component is swapped in the open page; another change reloads it', async ({ browserName, page }) => {
+  test('a changed component is swapped in the open page with its state; another change reloads it', async ({
+    browserName,
+    page,
+  }) => {
     test.skip(browserName !== 'chromium', 'The dev server is covered once, in chromium.');
     rmSync(app, { recursive: true, force: true });
     cpSync(source, app, { recursive: true });
@@ -66,28 +69,50 @@ test.describe('hot updates', () => {
       await expect(label).toHaveText('v1 1');
       await expect(label).toHaveCSS('color', 'rgb(0, 0, 255)');
 
-      // State the swap must keep: a value on the page, and a signal the app's store holds
+      // State the swap must keep: a value on the page, a signal the app's store holds, the label's own signal
+      // and its file's, and the app's own signal
       await page.evaluate(() => ((window as unknown as { __hotMarker: string }).__hotMarker = 'kept'));
       await page.locator('.hot-click').click();
       await page.locator('.hot-click').click();
       await expect(page.locator('.hot-clicks')).toHaveText('2');
+      for (let i = 0; i < 3; i++) await page.locator('.hot-tap').click();
+      await page.locator('.hot-open').click();
+      const state = async (taps: string, total: string, opened: string): Promise<void> => {
+        await expect(page.locator('.hot-taps')).toHaveText(taps);
+        await expect(page.locator('.hot-total')).toHaveText(total);
+        await expect(page.locator('.hot-opened')).toHaveText(opened);
+        await expect(page.locator('.hot-clicks')).toHaveText('2');
+      };
+      await state('3', '3', '1');
 
-      // The component's file changes: its instance is mounted again with the new code and styles
+      // The component's file changes: its instance is mounted again with the new code and styles, from its state
       change('label.ts', 'v1 ${props.n}', 'v2 ${props.n}');
       await expect(label).toHaveText('v2 1', { timeout: 15_000 });
+      await state('3', '3', '1');
       change('label.ts', 'rgb(0, 0, 255)', 'rgb(255, 0, 0)');
       await expect(label).toHaveCSS('color', 'rgb(255, 0, 0)', { timeout: 15_000 });
       expect(await marker(page)).toBe('kept');
-      await expect(page.locator('.hot-clicks')).toHaveText('2');
+      await state('3', '3', '1');
+      await page.locator('.hot-tap').click();
+      await state('4', '4', '1');
+      expect(output).toContain('Updated .build/hot-src/label.ts');
+
+      // The parent's file changes: it is mounted again from its state, and the label it mounts from the label's
+      change('app.ts', '>a1<', '>a2<');
+      await expect(page.locator('.hot-title')).toHaveText('a2', { timeout: 15_000 });
+      await state('4', '4', '1');
+      await expect(label).toHaveText('v2 1');
+      expect(await marker(page)).toBe('kept');
       await page.locator('.hot-click').click();
       await expect(page.locator('.hot-clicks')).toHaveText('3');
-      expect(output).toContain('Updated .build/hot-src/label.ts');
 
       // A module that is not a component file changes: the page reloads, and starts from the new code
       change('store.ts', 'signal(0)', 'signal(10)');
       await expect(page.locator('.hot-clicks')).toHaveText('10', { timeout: 15_000 });
       expect(await marker(page)).toBeUndefined();
       await expect(label).toHaveText('v2 1');
+      await expect(page.locator('.hot-taps')).toHaveText('0');
+      await expect(page.locator('.hot-title')).toHaveText('a2');
     } finally {
       await stopChild(child);
       rmSync(app, { recursive: true, force: true });

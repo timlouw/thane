@@ -16,6 +16,7 @@ import {
   createKeyedReconciler,
   __sig,
   mountComponent,
+  __hotSignal,
 } from './internal.js';
 
 describe('runtime internal contract', () => {
@@ -35,6 +36,7 @@ describe('runtime internal contract', () => {
     [RUNTIME_HELPER.MOUNT_FRAGMENT]: __mf,
     [RUNTIME_HELPER.SIGNAL]: __sig,
     [RUNTIME_HELPER.MOUNT_COMPONENT]: mountComponent,
+    [RUNTIME_HELPER.HOT_SIGNAL]: __hotSignal,
   };
 
   test('expected map covers all runtime helper names', () => {
@@ -57,5 +59,6 @@ describe('runtime internal contract', () => {
     expect(expected[RUNTIME_HELPER.ROW_CHILD]).toBe(__rc);
     expect(expected[RUNTIME_HELPER.SIGNAL]).toBe(__sig);
     expect(expected[RUNTIME_HELPER.MOUNT_COMPONENT]).toBe(mountComponent);
+    expect(expected[RUNTIME_HELPER.HOT_SIGNAL]).toBe(__hotSignal);
   });
 });
