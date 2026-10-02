@@ -1,37 +1,26 @@
 import { defineComponent, html, when } from 'thane';
+import { isActive } from 'thane/router';
 import styles from './Navbar.module.css';
 import { cartCount } from '../../state/global-state.js';
-import { currentPath, navigate } from 'thane/router';
 
-const logoPath = '/assets/images/storefront-mark.svg';
-const cartIconPath = '/assets/icons/cart.svg';
-const homeIconPath = '/assets/icons/home.svg';
-
-export const Navbar = defineComponent('store-navbar', () => {
-  return {
-    template: html`
-      <nav class="navbar">
-        <a class="logoLink" @click=${navigate('/')}>
-          <img class="logo" src=${logoPath} alt="Store logo" />
+export const Navbar = defineComponent(() => ({
+  template: html`
+    <nav class="navbar">
+      <a class="logoLink" href="/">
+        <img class="logo" src="/assets/images/storefront-mark.svg" alt="Store logo" />
+      </a>
+      <div class="navigationButtonsContainer">
+        <a class="navigationButton" class:active=${isActive('/')} href="/">
+          <span class="navigationText">Home</span>
+          <img class="navigationIcon" src="/assets/icons/home.svg" alt="Home Icon" />
         </a>
-        <div class="navigationButtonsContainer">
-          <a class=${currentPath() === '/' ? 'navigationButton active' : 'navigationButton'} @click=${navigate('/')}>
-            <span class="navigationText">Home</span>
-            <img class="navigationIcon" src=${homeIconPath} alt="Home Icon" />
-          </a>
-          <a
-            class=${currentPath() === '/my-cart' ? 'navigationButton active' : 'navigationButton'}
-            @click=${navigate('/my-cart')}
-          >
-            <span class="navigationText">My Cart</span>
-            <img class="navigationIcon" src=${cartIconPath} alt="My Cart Icon" />
-            <span class="cartCounter" ${when(cartCount() > 0)}>${cartCount()}</span>
-          </a>
-        </div>
-      </nav>
-    `,
-    styles,
-  };
-});
-
-export default Navbar;
+        <a class="navigationButton" class:active=${isActive('/my-cart')} href="/my-cart">
+          <span class="navigationText">My Cart</span>
+          <img class="navigationIcon" src="/assets/icons/cart.svg" alt="My Cart Icon" />
+          <span class="cartCounter" ${when(cartCount() > 0)}>${cartCount()}</span>
+        </a>
+      </div>
+    </nav>
+  `,
+  styles,
+}));
