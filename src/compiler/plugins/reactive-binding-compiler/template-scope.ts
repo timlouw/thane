@@ -133,6 +133,7 @@ export const templateScopeOf = (sourceFile: ts.SourceFile, setup?: ts.FunctionLi
   return {
     isFunction: (name) => declared.get(name)?.kind === 'function' || declared.get(name)?.kind === 'tracked',
     isRef: (name) => declared.get(name)?.kind === 'ref',
+    isValue: (name) => declared.get(name) === null,
     readsOf: (name) => readsOf(name, new Set()),
   };
 };

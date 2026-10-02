@@ -93,6 +93,11 @@ export interface TemplateScope {
   readsOf(name: string): string[];
   /** Whether the name is a ref the component declares (`const input = ref()`) */
   isRef(name: string): boolean;
+  /**
+   * Whether the name is a value the component or its file declares that is neither a signal, a function nor a
+   * ref (`const found = items().find(…)`): `found?.()` reads a signal that may be missing
+   */
+  isValue(name: string): boolean;
 }
 
 /** The scope of the component being compiled; the component compiler sets it around its compile */
@@ -126,6 +131,15 @@ export function extractSignalsFromExpression(expression: string): string[] {
     } else if (ts.isCallExpression(node) && node.arguments.length === 0) {
       // `count()` reads a signal in scope; `props.count()` reads a signal passed as a prop
       const callee = node.expression;
+      // `found?.()` on a value that may be missing: the binding would subscribe to a signal that is not there
+      if (node.questionDotToken && ts.isIdentifier(callee) && templateScope?.isValue(callee.text)) {
+        const name = callee.text;
+        throw new Error(
+          `${ErrorCode.MAYBE_MISSING_SIGNAL}: ${name}?.() reads a signal that may be missing, and a binding cannot follow ` +
+            `a signal that is not there. Show what reads it inside when(${name}, (s) => html\`…\${s()}…\`), which ` +
+            'binds the branch only while there is one.',
+        );
+      }
       const signalName = ts.isIdentifier(callee)
         ? callee.text
         : ts.isPropertyAccessExpression(callee) &&

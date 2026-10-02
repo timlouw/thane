@@ -30,10 +30,12 @@ export interface Fragment {
 type DirectiveTemplate = Fragment | string;
 
 /**
- * A directive's condition: any value, read for its truthiness, but not a function. A signal is a function, and
- * one passed without its call would always be truthy and never update: `when(open())`, not `when(open)`.
+ * A directive's condition: any value, read for its truthiness, but not one that is always a function. A signal is
+ * a function, and one passed without its call would always be truthy and never update: `when(open())`, not
+ * `when(open)`. A value that may be missing is a condition, a signal among them: `when(found, (s) => …)`, where
+ * `found` is a `Signal<Item> | undefined`, shows the branch while there is one.
  */
-type Condition<T> = T extends (...args: never[]) => unknown ? never : T;
+type Condition<T> = [T] extends [(...args: never[]) => unknown] ? never : T;
 
 /** A value that passed a truthiness check: without `null`, `undefined`, `false`, `0` and `''` */
 export type Truthy<T> = Exclude<T, null | undefined | false | 0 | 0n | ''>;

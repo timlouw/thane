@@ -26,6 +26,8 @@ const VALID: Record<string, string> = {
     'const Nav = defineComponent(() => ({ template: html`<nav></nav>` })); const Tip = defineComponent<{ text?: string }>(() => ({ template: html`<i></i>` })); return html`${Nav()}${Tip()}${Tip({ text: "t" })}`;',
   'a signal is a Signal, and a ReadonlySignal':
     'const s: Signal<number> = signal(1); const r: ReturnType<typeof computed<number>> = computed(() => s()); return [s, r];',
+  'a signal that may be missing is a condition, and the narrowed branch reads it':
+    'const found = [signal(1)].find(() => true); return when(found, (s) => html`<b>${s()}</b>`, spinner);',
   'css is a string, which styles takes':
     'const s: string = css`p { color: red; }`; return defineComponent(() => ({ template: html`<p></p>`, styles: s }));',
 };
@@ -35,6 +37,10 @@ const INVALID: Record<string, [call: string, message: RegExp]> = {
     /not assignable to type 'Fragment'/,
   ],
   'a number as a when() branch': ['return when(true, 1, spinner);', /not assignable/],
+  'a signal without its call as a condition': [
+    'const open = signal(false); return when(open, spinner);',
+    /not assignable to parameter of type 'never'/,
+  ],
   'a row that is not a template': ['return repeat(items, (it) => it.id);', /not assignable/],
   "a fragment's members": ['return spinner.length;', /does not exist on type 'Fragment'/],
   'a callback prop used with the wrong type': [

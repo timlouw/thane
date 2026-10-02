@@ -104,6 +104,18 @@ parameter replaced by the condition, `user()`. Each binding of the branch theref
 signals, and a handler reads the value when it runs. The condition is evaluated once for each use, so keep it a
 signal read or a short expression of one; give a long one a `computed()`.
 
+A signal that may be missing is a condition too: for `const found = products().find((p) => p().id === id)`, a
+`Signal<Product> | undefined`, the branch reads the signal while there is one, and follows it:
+
+```typescript
+html`${when(found, (product) => html`<h1>${product().title}</h1>`, html`<p>No such product</p>`)}`;
+```
+
+Its bindings subscribe to the signal when the branch shows, so they never subscribe to one that is not there. Read
+as `found?.()` in a binding instead, it is a build error (THANE018): that binding would subscribe as the component
+mounts. A signal that is always there is still not a condition: `when(open)` is a type error; `when(open())` is
+meant.
+
 The function takes one parameter, a name, and its body is an `html` template (``(u) => html`…` ``); anything
 else is a build error (THANE014). In a `repeat()` row the condition can read the row's item:
 ``when(row.owner, (owner) => html`<b>${owner.name}</b>`)``.

@@ -354,6 +354,7 @@ These are reported by the compiler while it compiles a template, as build errors
 | THANE015 | An event modifier the compiler does not know (`@click.prevnet`), or `.passive` with `.prevent` |
 | THANE016 | A `${…}` alone in a tag that is not `when()` or an element ref, or a ref in a list row |
 | THANE017 | A `bind:` other than `bind:value` and `bind:checked`, or a `class:name` without a condition |
+| THANE018 | `found?.()` in a binding, where `found` is a value the component declares that may be missing (`const found = items().find(…)`): the binding would subscribe to a signal that is not there. Show it inside `when(found, (s) => html`…`)` |
 
 ### THANE007 — one root element per row
 
