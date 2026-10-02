@@ -154,7 +154,7 @@ export const MyCounter = defineComponent(() => {
   };
 });
 
-mount({ component: MyCounter });
+mount(MyCounter);
 ```
 
 The compiler auto-derives the selector from the export name (`MyCounter` → `my-counter`), compiles the template to optimized DOM operations, and scopes CSS — all at build time.

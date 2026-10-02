@@ -45,7 +45,7 @@ const buildFailing = async (source: string) => {
 const COLON_ATTRIBUTE = [
   "import { defineComponent, mount } from 'thane';",
   "export const App = defineComponent('colon-attr', () => ({ template: html`<img :src=${'a.png'}>` }));",
-  "mount({ component: App, target: document.getElementById('app')! });",
+  "mount(App, { target: document.getElementById('app')! });",
   '',
 ].join('\n');
 

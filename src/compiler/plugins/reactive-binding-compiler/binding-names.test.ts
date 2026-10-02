@@ -15,7 +15,7 @@ export const App = defineComponent('names-app', (ctx) => {
 ${setup}
   return { template: html\`${template}\` };
 });
-mount({ component: App, target: document.getElementById('app')! });
+mount(App, { target: document.getElementById('app')! });
 `;
 
 const build = (setup: string, template: string): Promise<string> => buildAndReadJs(app(setup, template), DEV);

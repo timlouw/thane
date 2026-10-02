@@ -685,11 +685,11 @@ describe('mountComponent', () => {
 });
 
 describe('mount (Mode A)', () => {
-  test('mount({ component, target, props }) calls the factory with (target, props, undefined)', () => {
+  test('mount(component, { target, props }) calls the factory with (target, props, undefined)', () => {
     const seen: { args?: unknown[] } = {};
     const target = el();
     const props = { a: 1 };
-    const handle = mount({ component: fakeRef({}, seen), target, props });
+    const handle = mount(fakeRef({}, seen), { target, props });
     expect(seen.args).toEqual([target, props, undefined]);
     expect(log[0]).toBe('__f argc=3');
     expect(handle.root).toBe(target);
@@ -698,29 +698,29 @@ describe('mount (Mode A)', () => {
     expect(log).toEqual(['target.className = ""', 'target.innerHTML = ""']);
   });
 
-  test('mount({}) and mount({ target }) throw "Invalid mount component"', () => {
+  test('a value that is neither a component nor routes throws "Invalid mount component"', () => {
     const g = globalThis as any;
     const saved = g.document;
     const body = el('body');
     g.document = { body };
     try {
-      expect(() => mount({})).toThrow(new Error('Invalid mount component'));
-      expect(() => mount({ target: el() })).toThrow(new Error('Invalid mount component'));
-      expect(() => mount({ component: undefined, props: { a: 1 } })).toThrow(new Error('Invalid mount component'));
+      expect(() => mount({} as any)).toThrow(new Error('Invalid mount component'));
+      expect(() => mount(undefined as any, { target: el() })).toThrow(new Error('Invalid mount component'));
+      expect(() => mount(null as any, { props: { a: 1 } })).toThrow(new Error('Invalid mount component'));
       expect(log).toEqual([]);
     } finally {
       g.document = saved;
     }
   });
 
-  test('mount({ component }) mounts into document.body', () => {
+  test('mount(component) mounts into document.body', () => {
     const g = globalThis as any;
     const saved = g.document;
     const body = el('body');
     g.document = { body };
     try {
       const seen: { args?: unknown[] } = {};
-      mount({ component: fakeRef({}, seen) });
+      mount(fakeRef({}, seen));
       expect(seen.args![0]).toBe(body);
     } finally {
       g.document = saved;

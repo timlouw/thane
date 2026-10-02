@@ -59,8 +59,10 @@ const KEPT: Record<string, EntrySurface> = {
   },
   'thane/router': {
     values: [
+      'currentPath',
       'defineRoutes',
       'href',
+      'isActive',
       'linkTag',
       'metaName',
       'metaProperty',

@@ -16,7 +16,7 @@ import { defineComponent, signal, mount } from 'thane';
 export const App = defineComponent('test-app', () => {
 ${body}
 });
-mount({ component: App });
+mount(App);
 `;
 
 /** The component's static template (the `__T(\`…\`)` of `__tpl`). */
@@ -128,7 +128,7 @@ describe('child components in the rows of a list inside a directive', () => {
     "import { defineComponent } from 'thane';\nexport const H40Kid = defineComponent<{ label: string }>('x-h40-kid', ({ props }) => ({ template: html`<b>${props.label}</b>` }));\n";
   const withKid = (template: string): string =>
     `import { defineComponent, signal, mount } from 'thane';\nimport { H40Kid } from './kid.js';\n` +
-    `export const App = defineComponent('test-app', () => {\n  const on = signal(true);\n  const items = signal([{ id: 1, n: 'a' }]);\n  return { template: html\`${template}\` };\n});\nmount({ component: App });\n`;
+    `export const App = defineComponent('test-app', () => {\n  const on = signal(true);\n  const items = signal([{ id: 1, n: 'a' }]);\n  return { template: html\`${template}\` };\n});\nmount(App);\n`;
 
   for (const [shape, template] of [
     [
@@ -161,7 +161,7 @@ describe('a row that is a component call with a template literal in its props', 
     const js = await buildAndReadJs(
       "import { defineComponent, signal, mount } from 'thane';\nimport { H44Card } from './card.js';\n" +
         "export const App = defineComponent('test-app', () => {\n  const rows = signal([{ id: 1, label: 'a' }]);\n" +
-        '  return { template: html`<ul>${repeat(rows(), (item) => H44Card({ label: `x${item.label}` }))}</ul>` };\n});\nmount({ component: App });\n',
+        '  return { template: html`<ul>${repeat(rows(), (item) => H44Card({ label: `x${item.label}` }))}</ul>` };\n});\nmount(App);\n',
       { ...DEV, extraFiles: { 'src/card.ts': card } },
     );
     expect(js).toContain('__rc(H44Card, _el, { label: `x${item.label}` })');

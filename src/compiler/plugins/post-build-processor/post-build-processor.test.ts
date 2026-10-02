@@ -13,7 +13,7 @@ import { defineComponent, mount } from 'thane';
 export const App = defineComponent('test-app', () => ({
   template: html\`<div>x</div>\`,
 }));
-mount({ component: App });
+mount(App);
 `;
 
 const ENTRY_SCRIPT = /<script type="module" src="\/main-[A-Z0-9]+\.js"><\/script>/;

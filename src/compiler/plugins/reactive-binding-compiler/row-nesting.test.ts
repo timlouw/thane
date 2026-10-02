@@ -107,7 +107,7 @@ export const App = defineComponent('test-app', () => {
     template: html\`<ul>\${repeat(rows(), (r) => html\`<li><div class="w" \${when(show())}><ol>\${repeat(r.tags, (t) => html\`<li class="tag">\${t}</li>\`)}</ol></div></li>\`, { key: "id" })}</ul>\`,
   };
 });
-mount({ component: App });
+mount(App);
 `,
       DEV,
     );
@@ -139,7 +139,7 @@ const buildRows = (template: string, mode: 'dev' | 'prod' = 'dev'): Promise<stri
       '  const bump = (x) => x;',
       `  return { template: html\`${template}\` };`,
       '});',
-      'mount({ component: App, target: document.body });',
+      'mount(App, { target: document.body });',
     ].join('\n'),
     { config: { ...DEV.config, isProd: mode === 'prod' }, extraFiles: { 'src/kid.ts': KID } },
   ).then((js) => (mode === 'dev' ? js.slice(js.indexOf('// .tmp-thane')) : js));

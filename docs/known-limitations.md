@@ -176,10 +176,6 @@ Route patterns starting with `/:param` are rejected at runtime. Every route must
 '/pages/:slug': { component: ... }
 ```
 
-### Outlet ID Pattern
-
-When using Mode B (shell + router), the outlet element's `id` must match the pattern `` `router-${string}` ``. The default is `router-outlet`.
-
 ### Route Type Generation
 
 Type-safe routing requires running `thane dev`, `thane build`, or `thane types` at least once to generate the `.thane/types/router/` type definitions. Until then, `route.params` is typed as `Record<string, string>` and `navigate()` accepts any string.

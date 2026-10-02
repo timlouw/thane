@@ -241,7 +241,7 @@ describe('THANE411 — duplicate-mount-target', () => {
     const src = `
       import { mount } from 'thane';
       import { App } from './app.js';
-      mount({ component: App });
+      mount(App);
     `;
     expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
   });
@@ -251,8 +251,8 @@ describe('THANE411 — duplicate-mount-target', () => {
       import { mount } from 'thane';
       import { App } from './app.js';
       import { Other } from './other.js';
-      mount({ component: App });
-      mount({ component: Other });
+      mount(App);
+      mount(Other);
     `;
     const d = duplicateMountTarget.check(parse(src), 'test.ts');
     expect(d).toHaveLength(1);
@@ -264,8 +264,8 @@ describe('THANE411 — duplicate-mount-target', () => {
       import { mount } from 'thane';
       import { App } from './app.js';
       import { Nav } from './nav.js';
-      mount({ component: App, target: document.getElementById('app') });
-      mount({ component: Nav, target: document.getElementById('nav') });
+      mount(App, { target: document.getElementById('app') });
+      mount(Nav, { target: document.getElementById('nav') });
     `;
     expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
   });
@@ -274,8 +274,8 @@ describe('THANE411 — duplicate-mount-target', () => {
     const src = `
       import { mount } from 'thane';
       const el = document.getElementById('root')!;
-      mount({ component: App, target: el });
-      mount({ component: Other, target: el });
+      mount(App, { target: el });
+      mount(Other, { target: el });
     `;
     const d = duplicateMountTarget.check(parse(src), 'test.ts');
     expect(d).toHaveLength(1);
@@ -293,15 +293,15 @@ describe('THANE411 — duplicate-mount-target', () => {
       const win = window;
       win.__mountA = () => {
         const t = document.createElement('div');
-        return mount({ component: AppA, target: t });
+        return mount(AppA, { target: t });
       };
       win.__mountB = () => {
         const t = document.createElement('div');
-        return mount({ component: AppB, target: t });
+        return mount(AppB, { target: t });
       };
       win.__mountC = () => {
         const t = document.createElement('div');
-        return mount({ component: AppC, target: t });
+        return mount(AppC, { target: t });
       };
     `;
     expect(duplicateMountTarget.check(parse(src), 'test.ts')).toEqual([]);
@@ -312,8 +312,8 @@ describe('THANE411 — duplicate-mount-target', () => {
       import { mount } from 'thane';
       const setup = () => {
         const el = document.getElementById('root')!;
-        mount({ component: AppA, target: el });
-        mount({ component: AppB, target: el });
+        mount(AppA, { target: el });
+        mount(AppB, { target: el });
       };
     `;
     const d = duplicateMountTarget.check(parse(src), 'test.ts');
@@ -432,7 +432,7 @@ describe('a build follows the severities lint sets', () => {
 const flag = Math.random() > 2;
 const tpl = flag ? html\`<p>a</p>\` : html\`<p>b</p>\`;
 export const App = defineComponent(() => ({ template: html\`<div>\${tpl}</div>\` }));
-mount({ component: App });
+mount(App);
 `;
   const reported = async (lint: Record<string, 'off' | 'warning' | 'error'>): Promise<string[]> => {
     const codes: string[] = [];

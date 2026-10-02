@@ -437,7 +437,7 @@ test.describe('10. Route Swap', () => {
       const frames: Array<{ page: string | null; scrollY: number }> = [];
       (window as any).__frames = frames;
       const tick = () => {
-        const outlet = document.getElementById('router-outlet');
+        const outlet = document.querySelector('router-outlet');
         const current = outlet?.querySelector('[data-testid$="-page"]')?.getAttribute('data-testid') ?? null;
         frames.push({ page: current, scrollY: Math.round(window.scrollY) });
         requestAnimationFrame(tick);
@@ -495,7 +495,7 @@ test.describe('10. Route Swap', () => {
     await page.waitForTimeout(1000);
     await expect(page.getByTestId('user-page')).toBeVisible();
     await expect(page.getByTestId('about-page')).toHaveCount(0);
-    await expect(page.locator('#router-outlet [data-testid$="-page"]')).toHaveCount(1);
+    await expect(page.locator('router-outlet [data-testid$="-page"]')).toHaveCount(1);
     await expect(page).toHaveURL(/\/users\/42$/);
     await expect(page).toHaveTitle('User');
   });

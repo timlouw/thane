@@ -28,7 +28,7 @@ const build = (declarations: string, template: string): Promise<string> =>
       `  ${declarations}`,
       `  return { template: html\`${template}\` };`,
       '});',
-      'mount({ component: App });',
+      'mount(App);',
     ].join('\n'),
     { extraFiles: { 'src/kid.ts': KID }, config: DEV },
   ).then((js) => js.slice(js.indexOf('src/main.ts')));
@@ -110,7 +110,7 @@ const buildWithPieces = (
       '  const rows = signal([1, 2]);',
       `  return { template: html\`${template}\` };`,
       '});',
-      'mount({ component: App });',
+      'mount(App);',
     ].join('\n'),
     {
       extraFiles: { 'src/pieces.ts': PIECES, 'src/kid.ts': KID, ...extraFiles },

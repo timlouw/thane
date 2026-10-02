@@ -227,24 +227,26 @@ Use `mount()` to attach a component to the DOM:
 import { mount } from 'thane';
 import { App } from './app.js';
 
-const handle = mount({ component: App });
+const handle = mount(App);
 ```
 
-`mount()` accepts:
+`mount(component, options?)` takes the component, and options:
 
-| Option      | Type                    | Default                 | Description                                      |
-| :---------- | :---------------------- | :---------------------- | :----------------------------------------------- |
-| `component` | `ComponentHTMLSelector` | _(required for Mode A)_ | Component from `defineComponent`                 |
-| `target`    | `HTMLElement`           | `document.body`         | DOM element to mount into                        |
-| `props`     | `Record<string, any>`   | `{}`                    | Props for the root component                     |
-| `router`    | `RouterConfig`          | _(none)_                | Router configuration (see [Routing](routing.md)) |
+| Option              | Type                                  | Default         | Description                                                            |
+| :------------------ | :------------------------------------ | :-------------- | :--------------------------------------------------------------------- |
+| `target`            | `HTMLElement`                         | `document.body` | DOM element to mount into                                              |
+| `props`             | `Record<string, any>`                 | `{}`            | Props for the root component                                           |
+| `routes`            | the result of `defineRoutes()`        | _(none)_        | The component is the app's shell, and pages go into its `<router-outlet>` ([Routing](routing.md#mounting)) |
+| `scrollRestoration` | `boolean` \| `ScrollRestorationConfig` | enabled         | With `routes`: [Scroll Restoration](routing.md#scroll-restoration)     |
+
+`mount(Routes)` mounts the routes alone, without a shell.
 
 ### MountHandle
 
 `mount()` returns a `MountHandle`:
 
 ```typescript
-const handle = mount({ component: App });
+const handle = mount(App);
 
 handle.root; // HTMLElement — the component's host element
 handle.destroy(); // unmount and run onDestroy

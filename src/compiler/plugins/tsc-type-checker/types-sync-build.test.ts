@@ -39,7 +39,7 @@ const ROUTED_APP = [
   '  notFound: { component: Home },',
   '});',
   '',
-  'mount({ router: { routes: Routes } });',
+  'mount(Routes);',
   '',
 ].join('\n');
 

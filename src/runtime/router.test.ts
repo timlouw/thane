@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { matchRoute, defineRoutes, href } from './router.js';
+import { matchRoute, defineRoutes, href, currentPath, isActive } from './router.js';
 import type { Route, RoutesMap } from './router.js';
 
 // ─────────────────────────────────────────────────────────────
@@ -312,13 +312,44 @@ describe('matchRoute + defineRoutes integration', () => {
   });
 });
 
-describe('currentPath global', () => {
-  test('is exposed as a readable signal-like global', () => {
-    const currentPathGlobal = (globalThis as any).currentPath;
+describe('currentPath and isActive', () => {
+  test('currentPath is a readable signal, and no global', () => {
+    expect(typeof currentPath).toBe('function');
+    expect(typeof currentPath.subscribe).toBe('function');
+    expect(currentPath()).toBe('');
+    expect('currentPath' in globalThis).toBe(false);
+  });
 
-    expect(currentPathGlobal).toBeTruthy();
-    expect(typeof currentPathGlobal).toBe('function');
-    expect(typeof currentPathGlobal.subscribe).toBe('function');
-    expect(currentPathGlobal()).toBe('');
+  test('isActive matches the current path: exactly, by parameters, or a section with /*', () => {
+    const at = (path: string) => (currentPath as unknown as (value: string) => void)(path);
+    try {
+      at('/users/7');
+      expect(isActive('/users/:id')).toBe(true);
+      expect(isActive('/users')).toBe(false);
+      expect(isActive('/users/*')).toBe(true);
+      expect(isActive('/users/:id/posts')).toBe(false);
+      expect(isActive('/*')).toBe(true);
+      at('/users');
+      expect(isActive('/users/*')).toBe(true);
+      expect(isActive('/users/:id')).toBe(false);
+      at('/about/');
+      expect(isActive('/about')).toBe(true);
+      at('/');
+      expect(isActive('/')).toBe(true);
+      expect(isActive('/about')).toBe(false);
+    } finally {
+      at('');
+    }
+  });
+
+  test("isActive follows the path: it subscribes as currentPath does, which a template's binding uses", () => {
+    const seen: string[] = [];
+    const stop = isActive.subscribe((path) => seen.push(path), true);
+    const at = (path: string) => (currentPath as unknown as (value: string) => void)(path);
+    at('/x');
+    at('/y');
+    stop();
+    at('');
+    expect(seen).toEqual(['/x', '/y']);
   });
 });

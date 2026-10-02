@@ -70,13 +70,13 @@ The application entry point mounts the root component:
 import { mount } from 'thane';
 import { Counter } from './counter.js';
 
-mount({ component: Counter });
+mount(Counter);
 ```
 
 `mount()` appends the component to `document.body` by default. Pass a `target` option for a different element:
 
 ```typescript
-mount({ component: Counter, target: document.getElementById('app')! });
+mount(Counter, { target: document.getElementById('app')! });
 ```
 
 ### `src/counter.ts`

@@ -15,7 +15,7 @@ export const App = defineComponent('test-app', () => {
     template: html\`<div>${body}</div>\`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 describe('Every repeat() list uses the keyed row path', () => {

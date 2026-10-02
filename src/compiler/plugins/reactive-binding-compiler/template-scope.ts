@@ -14,7 +14,12 @@ import type { TemplateScope } from '../../utils/html-parser/index.js';
 
 const SIGNAL_FACTORIES = new Set(['signal', 'computed']);
 
-type Declared = { kind: 'signal' } | { kind: 'ref' } | { kind: 'function'; node: ts.FunctionLikeDeclaration };
+type Declared =
+  | { kind: 'signal' }
+  | { kind: 'ref' }
+  | { kind: 'function'; node: ts.FunctionLikeDeclaration }
+  /** A function that is its own signal: `isActive` from thane/router, which a binding subscribes to */
+  | { kind: 'tracked' };
 
 const isFunctionNode = (node: ts.Node): node is ts.ArrowFunction | ts.FunctionExpression =>
   ts.isArrowFunction(node) || ts.isFunctionExpression(node);
@@ -74,6 +79,16 @@ const localNames = (fn: ts.FunctionLikeDeclaration): Set<string> => {
  */
 export const templateScopeOf = (sourceFile: ts.SourceFile, setup?: ts.FunctionLikeDeclaration): TemplateScope => {
   const declared = new Map<string, Declared | null>();
+  // thane/router's isActive(pattern) reads the current path: a binding that calls it follows the path through it
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    if (statement.moduleSpecifier.text !== 'thane/router') continue;
+    const named = statement.importClause?.namedBindings;
+    for (const element of named && ts.isNamedImports(named) ? named.elements : []) {
+      if ((element.propertyName ?? element.name).text === 'isActive')
+        declared.set(element.name.text, { kind: 'tracked' });
+    }
+  }
   declareFrom(sourceFile.statements, declared);
   if (setup?.body && ts.isBlock(setup.body)) declareFrom(setup.body.statements, declared);
 
@@ -82,6 +97,7 @@ export const templateScopeOf = (sourceFile: ts.SourceFile, setup?: ts.FunctionLi
     const cached = reads.get(name);
     if (cached) return cached;
     const entry = declared.get(name);
+    if (entry?.kind === 'tracked') return [name];
     if (!entry || entry.kind !== 'function' || visiting.has(name)) return [];
     visiting.add(name);
     const fn = entry.node;
@@ -115,7 +131,7 @@ export const templateScopeOf = (sourceFile: ts.SourceFile, setup?: ts.FunctionLi
   };
 
   return {
-    isFunction: (name) => declared.get(name)?.kind === 'function',
+    isFunction: (name) => declared.get(name)?.kind === 'function' || declared.get(name)?.kind === 'tracked',
     isRef: (name) => declared.get(name)?.kind === 'ref',
     readsOf: (name) => readsOf(name, new Set()),
   };

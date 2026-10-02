@@ -12,7 +12,7 @@ export const Card = defineComponent('x-card', () => ({
   template: html\`<p class="pulse">card</p>\`,
   styles: ${styles},
 }));
-mount({ component: Card });
+mount(Card);
 `;
 
 const KEYFRAMES = '@keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } } .pulse { animation: pulse 1s; }';

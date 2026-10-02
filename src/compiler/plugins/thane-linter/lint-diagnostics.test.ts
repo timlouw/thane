@@ -261,44 +261,44 @@ describe('THANE411 diagnostics', () => {
     const src = [
       'mount(App);',
       '  mount(Other);',
-      'mount({ component: App });',
-      'mount({ component: App, target });',
-      "mount({ 'target': el });",
+      'mount(App, { target });',
+      "mount(App, { 'target': el });",
       'mount(...args);',
-      'mount(options);',
-      'mount({ component: B, target: el });',
-      "mount({ target: document.getElementById('app') });",
-      'mount({ target: document.body });',
-      "mount({ target: document.getElementById('app') });",
-      'mount({ target: els[0] });',
-      'mount({ target: els[0] });',
-      'mount({ target: (el as HTMLElement)! });',
-      'mount({ target: target });',
+      'mount(App, options);',
+      'mount(B, { target: el });',
+      "mount(App, { target: document.getElementById('app') });",
+      'mount(App, { target: document.body });',
+      "mount(App, { target: document.getElementById('app') });",
+      'mount(App, { target: els[0] });',
+      'mount(App, { target: els[0] });',
+      'mount(App, { target: (el as HTMLElement)! });',
+      'mount(App, { target: target });',
       'lib.mount(App);',
-      'mount({ target: document.body, component: C }, extra);',
+      'mount(Routes, { scrollRestoration: false });',
     ];
-    // The old mount(App) form, a spread and an options variable are not compared: their target is
-    // unknown. The shorthand `{ target }` and a string key are the variables they name.
+    // A spread and an options variable are not compared: their target is unknown. The shorthand `{ target }`
+    // and a string key are the variables they name; no options, or options without a target, is document.body.
     expect(run(duplicateMountTarget, src)).toStrictEqual([
-      warning(src, 8, 'mount', message('var:el', 5)),
-      warning(src, 10, 'mount', message(BODY, 3)),
-      warning(src, 11, 'mount', message("document.getElementById('app')", 9)),
-      warning(src, 13, 'mount', message('els[0]', 12)),
-      warning(src, 14, 'mount', message('var:el', 5)),
-      warning(src, 15, 'mount', message('var:target', 4)),
-      warning(src, 17, 'mount', message(BODY, 3)),
+      warning(src, 2, 'mount', message(BODY, 1)),
+      warning(src, 7, 'mount', message('var:el', 4)),
+      warning(src, 9, 'mount', message(BODY, 1)),
+      warning(src, 10, 'mount', message("document.getElementById('app')", 8)),
+      warning(src, 12, 'mount', message('els[0]', 11)),
+      warning(src, 13, 'mount', message('var:el', 4)),
+      warning(src, 14, 'mount', message('var:target', 3)),
+      warning(src, 16, 'mount', message(BODY, 1)),
     ]);
   });
 
   test('tracks each function scope on its own', () => {
     const src = [
-      'mount({ component: App, target: el });',
+      'mount(App, { target: el });',
       'const f = () => {',
-      '  mount({ component: App, target: el });',
-      '  const g = function () { mount({ component: App, target: el }); };',
-      '  mount({ component: Other, target: el });',
+      '  mount(App, { target: el });',
+      '  const g = function () { mount(App, { target: el }); };',
+      '  mount(Other, { target: el });',
       '};',
-      'mount({ component: Other, target: el });',
+      'mount(Other, { target: el });',
     ];
     expect(run(duplicateMountTarget, src)).toStrictEqual([
       warning(src, 5, 'mount', message('var:el', 3)),

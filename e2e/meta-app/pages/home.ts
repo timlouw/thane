@@ -1,4 +1,5 @@
 import { defineComponent, html } from 'thane';
+import { navigate } from 'thane/router';
 
 export const HomePage = defineComponent('meta-home', () => ({
   template: html`<main>

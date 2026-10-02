@@ -309,8 +309,8 @@ describe('statement at-rules never reach the runtime scoper', () => {
     try {
       js = await buildAndReadJs(
         "import { mount } from 'thane';\nimport { Lt } from './lt.js';\nimport { Lf } from './lf.js';\n" +
-          "mount({ component: Lt, target: document.getElementById('app')! });\n" +
-          "mount({ component: Lf, target: document.getElementById('app')! });\n",
+          "mount(Lt, { target: document.getElementById('app')! });\n" +
+          "mount(Lf, { target: document.getElementById('app')! });\n",
         {
           config: { strictTypeCheck: false },
           extraFiles: {

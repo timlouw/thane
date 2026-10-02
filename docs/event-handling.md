@@ -141,9 +141,11 @@ const onKeyDown = (event: KeyboardEvent) => {
 With the router, a plain `<a href="/about">` to a route already navigates in the app ([Links](routing.md#links)). To navigate from a click on something else, bind `navigate()` directly:
 
 ```typescript
+import { navigate } from 'thane/router';
+
 template: html`
-  <a @click=${navigate('/')}>Home</a>
-  <a @click=${navigate('/about')}>About</a>
+  <button @click=${navigate('/')}>Home</button>
+  <tr @click=${navigate('/users/:id', { id: user.id })}>…</tr>
 `;
 ```
 

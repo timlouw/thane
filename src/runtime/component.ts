@@ -642,47 +642,68 @@ export function unmount(handle: MountHandle): void {
 
 /** Options for the `mount()` function. */
 export interface MountOptions {
-  /** Component to mount (return value of `defineComponent()`). Omit for Mode C (router only). */
-  component?: ComponentHTMLSelector<any> | undefined;
-  /** Target element. Defaults to `document.body`. */
+  /** The element the app goes into. Defaults to `document.body`. */
   target?: HTMLElement | undefined;
-  /** Component props. */
+  /** The component's props. */
   props?: Record<string, any> | undefined;
-  /** Router configuration. Omit for Mode A (no routing). */
-  router?: import('./router.js').RouterConfig | undefined;
+  /** The routes, from `defineRoutes()`: the component is the app's shell, and pages go into its `<router-outlet>` */
+  routes?: import('./router.js').RoutesConfig | undefined;
+  /** Router-managed scroll restoration (with routes). Defaults to enabled. */
+  scrollRestoration?: boolean | import('./router.js').ScrollRestorationConfig | undefined;
 }
+
+/** The router's mount: a shell (or none) and the routes, into the target. @internal */
+type RouterMount = (
+  shell: ComponentHTMLSelector<any> | undefined,
+  routes: import('./router.js').RoutesConfig,
+  options: MountOptions,
+  target: HTMLElement,
+) => MountHandle;
 
 /**
  * Hook for router-aware mount — set by `defineRoutes()` in `router.ts`.
- * When null, only Mode A (component-only) mount is supported.
+ * When null, only a component is mounted.
  * @internal
  */
-let _routerMount: ((options: MountOptions, target: HTMLElement) => MountHandle) | null = null;
+let _routerMount: RouterMount | null = null;
 
 /**
  * Called by `defineRoutes()` to install the router-aware mount handler.
  * @internal — not part of the public API.
  */
-export function __setRouterMount(fn: (options: MountOptions, target: HTMLElement) => MountHandle): void {
+export function __setRouterMount(fn: RouterMount): void {
   _routerMount = fn;
 }
 
 /**
  * Mount a Thane application.
  *
- * - **Mode A** — `mount({ component })` — component only, no routing.
- * - **Mode B** — `mount({ component, router })` — shell component + router.
- * - **Mode C** — `mount({ router })` — router only, no shell.
+ * - `mount(App)`, `mount(App, { target, props })`: a component, no routing.
+ * - `mount(Shell, { routes })`: a shell component, whose `<router-outlet>` the pages go into.
+ * - `mount(Routes)`: the routes alone; pages go into the target.
  *
- * Modes B and C require `defineRoutes()` to be called first (from `thane/router`).
+ * Routes come from `defineRoutes()` (`thane/router`).
  *
  * @returns A MountHandle with a `destroy()` method.
  */
-export function mount(options: MountOptions): MountHandle {
+export function mount(component: ComponentHTMLSelector<any>, options?: MountOptions): MountHandle;
+export function mount(
+  routes: import('./router.js').RoutesConfig,
+  options?: Omit<MountOptions, 'props' | 'routes'>,
+): MountHandle;
+export function mount(
+  app: ComponentHTMLSelector<any> | import('./router.js').RoutesConfig,
+  options: MountOptions = {},
+): MountHandle {
   const target = options.target ?? document.body;
-  if (options.router) {
+  const shell = (app as unknown as ComponentRef | undefined)?.__f ? (app as ComponentHTMLSelector<any>) : undefined;
+  // The routes alone: defineRoutes() gives every table its notFound route
+  const alone = !shell && !!app && 'notFound' in app ? (app as import('./router.js').RoutesConfig) : undefined;
+  const routes = shell ? options.routes : alone;
+  if (routes) {
     if (!_routerMount) throw new Error('Import defineRoutes from thane/router to use routing');
-    return _routerMount(options, target);
+    return _routerMount(shell, routes, options, target);
   }
-  return mountComponent(options.component!, target, options.props);
+  // Neither a component nor routes: mountComponent reports it
+  return mountComponent(shell ?? (app as ComponentHTMLSelector<any>), target, options.props);
 }

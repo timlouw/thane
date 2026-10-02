@@ -32,7 +32,7 @@ Complete API surface for the Thane framework, covering all public exports, the t
 | :--------------------- | :----------------------------------------------------------------- | :---------------------------------------- |
 | `defineComponent`      | `<P>(setup: (ctx: ComponentContext<P>) => ComponentReturnType) => ComponentHTMLSelector<P>`                   | Define a component                        |
 | `defineComponent`      | `<P>(selector: string, setup: (ctx: ComponentContext<P>) => ComponentReturnType) => ComponentHTMLSelector<P>` | Define a component with explicit selector |
-| `mount`                | `(options: MountOptions) => MountHandle`                           | Mount a component to the DOM              |
+| `mount`                | `(component, options?: MountOptions) => MountHandle`, `(routes, options?) => MountHandle` | Mount a component (with `routes`, the app's shell), or the routes alone |
 | `unmount`              | `(handle: MountHandle) => void`                                    | Destroy a mounted component               |
 | `registerGlobalStyles` | `(...styles: string[]) => void`                                    | Register global styles (deduplicated)     |
 | `ref`                  | `<T extends Element = HTMLElement>() => Ref<T>`                    | A ref to an element of the template, put in its tag: `<input ${input}>`; `input.el` is the element from `onMount` on ([Element Refs](templates.md#element-refs)) |
@@ -57,11 +57,13 @@ A condition is not a function: pass a signal's value, `when(open())`, not the si
 
 | Export         | Signature                                               | Description                                                              |
 | :------------- | :------------------------------------------------------ | :----------------------------------------------------------------------- |
-| `defineRoutes` | `(routes: { [pattern: string]: Route; notFound: Route; error?: Route }, options?: RouterOptions) => typeof routes` | Define the route map with type-safe keys; required before `mount()` with a `router` option. `options` gives the site's head and the app's own head fields ([Route Heads](routing.md#route-heads)) |
-| `navigate`     | `(path: RoutePaths) => void`, `(pattern, params) => void` | Navigate to a path, or to a route pattern with its parameters filled in (also available as a global) |
+| `defineRoutes` | `(routes: { [pattern: string]: Route; notFound: Route; error?: Route }, options?: RouterOptions) => typeof routes` | Define the route map with type-safe keys, which `mount()` takes. `options` gives the site's head and the app's own head fields ([Route Heads](routing.md#route-heads)) |
+| `navigate`     | `(path: RoutePaths) => void`, `(pattern, params) => void` | Navigate to a path, or to a route pattern with its parameters filled in |
 | `href`         | `(pattern, params) => RoutePaths`                       | A route pattern's path with its parameters filled in, URL-encoded: `href('/users/:id', { id: 7 })` is `/users/7`; the route's search values go into the query |
 | `searchString`, `searchNumber`, `searchFlag`, `searchOneOf` | `(…) => SearchParser<T>` | Parsers for a route's `search` schema ([Search Parameters](routing.md#search-parameters)) |
-| `navigateBack` | `() => void`                                            | Navigate back in browser history (also available as a global)            |
+| `navigateBack` | `() => void`                                            | Navigate back in browser history                                         |
+| `currentPath`  | `ReadonlySignal<string>`                                | The current pathname, as a signal                                        |
+| `isActive`     | `(pattern) => boolean`                                  | Whether the current path is a route's (`'/users/:id'`), or below one (`'/work/*'`); a template that calls it follows the path |
 | `setMeta`      | `(meta: AppRouteMeta) => void`                          | Set head fields of the page on screen, until the next route loads         |
 | `metaName`     | `(name: string) => CustomMetaField<string>`             | A custom head field for `<meta name="…">`                                |
 | `metaProperty` | `(property: string) => CustomMetaField<string>`         | A custom head field for `<meta property="…">`                            |
@@ -73,18 +75,6 @@ Its types: `RouteMeta` (the built-in head fields), `SiteMeta` (those and `siteUr
 ### `thane/runtime`
 
 The entry that compiled code imports its helpers from (`__registerComponent`, `__bindIf`, `createKeyedReconciler` and the others). An app never imports it, and nothing in it is covered by the version's API: helpers change whenever the compiler's output does.
-
----
-
-## Router Globals
-
-The router installs these as globals when it starts, so a template calls them without an import. `navigate` and `navigateBack` are also exported from `thane/router`.
-
-| Global         | Signature                | Description                                               |
-| :------------- | :----------------------- | :-------------------------------------------------------- |
-| `navigate`     | `(path: RoutePaths) => void`, `(pattern, params) => void` | Navigate to a path, or to a route pattern with its parameters (type-safe when routes are registered) |
-| `navigateBack` | `() => void`             | Navigate back in browser history                          |
-| `currentPath`  | `ReadonlySignal<string>` | Read-only signal with the current pathname                |
 
 ---
 
@@ -180,11 +170,12 @@ A setup function returns one such object (THANE412).
 ### Mount Options (`MountOptions`)
 
 ```typescript
+// mount(App, options), mount(Shell, { routes, … }), mount(Routes, { target, scrollRestoration })
 interface MountOptions {
-  component?: ComponentHTMLSelector<any>; // Component to mount
   target?: HTMLElement; // Default: document.body
-  props?: Record<string, any>; // Root component props
-  router?: RouterConfig; // Router configuration
+  props?: Record<string, any>; // The component's props
+  routes?: RoutesConfig; // From defineRoutes(): the component is the shell, pages go into its <router-outlet>
+  scrollRestoration?: boolean | ScrollRestorationConfig; // With routes. Default: enabled
 }
 ```
 
@@ -199,12 +190,6 @@ interface Route {
 interface RouterOptions {
   meta?: SiteMeta; // siteUrl, titleTemplate, and the default of every head field
   customMeta?: Record<string, CustomMetaField>; // The app's own head fields
-}
-
-interface RouterConfig {
-  routes: { [pattern: string]: Route; notFound: Route; error?: Route }; // From defineRoutes()
-  outletId?: `router-${string}`; // Default: 'router-outlet'
-  scrollRestoration?: boolean | ScrollRestorationConfig; // Default: enabled
 }
 
 interface ScrollRestorationConfig {

@@ -20,7 +20,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 describe('Row event handlers of every shape run on the event', () => {
@@ -69,7 +69,7 @@ export const App = defineComponent('test-app', () => {
   const pick = (id, then) => then(id);
   return { template: html\`${button}\` };
 });
-mount({ component: App });
+mount(App);
 `;
 
   test('in a component, a call with an arrow argument runs on the event, as written', async () => {

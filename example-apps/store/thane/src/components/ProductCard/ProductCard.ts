@@ -3,6 +3,7 @@ import type { Signal } from 'thane';
 import type { AppStateProduct } from '../../models/app-state.models.js';
 import { addToCart } from '../../state/global-state.js';
 import styles from './ProductCard.module.css';
+import { navigate } from 'thane/router';
 
 const addToCartIconPath = '/assets/icons/add-to-cart.svg';
 

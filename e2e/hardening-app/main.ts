@@ -141,7 +141,7 @@ win.__mountProbe = (): boolean => {
     return false;
   }
   try {
-    win.__handle = mount({ component, target });
+    win.__handle = mount(component, { target });
     return true;
   } catch (error) {
     win.__mountErrors.push(String(error));

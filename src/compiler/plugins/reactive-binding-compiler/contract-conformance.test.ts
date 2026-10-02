@@ -52,7 +52,7 @@ export const App = defineComponent('conformance-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -115,7 +115,7 @@ export const App = defineComponent('nesting-matrix-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -163,7 +163,7 @@ export const App = defineComponent('sub-nesting-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -219,7 +219,7 @@ export const App = defineComponent('cart-shaped-when-else', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -239,7 +239,7 @@ export const App = defineComponent('styled-concise', () => ({
   \`,
 }));
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -259,7 +259,7 @@ export const App = defineComponent('lean-concise', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -290,7 +290,7 @@ export const App = defineComponent('branch-root-attrs-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -365,7 +365,7 @@ export const App = defineComponent('nav-app', () => ({
   \`,
 }));
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -393,7 +393,7 @@ export const App = defineComponent('modifier-app', () => ({
   \`,
 }));
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -426,7 +426,7 @@ export const App = defineComponent('computed-repeat-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -469,7 +469,7 @@ export const App = defineComponent('nested-when-repeat-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -498,7 +498,7 @@ export const App = defineComponent('when-initial-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -558,7 +558,7 @@ export const App = defineComponent('when-in-repeat-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source);
@@ -602,7 +602,7 @@ export const App = defineComponent('treeshake-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source, { prod: true });
@@ -633,7 +633,7 @@ export const App = defineComponent('no-route-app', () => {
   };
 });
 
-mount({ component: App });
+mount(App);
 `;
 
     const js = await buildAndReadJs(source, { prod: true });

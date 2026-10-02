@@ -9,4 +9,4 @@ const BrowserErrorApp = defineComponent('browser-error-app', () => {
   };
 });
 
-mount({ component: BrowserErrorApp });
+mount(BrowserErrorApp);

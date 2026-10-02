@@ -14,7 +14,7 @@ export const App = defineComponent('test-app', () => {
     template: html\`<div>${markup}</div>\`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
 
 const componentTemplate = (js: string): string => js.match(/__tpl = __T\(`([^`]*)`\)/)?.[1] ?? '';

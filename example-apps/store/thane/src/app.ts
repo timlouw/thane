@@ -7,7 +7,7 @@ export const App = defineComponent('store-app', () => {
     template: html`
       <div class="appContainer">
         ${Navbar()}
-        <div class="routerOutletContainer" id="router-outlet"></div>
+        <router-outlet class="routerOutletContainer"></router-outlet>
       </div>
     `,
     styles: appStyles,

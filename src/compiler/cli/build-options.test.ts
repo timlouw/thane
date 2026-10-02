@@ -155,7 +155,7 @@ import { defineComponent, html, mount } from 'thane';
 import { defineRoutes } from 'thane/router';
 export const Home = defineComponent('home-page', () => ({ template: html\`<p>home</p>\` }));
 const Routes = defineRoutes({ '/': { component: Home }, ${route} notFound: { component: Home } });
-mount({ router: { routes: Routes } });
+mount(Routes);
 `;
   // dropConsole: false keeps the loop report, which marks the guard step in the bundle
   const PROD_WITH_CONSOLE = { strictTypeCheck: false, ...PROD_BUILD, dropConsole: false };
@@ -178,7 +178,7 @@ import { defineComponent, html, mount } from 'thane';
 import { defineRoutes } from 'thane/router';
 export const Home = defineComponent('home-page', () => ({ template: html\`${markup}\` }));
 const Routes = defineRoutes({ '/': { component: Home }, '/about': { component: Home }, notFound: { component: Home } });
-mount({ router: { routes: Routes } });
+mount(Routes);
 `;
   const PROD = { strictTypeCheck: false, ...PROD_BUILD };
   const mark = 'a[href]';

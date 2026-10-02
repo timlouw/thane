@@ -95,7 +95,4 @@ const CartApp = defineComponent('cart-e2e-app', () => {
   };
 });
 
-mount({
-  component: CartApp,
-  target: document.getElementById('app') ?? undefined,
-});
+mount(CartApp, { target: document.getElementById('app') ?? undefined });

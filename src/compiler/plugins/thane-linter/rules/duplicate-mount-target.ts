@@ -7,16 +7,16 @@
  *
  * This is a compile-time check — no runtime overhead is added.
  *
- *   mount({ component: App });                                          // ✅ single mount
+ *   mount(App);                                                   // ✅ single mount
  *
- *   mount({ component: App });                                          // ❌ THANE411
- *   mount({ component: Other, target: document.body });                //    both document.body
+ *   mount(App);                                                   // ❌ THANE411
+ *   mount(Other, { target: document.body });                      //    both document.body
  *
- *   mount({ component: App, target: document.getElementById('app') }); // ✅ different targets
- *   mount({ component: Nav, target: document.getElementById('nav') });
+ *   mount(App, { target: document.getElementById('app') });       // ✅ different targets
+ *   mount(Nav, { target: document.getElementById('nav') });
  *
- *   mount({ component: App, target: el });                             // ❌ THANE411
- *   mount({ component: Other, target: el! });                          //    the same variable
+ *   mount(App, { target: el });                                   // ❌ THANE411
+ *   mount(Other, { target: el! });                                //    the same variable
  */
 
 import ts from 'typescript';
@@ -41,13 +41,15 @@ const keyOf = (target: ts.Expression, sourceFile: ts.SourceFile): string => {
 };
 
 /**
- * The key of a `mount({ target, … })` call's target; document.body when it has none. A call whose
- * options are not an object literal (`mount(options)`, `mount(...args)`) has a target the rule cannot
+ * The key of a `mount(App, { target, … })` call's target; document.body when it has none. A call whose
+ * options are not an object literal (`mount(App, options)`, `mount(...args)`) has a target the rule cannot
  * know, and is not compared.
  */
 const getTargetKey = (call: ts.CallExpression, sourceFile: ts.SourceFile): string | null => {
-  const options = call.arguments[0];
-  if (!options || !ts.isObjectLiteralExpression(options)) return null;
+  const [app, options] = call.arguments;
+  if (!app || ts.isSpreadElement(app)) return null;
+  if (!options) return DEFAULT_TARGET;
+  if (!ts.isObjectLiteralExpression(options)) return null;
   for (const prop of options.properties) {
     const name = prop.name && (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)) ? prop.name.text : '';
     if (name !== 'target') continue;

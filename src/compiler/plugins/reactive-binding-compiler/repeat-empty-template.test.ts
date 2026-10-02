@@ -17,7 +17,7 @@ export const H54App = defineComponent('h54-empty-template-app', () => {
   const items = signal([{ id: 1, label: 'A', kids: [{ id: 2, n: 'k' }] }]);
   return { template: html\`<ul>\${${list}}</ul>\` };
 });
-mount({ component: H54App, target: document.getElementById('app')! });
+mount(H54App, { target: document.getElementById('app')! });
 `;
 
 const build = (list: string): Promise<string> => buildAndReadJs(app(list), DEV);

@@ -119,7 +119,7 @@ export const App = defineComponent(() => ({ template: html\`<p class=\${theme}>x
 
   test('it fails the build', async () => {
     await expect(
-      buildAndReadJs(component('<p>${count}</p>') + 'import { mount } from "thane";\nmount({ component: App });\n', {
+      buildAndReadJs(component('<p>${count}</p>') + 'import { mount } from "thane";\nmount(App);\n', {
         config: { strictTypeCheck: false },
       }),
     ).rejects.toThrow('is the signal function itself');
@@ -185,7 +185,7 @@ export const App = defineComponent(() => {
       buildAndReadJs(
         `import { defineComponent, html, mount } from 'thane';
 export const App = defineComponent(() => ({ template: html\`<p>x</p>\`, onMoun: () => {} }));
-mount({ component: App });
+mount(App);
 `,
         { config: { strictTypeCheck: false } },
       ),
@@ -235,8 +235,7 @@ describe("THANE416 — a child's prop that reads a signal", () => {
     };
     try {
       await buildAndReadJs(
-        component('${Badge({ label: count() })}', before) +
-          'import { mount } from "thane";\nmount({ component: App });\n',
+        component('${Badge({ label: count() })}', before) + 'import { mount } from "thane";\nmount(App);\n',
         { config: { lint, strictTypeCheck: false } },
       );
     } finally {

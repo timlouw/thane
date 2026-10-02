@@ -9,8 +9,7 @@ import { transformDefineComponentSource } from './index.js';
 
 const DEV = { strictTypeCheck: false };
 
-const MAIN =
-  "import { mount } from 'thane';\nimport { ScoreBoard } from './board.js';\nmount({ component: ScoreBoard });\n";
+const MAIN = "import { mount } from 'thane';\nimport { ScoreBoard } from './board.js';\nmount(ScoreBoard);\n";
 
 /** src/board.ts: a private ScoreBadge with styles, Tally with its own selector, and ScoreBoard, which mounts both */
 const BOARD = [
@@ -92,19 +91,16 @@ test('two components of a build with one selector are reported (THANE013)', asyn
     `export const ${name} = defineComponent(() => ({ template: html\`<p>\${Row({})}</p>\` }));\n`;
   const warn = spyOn(console, 'warn').mockImplementation(() => {});
   try {
-    await buildAndReadJs(
-      "import { mount } from 'thane';\nimport { Lists } from './lists.js';\nmount({ component: Lists });\n",
-      {
-        extraFiles: {
-          'src/lists.ts':
-            "import { defineComponent } from 'thane';\nimport { First } from './first.js';\nimport { Second } from './second.js';\n" +
-            'export const Lists = defineComponent(() => ({ template: html`${First({})}${Second({})}` }));\n',
-          'src/first.ts': privateRow('First', 'a'),
-          'src/second.ts': privateRow('Second', 'b'),
-        },
-        config: DEV,
+    await buildAndReadJs("import { mount } from 'thane';\nimport { Lists } from './lists.js';\nmount(Lists);\n", {
+      extraFiles: {
+        'src/lists.ts':
+          "import { defineComponent } from 'thane';\nimport { First } from './first.js';\nimport { Second } from './second.js';\n" +
+          'export const Lists = defineComponent(() => ({ template: html`${First({})}${Second({})}` }));\n',
+        'src/first.ts': privateRow('First', 'a'),
+        'src/second.ts': privateRow('Second', 'b'),
       },
-    );
+      config: DEV,
+    });
     const reports = warn.mock.calls.map((call) => String(call[0])).filter((text) => text.includes('THANE013'));
     expect(reports).toHaveLength(1);
     expect(reports[0]).toMatch(/Row has the selector 'row', and so does Row \(.*(first|second)\.ts\)/);

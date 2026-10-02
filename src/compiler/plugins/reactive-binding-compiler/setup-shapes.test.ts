@@ -26,7 +26,7 @@ const compile = async (declaration: string): Promise<Compiled> => {
 const log = (m: string) => console.log(m);
 const flag = Math.random() > 2;
 ${declaration}
-mount({ component: App });
+mount(App);
 `);
   const start = js.indexOf('var App = ');
   const end = js.indexOf(', __tpl);', start);

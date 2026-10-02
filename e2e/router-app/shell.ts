@@ -1,5 +1,5 @@
 import { defineComponent, html } from 'thane';
-import { href } from 'thane/router';
+import { currentPath, href, isActive, navigate } from 'thane/router';
 import { visitCount, sharedMessage } from './store.js';
 
 export const Shell = defineComponent('router-shell', () => {
@@ -8,34 +8,19 @@ export const Shell = defineComponent('router-shell', () => {
       <header data-testid="shell-header">
         <h1 data-testid="app-title">Router E2E App</h1>
         <nav data-testid="nav">
-          <a
-            data-testid="nav-home"
-            class=${currentPath() === '/' ? 'active' : ''}
-            href="/"
-            @click=${(e: Event) => {
-              e.preventDefault();
-              navigate('/');
-            }}
-            >Home</a
-          >
+          <a data-testid="nav-home" class:active=${isActive('/')} href="/" @click.prevent=${navigate('/')}>Home</a>
           <a
             data-testid="nav-about"
-            class=${currentPath() === '/about' ? 'active' : ''}
+            class:active=${isActive('/about')}
             href="/about"
-            @click=${(e: Event) => {
-              e.preventDefault();
-              navigate('/about');
-            }}
+            @click.prevent=${navigate('/about')}
             >About</a
           >
           <a
             data-testid="nav-user"
-            class=${currentPath() === '/users/42' ? 'active' : ''}
+            class:active=${isActive('/users/:id')}
             href="/users/42"
-            @click=${(e: Event) => {
-              e.preventDefault();
-              navigate('/users/42');
-            }}
+            @click.prevent=${navigate('/users/42')}
             >User 42</a
           >
           <a
@@ -69,7 +54,7 @@ export const Shell = defineComponent('router-shell', () => {
         <div data-testid="shell-visit-count">${visitCount()}</div>
         <div data-testid="shell-message">${sharedMessage()}</div>
       </header>
-      <main id="router-outlet"></main>
+      <router-outlet></router-outlet>
       <footer data-testid="shell-footer">Footer</footer>
     `,
   };

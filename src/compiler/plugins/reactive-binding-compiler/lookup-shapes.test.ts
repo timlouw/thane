@@ -26,7 +26,7 @@ export const App = defineComponent('test-app', () => {
 ${signals}
   return { template: html\`${template}\` };
 });
-mount({ component: App });
+mount(App);
 `;
 
 const SIGNALS = [

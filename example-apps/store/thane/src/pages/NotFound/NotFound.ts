@@ -1,6 +1,7 @@
 import { defineComponent, html } from 'thane';
 import styles from './NotFound.module.css';
 import type { RouteError } from '../../models/router.models.js';
+import { navigate } from 'thane/router';
 
 type NotFoundProps = {
   propsError?: RouteError;

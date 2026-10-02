@@ -1,6 +1,7 @@
 import { computed, defineComponent, html, when, repeat } from 'thane';
 import styles from './Cart.module.css';
 import { cartCount, products, removeFromCart } from '../../state/global-state.js';
+import { navigate } from 'thane/router';
 
 export const CartPage = defineComponent('cart-page', () => {
   const cartProducts = computed(() => products().filter((p) => p().cartCount > 0));

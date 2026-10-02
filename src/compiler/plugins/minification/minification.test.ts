@@ -56,7 +56,7 @@ import { defineComponent, mount } from 'thane';
 export const App = defineComponent('test-app', () => ({
   template: html\`<div>x</div>\`,
 }));
-mount({ component: App });
+mount(App);
 void import('fake-lib').then((lib) => {
   document.title = lib.banner() + String(lib.quote);
 });
@@ -78,7 +78,7 @@ export const App = defineComponent('test-app', () => {
     <p>hi</p>
   </div>\` };
 });
-mount({ component: App });
+mount(App);
 `,
       { extraFiles: FAKE_LIB, config: { ...PROD_BUILD, splitting: false } },
     );
@@ -96,7 +96,7 @@ export const App = defineComponent('test-app', () => {
   document.title = ['one', 'two'].join('\\n') + \`Error:   \${code};   retry:   later\`;
   return { template: html\`<div>x</div>\` };
 });
-mount({ component: App });
+mount(App);
 `);
     // esbuild prints "\\n" as a template literal holding a real line break
     expect(js).toMatch(/\.join\((?:`\n`|"\\n")\)/);
@@ -114,7 +114,7 @@ export const App = defineComponent('test-app', () => {
     <p>hi</p>
   </div>\` };
 });
-mount({ component: App });
+mount(App);
 `);
     expect(js).toContain('keep   this:   as is');
     expect(js).toContain('<div><p>hi</p></div>');
@@ -138,7 +138,7 @@ export const App = defineComponent('test-app', () => ({
     }
   \`,
 }));
-mount({ component: App });
+mount(App);
 `);
     expect(js).toContain('<section><h1>Title</h1><p>Body text</p></section>');
     expect(js).toContain('.card{padding:1rem;color:red}');
@@ -152,7 +152,7 @@ export const App = defineComponent('test-app', () => ({
   template: html\`<section>   <h1>Title</h1>   </section>\`,
   styles: css\`.card { padding: 1rem; }\`,
 }));
-mount({ component: App });
+mount(App);
 `);
     // Whitespace on one line between tags is one space; with a line break in it, it would go
     expect(js).toContain('<section> <h1>Title</h1> </section>');
@@ -175,7 +175,7 @@ export const App = defineComponent('test-app', () => ({
     }
   \`,
 }));
-mount({ component: App });
+mount(App);
 `);
     expect(js).toContain('content:"\\\\201C"');
     expect(js).toMatch(/margin:\$\{[^}]+\}px \$\{/);
@@ -191,7 +191,7 @@ export const App = defineComponent('test-app', () => ({
   template: html\`<div>x</div>\`,
   styles: shared,
 }));
-mount({ component: App });
+mount(App);
 `,
       { 'src/shared.ts': 'export const shared = css`\n  .shared-rule {\n    color:   red;\n  }\n`;\n' },
     );
@@ -211,7 +211,7 @@ export const TestApp = defineComponent(() => ({
     color: red;
   }\`,
 }));
-mount({ component: TestApp });
+mount(TestApp);
 `);
     expect(js).toContain('test-app');
     expect(js).toMatch(/\.test-app \{\s+color: red;\s+\}/);
@@ -239,7 +239,7 @@ export const ParentPage = defineComponent(() => ({
   template: html\`<div>\${ChildCard({})}</div>\`,
   styles: css\`.child-card { margin: 1px; }\`,
 }));
-mount({ component: ParentPage });
+mount(ParentPage);
 `,
       { 'src/child.ts': CHILD },
     );
@@ -261,7 +261,7 @@ export const ParentPage = defineComponent(() => {
   document.title = '/child-card/details';
   return { template: html\`<div>\${ChildCard({})}</div>\` };
 });
-mount({ component: ParentPage });
+mount(ParentPage);
 `,
       { 'src/child.ts': CHILD },
     );
@@ -281,7 +281,7 @@ export const ParentPage = defineComponent(() => {
   document.title = channel();
   return { template: html\`<div>\${ChildCard({})}</div>\` };
 });
-mount({ component: ParentPage });
+mount(ParentPage);
 `,
       { 'src/child.ts': CHILD, ...FAKE_LIB },
     );
@@ -303,7 +303,7 @@ export const ParentPage = defineComponent(() => ({
   template: html\`<div>\${ChildCard({})}</div>\`,
   styles: pageStyles + theme,
 }));
-mount({ component: ParentPage });
+mount(ParentPage);
 `,
       { 'src/child.ts': CHILD, 'src/page.css': '.child-card {\n  margin: 1px;\n}\n', ...FAKE_LIB },
     );
@@ -323,7 +323,7 @@ import { ChildCard } from './child.js';
 export const ParentPage = defineComponent(() => ({
   template: html\`<div>\${ChildCard({})}</div>\`,
 }));
-mount({ component: ParentPage });
+mount(ParentPage);
 `,
       { 'src/child.ts': CHILD, 'src/assets/site.css': '.child-card { outline: 1px solid; }' },
     );
@@ -338,7 +338,7 @@ import { defineComponent, mount } from 'thane';
 export const AppRoot = defineComponent(() => ({
   template: html\`<div>x</div>\`,
 }));
-mount({ component: AppRoot });
+mount(AppRoot);
 `,
       {
         'index.html':
@@ -356,7 +356,7 @@ describe('Selector plan', () => {
   // The selectors planned are the components the entry points reach: another component anywhere under
   // the project (a second app, a test fixture) used to take a short name, and shift everyone else's
   const main =
-    "import { mount } from 'thane';\nimport { App } from './app.js';\nmount({ component: App, target: document.getElementById('app')! });\n";
+    "import { mount } from 'thane';\nimport { App } from './app.js';\nmount(App, { target: document.getElementById('app')! });\n";
   const component = (name: string, selector: string, template: string, imports = '') =>
     `import { defineComponent } from 'thane';\n${imports}export const ${name} = defineComponent('${selector}', () => ({ template: html\`${template}\`, styles: css\`:host { display: block; }\` }));\n`;
   const app = {

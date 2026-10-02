@@ -27,7 +27,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     // Component-level signal binding: el.className = tone()
@@ -50,7 +50,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     expect(js).toMatch(/setAttribute\("class"/);
@@ -70,7 +70,7 @@ export const App = defineComponent('test-app', () => {
     \`,
   };
 });
-mount({ component: App });
+mount(App);
 `;
     const js = await buildAndReadJs(source);
     expect(js).toMatch(/setAttribute\("href"/);

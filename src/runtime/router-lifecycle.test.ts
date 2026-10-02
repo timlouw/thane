@@ -7,7 +7,7 @@
  * `window` / `document`, what `startRouter`, `navigate`, popstate and `stopRouter` do for every
  * shape of the scroll-restoration option (`normalizeScrollRestoration`), for every shape
  * of `history.state` (`readScrollPositionFromHistoryState`), the globals the router
- * installs, the route-context provider, and Modes B and C of `mount({ router })`.
+ * installs, the route-context provider, and the two router mounts: `mount(Shell, { routes })` and `mount(Routes)`.
  *
  * Not pinned on purpose: a scroll state whose `__thaneScroll` is a function. History states are
  * structured clones, which cannot hold functions.
@@ -17,7 +17,7 @@
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 import { __registerComponentLean, mount } from './component.js';
-import { defineRoutes, navigate, navigateBack, startRouter, stopRouter } from './router.js';
+import { defineRoutes, navigate, navigateBack, startRouter, stopRouter, currentPath } from './router.js';
 import type { Route, RoutesMap } from './router.js';
 import { searchFlag, searchNumber, searchOneOf, searchString } from './router-search.js';
 
@@ -28,7 +28,6 @@ import { searchFlag, searchNumber, searchOneOf, searchString } from './router-se
 let log: string[] = [];
 let rafs: Array<() => void> = [];
 const g = globalThis as any;
-const originalCurrentPath = g.currentPath;
 
 class FakeElement {
   private _className = '';
@@ -127,6 +126,7 @@ const install = (url: string, state: unknown = null, scroll = { x: 11, y: 22 }):
   const document = {
     title: 'Doc',
     getElementById: (id: string) => elements.get(id) ?? null,
+    querySelector: (selector: string) => elements.get(selector) ?? null,
     elements,
   };
   g.window = window;
@@ -150,7 +150,6 @@ const teardown = () => {
   delete g.window;
   delete g.document;
   delete g.requestAnimationFrame;
-  if (!g.currentPath) g.currentPath = originalCurrentPath;
   rafs = [];
   log = [];
 };
@@ -422,25 +421,14 @@ describe('scroll position read from history.state', () => {
 // ─────────────────────────────────────────────────────────────
 
 describe('router lifecycle', () => {
-  test('startRouter installs navigate, navigateBack and currentPath; stopRouter removes the first two', async () => {
+  test('the router installs no globals: navigate, navigateBack and currentPath are imported from thane/router', async () => {
     install('http://app.test/a');
     startRouter(routes(), new FakeElement('outlet') as any);
-    expect(g.navigate).toBe(navigate);
-    expect(g.navigateBack).toBe(navigateBack);
-    expect(g.currentPath).toBe(originalCurrentPath);
     await settle();
-    expect(g.currentPath()).toBe('/a');
+    expect('navigate' in g || 'navigateBack' in g || 'currentPath' in g).toBe(false);
+    expect(currentPath()).toBe('/a');
     stopRouter();
-    expect('navigate' in g).toBe(false);
-    expect('navigateBack' in g).toBe(false);
-    expect(g.currentPath).toBe(originalCurrentPath);
-  });
-
-  test('startRouter puts currentPath back when it was deleted', () => {
-    delete g.currentPath;
-    install('http://app.test/a');
-    startRouter(routes(), new FakeElement('outlet') as any);
-    expect(g.currentPath).toBe(originalCurrentPath);
+    expect('navigate' in g || 'navigateBack' in g || 'currentPath' in g).toBe(false);
   });
 
   test('a second startRouter warns and changes nothing', async () => {
@@ -472,7 +460,7 @@ describe('router lifecycle', () => {
     await settle();
     b.setUrl('/elsewhere');
     stopRouter();
-    expect(g.currentPath()).toBe('/elsewhere');
+    expect(currentPath()).toBe('/elsewhere');
   });
 
   test('navigateBack calls history.back', () => {
@@ -690,7 +678,7 @@ describe('route context', () => {
       await settle();
       expect(mounts()).toEqual(['replaceState null /new', 'mount New into outlet']);
       expect(g.window.location.pathname).toBe('/new');
-      expect(g.currentPath()).toBe('/new');
+      expect(currentPath()).toBe('/new');
     });
 
     test('a redirectTo function gets the route, with its parameters', async () => {
@@ -740,7 +728,7 @@ describe('route context', () => {
       navigate('/locked');
       await settle();
       expect(mounts()).toEqual(['pushState null /locked', 'replaceState null /a']);
-      expect(g.currentPath()).toBe('/a');
+      expect(currentPath()).toBe('/a');
       expect(log).not.toContain('mount Locked into outlet');
     });
 
@@ -959,10 +947,10 @@ describe('route context', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-//  mount({ router }): Modes B and C
+//  mount(Shell, { routes }) and mount(Routes)
 // ─────────────────────────────────────────────────────────────
 
-describe('mount({ router })', () => {
+describe('mount(Shell, { routes }) and mount(Routes)', () => {
   const table = () =>
     defineRoutes({
       '/a': { component: page('A') },
@@ -972,7 +960,7 @@ describe('mount({ router })', () => {
   test('Mode C: pages render into the target; destroy stops the router', async () => {
     install('http://app.test/a');
     const target = new FakeElement('body');
-    const handle = mount({ router: { routes: table(), scrollRestoration: false }, target: target as any });
+    const handle = mount(table(), { scrollRestoration: false, target: target as any });
     expect(handle.root).toBe(target as any);
     await settle();
     expect(log).toEqual([
@@ -993,23 +981,19 @@ describe('mount({ router })', () => {
     expect('navigate' in g).toBe(false);
   });
 
-  const shell = (outletId: string | null) =>
+  const shell = (outlet: boolean) =>
     ({
       __f: (target: any) => {
         log.push(`mount Shell into ${target.name}`);
-        if (outletId) target.children.set(`#${outletId}`, new FakeElement(outletId));
+        if (outlet) target.children.set('router-outlet', new FakeElement('router-outlet'));
         return { root: target, __onDestroy: () => log.push('destroy Shell') };
       },
     }) as any;
 
-  test('Mode B: the shell is mounted, pages go into #router-outlet; destroy stops the router, then the shell', async () => {
+  test('mount(Shell, { routes }): the shell is mounted, pages go into its <router-outlet>; destroy stops the router, then the shell', async () => {
     install('http://app.test/a');
     const target = new FakeElement('body');
-    const handle = mount({
-      component: shell('router-outlet'),
-      router: { routes: table(), scrollRestoration: false },
-      target: target as any,
-    });
+    const handle = mount(shell(true), { routes: table(), scrollRestoration: false, target: target as any });
     expect(handle.root).toBe(target as any);
     await settle();
     expect(log).toEqual([
@@ -1032,31 +1016,20 @@ describe('mount({ router })', () => {
     ]);
   });
 
-  test('Mode B: a custom outlet id, found through document.getElementById when the shell does not hold it', async () => {
+  test("a <router-outlet> of the page (index.html) is used when the shell's template has none", async () => {
     const b = install('http://app.test/a');
-    const outside = new FakeElement('router-main');
-    b.document.elements.set('router-main', outside);
-    mount({
-      component: shell(null),
-      router: { routes: table(), outletId: 'router-main', scrollRestoration: false },
-      target: new FakeElement('body') as any,
-    });
+    b.document.elements.set('router-outlet', new FakeElement('page-outlet'));
+    mount(shell(false), { routes: table(), scrollRestoration: false, target: new FakeElement('body') as any });
     await settle();
-    expect(log).toContain('mount A into router-main');
+    expect(log).toContain('mount A into page-outlet');
   });
 
-  test('Mode B without an outlet throws, and the shell goes again', () => {
+  test('a shell without a <router-outlet> throws, and the shell goes again', () => {
     install('http://app.test/a');
     expect(() =>
-      mount({
-        component: shell(null),
-        router: { routes: table(), scrollRestoration: false },
-        target: new FakeElement('body') as any,
-      }),
+      mount(shell(false), { routes: table(), scrollRestoration: false, target: new FakeElement('body') as any }),
     ).toThrow(
-      '[thane] Router outlet element with id="router-outlet" not found. ' +
-        "In Mode B (shell + router), your shell component's template must contain " +
-        'an element with id="router-outlet".',
+      "[thane] The shell's template has no <router-outlet> element: put one where the pages go, or mount the routes alone (mount(Routes)).",
     );
     expect(log).toEqual(['mount Shell into body', 'destroy Shell', 'body.innerHTML = ""']);
   });

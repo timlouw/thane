@@ -205,17 +205,17 @@ Detects multiple `mount()` calls targeting the same element or using the same de
 
 ```typescript
 // ❌ BAD — two default mounts (both target document.body)
-mount({ component: App });
-mount({ component: Other });
+mount(App);
+mount(Other);
 
 // ❌ BAD — same explicit target
 const el = document.getElementById('root')!;
-mount({ component: App, target: el });
-mount({ component: Other, target: el });
+mount(App, { target: el });
+mount(Other, { target: el });
 
 // ✅ GOOD — different targets
-mount({ component: App, target: document.getElementById('app')! });
-mount({ component: Nav, target: document.getElementById('nav')! });
+mount(App, { target: document.getElementById('app')! });
+mount(Nav, { target: document.getElementById('nav')! });
 ```
 
 ---

@@ -24,7 +24,7 @@ afterAll(() => {
 });
 
 const app = (body: string, imports = ''): string =>
-  `import { defineComponent, html, mount } from 'thane';\n${imports}\nexport const App = defineComponent('x-app', () => ({ template: html\`<div>${body}</div>\` }));\nmount({ component: App });\n`;
+  `import { defineComponent, html, mount } from 'thane';\n${imports}\nexport const App = defineComponent('x-app', () => ({ template: html\`<div>${body}</div>\` }));\nmount(App);\n`;
 
 test('a rebuild compiles a call to a component whose file was added after the first build', async () => {
   writeFileSync(join(root, 'src', 'main.ts'), app('<p>no card yet</p>'));

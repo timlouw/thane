@@ -20,7 +20,7 @@ export const Counter = defineComponent(() => {
   };
 });
 
-mount({ component: Counter });
+mount(Counter);
 ```
 
 **→ [Getting Started](getting-started.md)**

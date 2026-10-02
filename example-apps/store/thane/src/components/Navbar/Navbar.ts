@@ -1,6 +1,7 @@
 import { defineComponent, html, when } from 'thane';
 import styles from './Navbar.module.css';
 import { cartCount } from '../../state/global-state.js';
+import { currentPath, navigate } from 'thane/router';
 
 const logoPath = '/assets/images/storefront-mark.svg';
 const cartIconPath = '/assets/icons/cart.svg';
