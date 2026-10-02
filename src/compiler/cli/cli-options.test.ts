@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cliMain, parseArgs, printHelp, resolveCLIOptions } from './cli-common.js';
+import { cliMain, createBuildConfig, parseArgs, printHelp, resolveCLIOptions } from './cli-common.js';
 
 const originalCwd = process.cwd();
 let root = '';
@@ -285,6 +285,31 @@ describe('config file keys nothing reads are reported', () => {
     expect(warningsFor({ commands: ['build'] })).toEqual([
       "Warning: 'commands', which is not an object of command names, in thane.config.json is ignored.",
     ]);
+  });
+
+  test('lint: severities by code; a bad severity, a key that is not a code and a lint that is not an object', () => {
+    const { result, warnings } = resolveWith(
+      {
+        'thane.config.json': JSON.stringify({
+          lint: { THANE405: 'off', THANE411: 'error', THANE404: 'warning', THANE403: 'loud', thane403: 'off' },
+          commands: { build: { lint: { THANE403: 'off' } } },
+        }),
+      },
+      [],
+    );
+    expect(result.lint).toEqual({ THANE403: 'off' });
+    expect(warnings).toEqual([
+      'Warning: The severity "loud" of \'THANE403\' in \'lint\' (use "off", "warning" or "error") in thane.config.json is ignored.',
+      "Warning: 'thane403' in 'lint', which is not a code such as THANE405, in thane.config.json is ignored.",
+    ]);
+    const top = resolveWith(
+      { 'thane.config.json': JSON.stringify({ lint: { THANE405: 'off', THANE411: 'error', x: 'loud' } }) },
+      [],
+    );
+    expect(createBuildConfig(top.result).lint).toEqual({ THANE405: 'off', THANE411: 'error' });
+    expect(
+      resolveWith({ 'thane.config.json': JSON.stringify({ commands: { dev: { lint: [1] } } }) }, []).warnings,
+    ).toEqual(["Warning: 'lint' in 'commands.dev', which is not an object of codes, in thane.config.json is ignored."]);
   });
 
   test('$schema and every option are read without a warning', () => {

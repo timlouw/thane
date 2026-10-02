@@ -5,7 +5,7 @@
 
 import type { Plugin } from 'esbuild';
 import { sourceCache, logger, PLUGIN_NAME, extendsComponentQuick } from '../../utils/index.js';
-import { hasErrors } from '../../errors.js';
+import { hasErrors, withConfiguredSeverity, type LintSeverities } from '../../errors.js';
 import { allRules } from './rules/index.js';
 import type { Diagnostic } from '../../types.js';
 import type { LintRuleDefinition } from './rules/types.js';
@@ -26,15 +26,16 @@ export interface ThaneLinterOptions {
   extraRules?: LintRuleDefinition[];
 
   /**
-   * Rule codes to suppress (e.g. ['THANE405'] to silence the conditional-template warning).
+   * The severity of each rule, by code, from thane.config.json's `lint`: `'off'` leaves a rule out,
+   * `'warning'` and `'error'` replace its own severity (e.g. `{ THANE405: 'off' }`).
    */
-  suppress?: string[];
+  severities?: LintSeverities | undefined;
 }
 
 export const ThaneLinterPlugin = (options: ThaneLinterOptions = {}): Plugin => {
   const rules: readonly LintRuleDefinition[] = options.extraRules ? [...allRules, ...options.extraRules] : allRules;
 
-  const suppress = new Set(options.suppress ?? []);
+  const severities = options.severities ?? {};
 
   return {
     name: NAME,
@@ -52,7 +53,7 @@ export const ThaneLinterPlugin = (options: ThaneLinterOptions = {}): Plugin => {
         const diagnostics: Diagnostic[] = [];
 
         for (const rule of rules) {
-          if (suppress.has(rule.meta.code)) continue;
+          if (severities[rule.meta.code] === 'off') continue;
 
           // Skip entry-point-only rules on non-entry files, and
           // skip component-only rules on non-component files
@@ -60,8 +61,10 @@ export const ThaneLinterPlugin = (options: ThaneLinterOptions = {}): Plugin => {
           if (isEntryRule && !isEntryPoint) continue;
           if (!isEntryRule && !isComponent) continue;
 
-          const results = rule.check(source.sourceFile, args.path);
-          diagnostics.push(...results);
+          for (const diagnostic of rule.check(source.sourceFile, args.path)) {
+            const configured = withConfiguredSeverity(diagnostic, severities);
+            if (configured) diagnostics.push(configured);
+          }
         }
 
         if (diagnostics.length > 0) {

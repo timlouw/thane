@@ -13,6 +13,8 @@ import ts from 'typescript';
 import { ErrorCode } from '../../errors.js';
 import type { Diagnostic } from '../../types.js';
 import { createBuildConfig, resolveCLIOptions } from '../../cli/cli-common.js';
+import { buildAndReadJs } from '../../testing/build-project.js';
+import { logger } from '../../utils/index.js';
 import {
   noDefaultExportComponent,
   requireConstTaggedTemplates,
@@ -412,5 +414,41 @@ describe('CLI defaults and config precedence', () => {
     expect(options.command).toBe('dev');
     expect(options.serve).toBe(true);
     expect(options.prod).toBe(false);
+  });
+});
+
+// ============================================================================
+// lint in thane.config.json: the severity of each rule
+// ============================================================================
+
+describe('a build follows the severities lint sets', () => {
+  const app = `import { defineComponent, html, mount } from 'thane';
+const flag = Math.random() > 2;
+const tpl = flag ? html\`<p>a</p>\` : html\`<p>b</p>\`;
+export const App = defineComponent(() => ({ template: html\`<div>\${tpl}</div>\` }));
+mount({ component: App });
+`;
+  const reported = async (lint: Record<string, 'off' | 'warning' | 'error'>): Promise<string[]> => {
+    const codes: string[] = [];
+    const original = logger.diagnostics.bind(logger);
+    logger.diagnostics = (diagnostics) => {
+      codes.push(...diagnostics.map((d) => `${d.code} ${d.severity}`));
+      original(diagnostics);
+    };
+    try {
+      await buildAndReadJs(app, { config: { lint, strictTypeCheck: false } });
+    } finally {
+      logger.diagnostics = original;
+    }
+    return codes;
+  };
+
+  test('THANE405 is a warning by default, nothing when off', async () => {
+    expect(await reported({})).toEqual(['THANE405 warning']);
+    expect(await reported({ THANE405: 'off' })).toEqual([]);
+  });
+
+  test('a warning set to error fails the build', async () => {
+    await expect(reported({ THANE405: 'error' })).rejects.toThrow('Conditional assignment of tagged templates');
   });
 });

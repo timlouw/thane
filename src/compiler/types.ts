@@ -99,6 +99,8 @@ export interface BuildContext {
   minify?: boolean;
   /** Selector renames, planned by MinificationPlugin before each build and applied by the compiler */
   selectorMap?: import('./plugins/minification/selector-minifier.js').SelectorMap;
+  /** The severity thane.config.json's `lint` gives each code; the compiler's warnings follow it too */
+  lint?: import('./errors.js').LintSeverities | undefined;
   /** `thane dev`: what hot updates need (see plugins/component-precompiler/hot-modules.ts) */
   hot?: import('./plugins/component-precompiler/hot-modules.js').HotState;
 }

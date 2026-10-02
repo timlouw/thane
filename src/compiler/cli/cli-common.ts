@@ -79,6 +79,7 @@ const OPTIONS: OptionSpec[] = [
   toggle('splitting', 'splitting'),
   { key: 'legalComments', flag: '--legal-comments', parse: (v) => v || 'none', config: true },
   toggle('analyze', 'analyze'),
+  { key: 'lint', config: true },
   { key: 'exitRequested', set: { '--help': 'help', '-h': 'help', '--version': 'version', '-v': 'version' } },
 ];
 
@@ -187,6 +188,8 @@ const closestName = (name: string, known: Iterable<string>): string | undefined 
   return best?.name;
 };
 
+const LINT_SEVERITIES: ReadonlySet<string> = new Set(['off', 'warning', 'error']);
+
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
@@ -205,15 +208,33 @@ const warnAboutUnreadConfig = (config: Record<string, unknown>, file: string): v
       }
     }
   };
+  /** `lint`: an object of codes, each "off", "warning" or "error" */
+  const checkLint = (lint: unknown, where: string) => {
+    if (lint == null) return;
+    if (!isPlainObject(lint)) return warn(`'lint'${where}, which is not an object of codes,`);
+    for (const [code, severity] of Object.entries(lint)) {
+      if (!LINT_SEVERITIES.has(severity as string)) {
+        warn(
+          `The severity ${JSON.stringify(severity)} of '${code}' in 'lint'${where} (use "off", "warning" or "error")`,
+        );
+      } else if (!/^THANE\d{3}$/.test(code)) {
+        warn(`'${code}' in 'lint'${where}, which is not a code such as THANE405,`);
+      }
+    }
+  };
   const { commands, $schema: _schema, ...topLevel } = config;
   checkKeys(topLevel, '');
+  checkLint(topLevel['lint'], '');
   if (commands == null) return;
   if (!isPlainObject(commands)) return warn("'commands', which is not an object of command names,");
   for (const [command, section] of Object.entries(commands)) {
     if (!COMMANDS.has(command)) warn(`Unknown command '${command}' in 'commands'`, closestName(command, COMMANDS));
     else if (section == null) continue;
     else if (!isPlainObject(section)) warn(`'commands.${command}', which is not an object,`);
-    else checkKeys(section, ` in 'commands.${command}'`);
+    else {
+      checkKeys(section, ` in 'commands.${command}'`);
+      checkLint(section['lint'], ` in 'commands.${command}'`);
+    }
   }
 };
 
@@ -400,6 +421,10 @@ export function createBuildConfig(options: CLIOptions): BuildConfig {
     splitting: options.splitting ?? true,
     legalComments: options.legalComments ?? 'none',
     analyze: options.analyze ?? false,
+    // Only the codes the config sets to a known severity: anything else was warned about
+    lint: Object.fromEntries(
+      Object.entries(options.lint ?? {}).filter(([, severity]) => LINT_SEVERITIES.has(severity)),
+    ) as BuildConfig['lint'],
   };
 }
 

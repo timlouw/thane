@@ -4,6 +4,9 @@ Thane includes 9 compile-time lint rules (THANE400–THANE413; THANE401, THANE40
 
 The compiler reports a few more problems itself, while it compiles a template: see [Template Errors](#template-errors).
 
+A project sets the severity of any rule, or turns it off, with `lint` in `thane.config.json`:
+`"lint": { "THANE405": "off" }` ([Lint Severities](cli.md#lint-severities)).
+
 ## Summary
 
 | Code     | Rule                                                                        | Severity |

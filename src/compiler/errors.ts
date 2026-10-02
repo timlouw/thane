@@ -40,6 +40,22 @@ export enum ErrorCode {
   NO_ALIASED_THANE_IMPORT = 'THANE413',
 }
 
+/** What `lint` in thane.config.json sets a code to: left out, or reported as a warning or an error */
+export type LintSeverity = 'off' | 'warning' | 'error';
+
+/** The severities thane.config.json's `lint` sets, by code */
+export type LintSeverities = Readonly<Record<string, LintSeverity>>;
+
+/** The diagnostic with the severity `lint` gives its code, or null when `lint` turns the code off */
+export const withConfiguredSeverity = (
+  diagnostic: Diagnostic,
+  severities: LintSeverities | undefined,
+): Diagnostic | null => {
+  const severity = diagnostic.code ? severities?.[diagnostic.code] : undefined;
+  if (severity === 'off') return null;
+  return severity ? { ...diagnostic, severity } : diagnostic;
+};
+
 /**
  * Create a diagnostic message
  */

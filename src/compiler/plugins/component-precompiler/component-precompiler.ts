@@ -24,7 +24,7 @@ import {
   isCssTaggedTemplate,
   KEYFRAME_SCOPING,
 } from '../minification/css-transform.js';
-import { ErrorCode, createError, createWarning } from '../../errors.js';
+import { ErrorCode, createError, createWarning, withConfiguredSeverity } from '../../errors.js';
 import { hotRegistration, isSwappable, trackHotInput } from './hot-modules.js';
 import { INTERNAL_RUNTIME_SPECIFIER, RUNTIME_HELPER } from '../../../contracts/index.js';
 
@@ -200,7 +200,7 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
         if (!owner) selectorOwners.set(selector, { name, file });
         if (!owner || (owner.name === name && owner.file === file)) continue;
         const { line, character } = sourceFile.getLineAndCharacterOfPosition(call.getStart(sourceFile));
-        logger.diagnostic(
+        const diagnostic = withConfiguredSeverity(
           createWarning(
             `${name} has the selector '${selector}', and so does ${owner.name} (${owner.file}). The two share ` +
               'their host class, and the styles of the one registered first apply to both. Give one of them ' +
@@ -208,7 +208,9 @@ export const ComponentPrecompilerPlugin = (ctx?: BuildContext, mode: { hotUpdate
             { file, line: line + 1, column: character + 1 },
             ErrorCode.SHARED_SELECTOR,
           ),
+          ctx?.lint,
         );
+        if (diagnostic) logger.diagnostic(diagnostic);
       }
     };
 

@@ -154,7 +154,25 @@ A key that is not in the table below prints a warning and is ignored, with the k
 | `html`                                                                                                         | `--html`                                                           |
 | `hashFileNames`, `dropConsole`, `dropDebugger`, `strictTypeCheck`, `emptyOutDir`, `legalComments`, `envPrefix` | Same name in kebab-case (`--hash-file-names`, `--drop-console`, …) |
 | `prod`, `gzip`, `port`, `open`, `host`, `base`, `sourcemap`, `analyze`, `splitting`, `target`                  | Same name                                                          |
-| `define`                                                                                                       | _(config only)_                                                    |
+| `define`, `lint`                                                                                               | _(config only)_                                                    |
+
+### Lint Severities
+
+`lint` sets how each [lint rule](lint-rules.md) and compiler warning is reported, by its code: `"off"` leaves it
+out, `"warning"` shows it without stopping the build, and `"error"` stops the build.
+
+```jsonc
+{
+  "lint": {
+    "THANE405": "off", // a ternary of templates in a const is fine in this project
+    "THANE411": "error", // two mounts on one target stop the build
+  },
+}
+```
+
+A severity other than those three, or a key that is not a code such as `THANE405`, prints a warning and is
+ignored. The compiler's own template errors (THANE006 to THANE012) cannot be turned off: the template they
+report would not be compiled correctly.
 
 ### Precedence
 
